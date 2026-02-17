@@ -1,0 +1,435 @@
+<template>
+	<div class="sp-root">
+		<!-- Spacer to clear Nextcloud hamburger toggle -->
+		<div :style="{ height: '56px' }" />
+
+		<!-- Wrapper with left padding -->
+		<div :style="{ paddingLeft: '24px' }">
+			<!-- Branding header -->
+			<div class="sp-header">
+				<a
+					href="https://www.synaplan.com"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="sp-bird-link">
+					<img
+						:src="birdUrl"
+						alt="Synaplan"
+						:style="{
+							display: 'block',
+							height: '48px',
+							width: '34px',
+							objectFit: 'contain',
+						}"
+						width="34"
+						height="48" />
+				</a>
+				<h1
+					:style="{
+						fontSize: '30px',
+						fontWeight: '700',
+						color: 'var(--color-main-text, #222)',
+						letterSpacing: '-0.02em',
+						margin: '0 0 8px',
+						padding: '0',
+						lineHeight: '1.3',
+					}">
+					Synaplan
+				</h1>
+				<p class="sp-tagline">
+					{{
+						t(
+							'synaplan_integration',
+							'AI-powered document summarization, translation, knowledge base, and chat for Nextcloud.',
+						)
+					}}
+				</p>
+				<a
+					href="https://www.synaplan.com"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="sp-website">
+					www.synaplan.com ↗
+				</a>
+			</div>
+
+			<NcSettingsSection
+				:name="t('synaplan_integration', 'Connection Settings')"
+				:description="
+					t(
+						'synaplan_integration',
+						'Configure the connection to your Synaplan instance.',
+					)
+				">
+				<div class="sp-field">
+					<strong>{{ t('synaplan_integration', 'Synaplan URL') }}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'The URL of your Synaplan instance.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-url"
+							v-model="synaplanUrl"
+							placeholder="https://synaplan.example.com"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
+				<div class="sp-field">
+					<strong>{{ t('synaplan_integration', 'API Key') }}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Your Synaplan API key for authentication.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-api-key"
+							v-model="apiKey"
+							:placeholder="apiKeyMasked || 'sk_...'"
+							type="password"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+					<div v-if="apiKeySet && !apiKey" :style="{ height: '16px' }" />
+					<p v-if="apiKeySet && !apiKey" class="sp-status">
+						{{
+							t(
+								'synaplan_integration',
+								'API key is configured. Enter a new value to replace it.',
+							)
+						}}
+					</p>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
+				<!-- Buttons -->
+				<div
+					:style="{ display: 'flex', gap: '16px', margin: '12px 0 32px' }">
+					<span
+						role="button"
+						tabindex="0"
+						:style="primaryBtnStyle"
+						@click="!saving && save()"
+						@keydown.enter="!saving && save()"
+						@keydown.space.prevent="!saving && save()">
+						{{
+							saving
+								? t('synaplan_integration', 'Saving...')
+								: t('synaplan_integration', 'Save')
+						}}
+					</span>
+					<span
+						role="button"
+						tabindex="0"
+						:style="secondaryBtnStyle"
+						@click="!testing && testConnection()"
+						@keydown.enter="!testing && testConnection()"
+						@keydown.space.prevent="!testing && testConnection()">
+						{{
+							testing
+								? t('synaplan_integration', 'Testing...')
+								: t('synaplan_integration', 'Test connection')
+						}}
+					</span>
+				</div>
+
+				<!-- Status message -->
+				<NcNoteCard v-if="message" :type="messageType">
+					{{ message }}
+				</NcNoteCard>
+			</NcSettingsSection>
+
+			<NcSettingsSection :name="t('synaplan_integration', 'Quick Links')">
+				<ul class="sp-links">
+					<li v-if="synaplanUrl">
+						<a
+							:href="synaplanUrl"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="sp-link">
+							🌐 {{ t('synaplan_integration', 'Open Synaplan') }}
+						</a>
+					</li>
+					<li>
+						<a
+							href="https://www.synaplan.com"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="sp-link">
+							📖 {{ t('synaplan_integration', 'Documentation') }}
+						</a>
+					</li>
+					<li>
+						<a
+							href="https://github.com/metadist/synaplan-nextcloud/issues"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="sp-link">
+							🐛 {{ t('synaplan_integration', 'Report Issue') }}
+						</a>
+					</li>
+				</ul>
+			</NcSettingsSection>
+		</div>
+	</div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import axios from '@nextcloud/axios'
+import { generateUrl, imagePath } from '@nextcloud/router'
+import { t } from '@nextcloud/l10n'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+
+const birdUrl = imagePath('synaplan_integration', 'synaplan-bird.svg')
+
+const synaplanUrl = ref('')
+const apiKey = ref('')
+const apiKeySet = ref(false)
+const apiKeyMasked = ref('')
+const saving = ref(false)
+const testing = ref(false)
+const message = ref('')
+const messageType = ref<'success' | 'error' | 'warning'>('success')
+
+const baseUrl = generateUrl('/apps/synaplan_integration')
+
+/* Inline button styles — guarantees we beat Nextcloud's global CSS */
+/* Input field wrapper — 25% wider than default, with vertical breathing room */
+const inputWrapStyle: Record<string, string> = {
+	width: '500px',
+	maxWidth: '100%',
+	margin: '4px 0',
+}
+
+const btnBase: Record<string, string> = {
+	display: 'inline-block',
+	padding: '10px 28px',
+	borderRadius: '22px',
+	fontSize: '0.95em',
+	fontWeight: '600',
+	cursor: 'pointer',
+	lineHeight: '1.2',
+	userSelect: 'none',
+	textAlign: 'center',
+	transition: 'opacity 0.15s, border-color 0.15s, background 0.15s',
+	border: '2px solid transparent',
+}
+
+const primaryBtnStyle = computed(() => ({
+	...btnBase,
+	background: 'var(--color-primary-element, #0082c9)',
+	color: 'var(--color-primary-element-text, #fff)',
+	opacity: saving.value ? '0.5' : '1',
+}))
+
+const secondaryBtnStyle = computed(() => ({
+	...btnBase,
+	background: 'transparent',
+	color: 'var(--color-main-text, #222)',
+	borderColor: 'var(--color-border-dark, rgba(255, 255, 255, 0.25))',
+	opacity: testing.value ? '0.5' : '1',
+}))
+
+/**
+ * Display a temporary status message.
+ * @param {string} text Message content
+ * @param {'success'|'error'|'warning'} type Message severity
+ */
+function showMessage(
+	text: string,
+	type: 'success' | 'error' | 'warning' = 'success',
+) {
+	message.value = text
+	messageType.value = type
+	if (type === 'success') {
+		setTimeout(() => {
+			message.value = ''
+		}, 5000)
+	}
+}
+
+/**
+ * Load settings from backend.
+ */
+async function loadSettings() {
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/settings`)
+		synaplanUrl.value = data.synaplan_url || ''
+		apiKeySet.value = data.api_key_set || false
+		apiKeyMasked.value = data.api_key_masked || ''
+	} catch {
+		showMessage('Failed to load settings.', 'error')
+	}
+}
+
+/**
+ * Save settings to backend.
+ */
+async function save() {
+	saving.value = true
+	message.value = ''
+	try {
+		await axios.put(`${baseUrl}/api/v1/settings`, {
+			synaplan_url: synaplanUrl.value,
+			api_key: apiKey.value,
+		})
+		if (apiKey.value) {
+			apiKeySet.value = true
+			apiKey.value = ''
+		}
+		showMessage('Settings saved successfully.')
+		await loadSettings()
+	} catch {
+		showMessage('Failed to save settings.', 'error')
+	} finally {
+		saving.value = false
+	}
+}
+
+/**
+ * Test connection to Synaplan.
+ */
+async function testConnection() {
+	testing.value = true
+	message.value = ''
+	try {
+		const { data } = await axios.post(`${baseUrl}/api/v1/settings/test`)
+		if (data.success) {
+			const providers = Object.entries(data.providers || {})
+				.filter(([, v]) => v)
+				.map(([k]) => k)
+				.join(', ')
+			showMessage(
+				`Connection successful! Status: ${data.status}.`
+					+ (providers ? ` Active providers: ${providers}.` : ''),
+			)
+		} else {
+			showMessage(`Connection failed: ${data.error}`, 'error')
+		}
+	} catch (err: unknown) {
+		const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+		showMessage(`Connection test failed: ${errorMsg}`, 'error')
+	} finally {
+		testing.value = false
+	}
+}
+
+onMounted(() => {
+	loadSettings()
+})
+</script>
+
+<style scoped>
+.sp-root {
+	padding: 0 0 40px 0;
+}
+
+/* Header */
+.sp-header {
+	padding: 0 0 20px;
+}
+
+.sp-bird-link {
+	display: block;
+	text-decoration: none;
+	margin-bottom: 10px;
+}
+
+.sp-bird-link:hover {
+	opacity: 0.85;
+}
+
+.sp-tagline {
+	color: var(--color-text-maxcontrast, #767676);
+	font-size: 0.95em;
+	line-height: 1.5;
+	margin: 0 0 10px;
+}
+
+.sp-website {
+	display: inline-block;
+	color: var(--color-primary-element, #0082c9);
+	font-size: 0.9em;
+	font-weight: 500;
+	text-decoration: none;
+}
+
+.sp-website:hover {
+	text-decoration: underline;
+}
+
+/* Fields */
+.sp-field {
+	margin-bottom: 24px;
+}
+
+.sp-field strong {
+	display: block;
+	margin-bottom: 4px;
+}
+
+.sp-hint {
+	font-size: 0.85em;
+	color: var(--color-text-maxcontrast, #767676);
+	margin: 0 0 8px;
+}
+
+.sp-status {
+	font-size: 0.85em;
+	color: var(--color-text-maxcontrast, #767676);
+	margin: 0;
+}
+
+/* Quick links */
+.sp-links {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.sp-links li {
+	display: block;
+	margin-bottom: 14px;
+}
+
+.sp-links li:last-child {
+	margin-bottom: 0;
+}
+
+.sp-link {
+	display: inline-block;
+	padding: 8px 16px;
+	border-radius: var(--border-radius-large, 8px);
+	background: var(--color-background-dark, rgba(255, 255, 255, 0.06));
+	border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+	text-decoration: none;
+	color: var(--color-main-text, #222);
+	font-size: 0.9em;
+	font-weight: 500;
+	transition:
+		background 0.15s,
+		border-color 0.15s;
+}
+
+.sp-link:hover {
+	background: var(--color-background-hover, rgba(255, 255, 255, 0.1));
+	border-color: var(--color-primary-element, #0082c9);
+	text-decoration: none;
+}
+</style>

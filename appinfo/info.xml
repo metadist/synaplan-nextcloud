@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	  xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>synaplan_integration</id>
+	<name>Synaplan Integration</name>
+	<summary>AI-powered document summarization, translation, knowledge base, and chat</summary>
+	<description><![CDATA[
+Bring Synaplan's AI capabilities directly into Nextcloud:
+
+- **Summarize** documents with one click
+- **Translate** files to multiple languages
+- **Add to Knowledge** — vectorize files into the AI knowledge base
+- **Research Chat** — AI assistant with knowledge group and model selection
+
+Requires a running Synaplan instance and API key.
+	]]></description>
+	<version>1.0.0</version>
+	<licence>Apache-2.0</licence>
+	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
+	<namespace>SynaplanIntegration</namespace>
+	<category>integration</category>
+	<category>ai</category>
+	<website>https://synaplan.com</website>
+	<bugs>https://github.com/metadist/synaplan-nextcloud/issues</bugs>
+	<repository type="git">https://github.com/metadist/synaplan-nextcloud</repository>
+	<discussion>https://github.com/metadist/synaplan-nextcloud/discussions</discussion>
+	<!-- TODO: Add screenshot URLs after hosting them (see release-work/RELEASE-PLAN.md Phase 3) -->
+	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/summarize.png</screenshot> -->
+	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/knowledge.png</screenshot> -->
+	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/research-chat.png</screenshot> -->
+	<dependencies>
+		<php min-version="8.2"/>
+		<nextcloud min-version="30" max-version="34"/>
+	</dependencies>
+	<settings>
+		<admin>OCA\SynaplanIntegration\Settings\SynaplanAdmin</admin>
+		<admin-section>OCA\SynaplanIntegration\Settings\SynaplanSection</admin-section>
+	</settings>
+</info>

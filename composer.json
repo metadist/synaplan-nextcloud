@@ -1,0 +1,43 @@
+{
+	"name": "synaplan/nextcloud-integration",
+	"description": "Synaplan AI Integration for Nextcloud",
+	"type": "project",
+	"license": "Apache-2.0",
+	"require": {
+		"php": ">=8.2"
+	},
+	"require-dev": {
+		"nextcloud/ocp": "dev-master",
+		"phpunit/phpunit": "^10.5",
+		"friendsofphp/php-cs-fixer": "^3.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"OCA\\SynaplanIntegration\\": "lib/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"OCA\\SynaplanIntegration\\Tests\\": "tests/",
+			"OCP\\": "vendor/nextcloud/ocp/OCP/",
+			"NCU\\": "vendor/nextcloud/ocp/NCU/",
+			"OC\\": "tests/stubs/OC/"
+		},
+		"classmap": [
+			"tests/stubs/OC.php"
+		]
+	},
+	"scripts": {
+		"lint": "php-cs-fixer fix --dry-run --diff",
+		"lint:fix": "php-cs-fixer fix",
+		"test": "phpunit --configuration phpunit.xml"
+	},
+	"config": {
+		"allow-plugins": {
+			"php-http/discovery": true
+		},
+		"platform": {
+			"php": "8.2"
+		}
+	}
+}
