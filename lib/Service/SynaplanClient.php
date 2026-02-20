@@ -176,30 +176,31 @@ class SynaplanClient
 	 * @return array<string, mixed>
 	 * @throws \Exception on API error
 	 */
-	public function uploadFile(string $filename, string $content, string $groupKey): array
+	public function uploadFile(string $filename, string $content, string $groupKey, string $processLevel = 'vectorize'): array
 	{
 		$client = $this->clientService->newClient();
 		$url = $this->getBaseUrl() . '/api/v1/files/upload';
 
-		// Build multipart form data
-		$boundary = 'SynaplanBoundary' . uniqid();
-		$body = '';
-		$body .= "--{$boundary}\r\n";
-		$body .= "Content-Disposition: form-data; name=\"files[]\"; filename=\"{$filename}\"\r\n";
-		$body .= "Content-Type: application/octet-stream\r\n\r\n";
-		$body .= $content . "\r\n";
-		$body .= "--{$boundary}\r\n";
-		$body .= "Content-Disposition: form-data; name=\"group_key\"\r\n\r\n";
-		$body .= $groupKey . "\r\n";
-		$body .= "--{$boundary}--\r\n";
-
 		$options = [
 			'headers' => [
 				'X-API-Key' => $this->getApiKey(),
-				'Content-Type' => "multipart/form-data; boundary={$boundary}",
 				'Accept' => 'application/json',
 			],
-			'body' => $body,
+			'multipart' => [
+				[
+					'name' => 'files[]',
+					'contents' => $content,
+					'filename' => $filename,
+				],
+				[
+					'name' => 'group_key',
+					'contents' => $groupKey,
+				],
+				[
+					'name' => 'process_level',
+					'contents' => $processLevel,
+				],
+			],
 			'timeout' => 180,
 		];
 

@@ -364,6 +364,7 @@ class ApiController extends Controller
 				$node->getName(),
 				$node->getContent(),
 				'_nextcloud_temp',
+				'extract',
 			);
 
 			$fileInfo = $uploadResult['files'][0] ?? null;

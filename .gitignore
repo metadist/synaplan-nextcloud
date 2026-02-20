@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+js/
+css/
+
+# Release artifacts
+*.tar.gz
+*.tar.gz.sig
+release-work/build/
+
+# Dev environment
+docker-compose.dev.yml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# PHP tools
+.php-cs-fixer.cache
+.phpunit.cache/
+.phpunit.result.cache
+
+# npm
+npm-debug.log*

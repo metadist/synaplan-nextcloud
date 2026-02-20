@@ -33,11 +33,11 @@ export const summarizeAction = new FileAction({
 	displayName: () => t('synaplan_integration', 'Summarize with Synaplan'),
 	iconSvgInline: () => TextBoxSearchOutlineSvg,
 
-	enabled({ nodes }) {
-		if (nodes.length !== 1) {
+	enabled(files) {
+		if (files.length !== 1) {
 			return false
 		}
-		const node = nodes[0]
+		const node = files[0]
 		if ((node.permissions & Permission.READ) === 0) {
 			return false
 		}
@@ -45,11 +45,10 @@ export const summarizeAction = new FileAction({
 		return SUPPORTED_MIMES.some((m) => mime.startsWith(m))
 	},
 
-	async exec({ nodes }) {
-		const node = nodes[0]
+	async exec(file) {
 		await spawnDialog(
 			defineAsyncComponent(() => import('../components/SummaryModal.vue')),
-			{ fileId: node.fileid, fileName: node.basename },
+			{ fileId: file.fileid, fileName: file.basename },
 		)
 		return null
 	},
