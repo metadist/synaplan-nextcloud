@@ -24,10 +24,8 @@ Requires a running Synaplan instance and API key.
 	<bugs>https://github.com/metadist/synaplan-nextcloud/issues</bugs>
 	<repository type="git">https://github.com/metadist/synaplan-nextcloud</repository>
 	<discussion>https://github.com/metadist/synaplan-nextcloud/discussions</discussion>
-	<!-- TODO: Add screenshot URLs after hosting them (see release-work/RELEASE-PLAN.md Phase 3) -->
-	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/summarize.png</screenshot> -->
-	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/knowledge.png</screenshot> -->
-	<!-- <screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/screenshots/screenshots/research-chat.png</screenshot> -->
+	<screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/main/screens/context_options.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/main/screens/research_chat.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
 		<nextcloud min-version="30" max-version="34"/>

@@ -14,34 +14,34 @@ use OCP\Util;
 
 class Application extends App implements IBootstrap
 {
-	public const APP_ID = 'synaplan_integration';
+    public const APP_ID = 'synaplan_integration';
 
-	public function __construct(array $urlParams = [])
-	{
-		parent::__construct(self::APP_ID, $urlParams);
-	}
+    public function __construct(array $urlParams = [])
+    {
+        parent::__construct(self::APP_ID, $urlParams);
+    }
 
-	public function register(IRegistrationContext $context): void
-	{
-		// Services and listeners will be registered here as features are added
-	}
+    public function register(IRegistrationContext $context): void
+    {
+        // Services and listeners will be registered here as features are added
+    }
 
-	public function boot(IBootContext $context): void
-	{
-		// Load file actions script in the Files app
-		Util::addScript(self::APP_ID, 'synaplan_integration-files-init');
+    public function boot(IBootContext $context): void
+    {
+        // Load file actions script in the Files app
+        Util::addScript(self::APP_ID, 'synaplan_integration-files-init');
 
-		// Register top-level navigation entry
-		$context->getAppContainer()->get(INavigationManager::class)->add(function () use ($context) {
-			$urlGenerator = $context->getAppContainer()->get(IURLGenerator::class);
+        // Register top-level navigation entry
+        $context->getAppContainer()->get(INavigationManager::class)->add(function () use ($context) {
+            $urlGenerator = $context->getAppContainer()->get(IURLGenerator::class);
 
-			return [
-				'id' => self::APP_ID,
-				'order' => 80,
-				'href' => $urlGenerator->linkToRoute(self::APP_ID . '.page.research'),
-				'icon' => $urlGenerator->imagePath(self::APP_ID, 'app.svg'),
-				'name' => 'Synaplan',
-			];
-		});
-	}
+            return [
+                'id' => self::APP_ID,
+                'order' => 80,
+                'href' => $urlGenerator->linkToRoute(self::APP_ID . '.page.research'),
+                'icon' => $urlGenerator->imagePath(self::APP_ID, 'app.svg'),
+                'name' => 'Synaplan',
+            ];
+        });
+    }
 }

@@ -5,27 +5,21 @@ import { defineAsyncComponent } from 'vue'
 import TranslateSvg from '@mdi/svg/svg/translate.svg?raw'
 
 /**
- * MIME types supported for translation.
- *
- * Text files are read directly; binary document formats are uploaded
- * to Synaplan first for Tika-based text extraction.
+ * MIME prefixes supported for translation.
+ * Uses startsWith matching so OOXML sub-types (.document, .sheet, etc.) are covered.
  */
 const SUPPORTED_MIMES = [
-	// Text-based (direct read)
-	'text/plain',
-	'text/markdown',
-	'text/csv',
-	'text/html',
-	'text/xml',
-	'text/rtf',
+	'text/',
+	'application/pdf',
 	'application/json',
 	'application/xml',
 	'application/rtf',
-	// Documents (Tika extraction via Synaplan upload)
-	'application/pdf',
+	// MS Office legacy
 	'application/msword',
-	'application/vnd.openxmlformats-officedocument.wordprocessingml',
-	'application/vnd.oasis.opendocument.text',
+	// OOXML (Word, Excel, PowerPoint)
+	'application/vnd.openxmlformats-officedocument',
+	// OpenDocument (Writer, Calc, Impress, Draw)
+	'application/vnd.oasis.opendocument',
 ]
 
 export const translateAction = new FileAction({
@@ -33,19 +27,21 @@ export const translateAction = new FileAction({
 	displayName: () => t('synaplan_integration', 'Translate with Synaplan'),
 	iconSvgInline: () => TranslateSvg,
 
-	enabled(files) {
-		if (files.length !== 1) {
-			return false
-		}
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	enabled(arg: any) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const files = (arg as any).nodes || arg
+		if (!files || files.length !== 1) return false
 		const node = files[0]
-		if ((node.permissions & Permission.READ) === 0) {
-			return false
-		}
-		const mime = node.mime || ''
-		return SUPPORTED_MIMES.some((m) => mime.startsWith(m))
+		if ((node.permissions & Permission.READ) === 0) return false
+		const mime = (node.mime ?? '') as string
+		return SUPPORTED_MIMES.some((prefix) => mime.startsWith(prefix))
 	},
 
-	async exec(file) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async exec(arg: any) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const file = ((arg as any).nodes && (arg as any).nodes[0]) || arg
 		await spawnDialog(
 			defineAsyncComponent(() => import('../components/TranslateModal.vue')),
 			{ fileId: file.fileid, fileName: file.basename },

@@ -88,6 +88,9 @@ const MODAL_CSS = `
 
 let injected = false
 
+/**
+ *
+ */
 export function injectModalStyles(): void {
 	if (injected) return
 	injected = true

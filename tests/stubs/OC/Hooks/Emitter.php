@@ -9,6 +9,6 @@ namespace OC\Hooks;
  */
 interface Emitter
 {
-	public function listen(string $scope, string $method, callable $callback): void;
-	public function removeListener(?string $scope = null, ?string $method = null, ?callable $callback = null): void;
+    public function listen(string $scope, string $method, callable $callback): void;
+    public function removeListener(?string $scope = null, ?string $method = null, ?callable $callback = null): void;
 }

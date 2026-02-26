@@ -5,35 +5,23 @@ import { defineAsyncComponent } from 'vue'
 import DatabasePlusOutlineSvg from '@mdi/svg/svg/database-plus-outline.svg?raw'
 
 /**
- * MIME types supported for knowledge base upload.
- *
- * Broader than summarize/translate because Synaplan uses Tika
- * for server-side text extraction from binary formats.
+ * MIME prefixes supported for knowledge base upload.
+ * Broader than summarize/translate: Synaplan uses Tika for server-side extraction.
  */
 const SUPPORTED_MIMES = [
-	// Text-based (direct read)
-	'text/plain',
-	'text/markdown',
-	'text/csv',
-	'text/html',
-	'text/xml',
-	'text/rtf',
+	'text/',
+	'application/pdf',
 	'application/json',
 	'application/xml',
 	'application/rtf',
-	// Documents (Tika extraction)
-	'application/pdf',
+	// MS Office legacy
 	'application/msword',
-	'application/vnd.openxmlformats-officedocument.wordprocessingml',
-	'application/vnd.oasis.opendocument.text',
-	// Spreadsheets
 	'application/vnd.ms-excel',
-	'application/vnd.openxmlformats-officedocument.spreadsheetml',
-	'application/vnd.oasis.opendocument.spreadsheet',
-	// Presentations
 	'application/vnd.ms-powerpoint',
-	'application/vnd.openxmlformats-officedocument.presentationml',
-	'application/vnd.oasis.opendocument.presentation',
+	// OOXML (Word, Excel, PowerPoint)
+	'application/vnd.openxmlformats-officedocument',
+	// OpenDocument (Writer, Calc, Impress, Draw)
+	'application/vnd.oasis.opendocument',
 ]
 
 export const chatAction = new FileAction({
@@ -41,19 +29,21 @@ export const chatAction = new FileAction({
 	displayName: () => t('synaplan_integration', 'Add to AI Knowledge'),
 	iconSvgInline: () => DatabasePlusOutlineSvg,
 
-	enabled(files) {
-		if (files.length !== 1) {
-			return false
-		}
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	enabled(arg: any) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const files = (arg as any).nodes || arg
+		if (!files || files.length !== 1) return false
 		const node = files[0]
-		if ((node.permissions & Permission.READ) === 0) {
-			return false
-		}
-		const mime = node.mime || ''
-		return SUPPORTED_MIMES.some((m) => mime.startsWith(m))
+		if ((node.permissions & Permission.READ) === 0) return false
+		const mime = (node.mime ?? '') as string
+		return SUPPORTED_MIMES.some((prefix) => mime.startsWith(prefix))
 	},
 
-	async exec(file) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async exec(arg: any) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const file = ((arg as any).nodes && (arg as any).nodes[0]) || arg
 		await spawnDialog(
 			defineAsyncComponent(() => import('../components/KnowledgeModal.vue')),
 			{ fileId: file.fileid, fileName: file.basename },

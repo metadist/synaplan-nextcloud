@@ -16,25 +16,25 @@ use OCP\Settings\ISettings;
  */
 class SynaplanAdmin implements ISettings
 {
-	public function __construct(
-		private IConfig $config,
-	) {
-	}
+    public function __construct(
+        private IConfig $config,
+    ) {
+    }
 
-	public function getForm(): TemplateResponse
-	{
-		\OCP\Util::addScript(Application::APP_ID, 'synaplan_integration-settings');
+    public function getForm(): TemplateResponse
+    {
+        \OCP\Util::addScript(Application::APP_ID, 'synaplan_integration-settings');
 
-		return new TemplateResponse(Application::APP_ID, 'settings/admin');
-	}
+        return new TemplateResponse(Application::APP_ID, 'settings/admin');
+    }
 
-	public function getSection(): string
-	{
-		return Application::APP_ID;
-	}
+    public function getSection(): string
+    {
+        return Application::APP_ID;
+    }
 
-	public function getPriority(): int
-	{
-		return 10;
-	}
+    public function getPriority(): int
+    {
+        return 10;
+    }
 }

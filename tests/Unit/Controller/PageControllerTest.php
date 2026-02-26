@@ -13,34 +13,34 @@ use Psr\Container\ContainerInterface;
 
 class PageControllerTest extends TestCase
 {
-	private PageController $controller;
+    private PageController $controller;
 
-	protected function setUp(): void
-	{
-		// Util::addScript() triggers addTranslations() → Server::get(IFactory::class)
-		// which requires \OC::$server to be set.
-		$l10nFactory = $this->createMock(IFactory::class);
-		$l10nFactory->method('findLanguage')->willReturn('en');
+    protected function setUp(): void
+    {
+        // Util::addScript() triggers addTranslations() → Server::get(IFactory::class)
+        // which requires \OC::$server to be set.
+        $l10nFactory = $this->createMock(IFactory::class);
+        $l10nFactory->method('findLanguage')->willReturn('en');
 
-		$server = $this->createMock(ContainerInterface::class);
-		$server->method('get')->willReturn($l10nFactory);
-		\OC::$server = $server;
+        $server = $this->createMock(ContainerInterface::class);
+        $server->method('get')->willReturn($l10nFactory);
+        \OC::$server = $server;
 
-		$request = $this->createMock(IRequest::class);
-		$this->controller = new PageController($request);
-	}
+        $request = $this->createMock(IRequest::class);
+        $this->controller = new PageController($request);
+    }
 
-	protected function tearDown(): void
-	{
-		\OC::$server = null;
-	}
+    protected function tearDown(): void
+    {
+        \OC::$server = null;
+    }
 
-	public function testResearchReturnsTemplateResponse(): void
-	{
-		$response = $this->controller->research();
+    public function testResearchReturnsTemplateResponse(): void
+    {
+        $response = $this->controller->research();
 
-		$this->assertInstanceOf(TemplateResponse::class, $response);
-		$this->assertSame('research', $response->getTemplateName());
-		$this->assertSame(200, $response->getStatus());
-	}
+        $this->assertInstanceOf(TemplateResponse::class, $response);
+        $this->assertSame('research', $response->getTemplateName());
+        $this->assertSame(200, $response->getStatus());
+    }
 }

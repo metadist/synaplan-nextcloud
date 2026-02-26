@@ -9,35 +9,35 @@ namespace OC;
  */
 class AppScriptDependency
 {
-	private string $app;
+    private string $app;
 
-	/** @var string[] */
-	private array $deps;
+    /** @var string[] */
+    private array $deps;
 
-	/**
-	 * @param string[] $deps
-	 */
-	public function __construct(string $app, array $deps = [])
-	{
-		$this->app = $app;
-		$this->deps = $deps;
-	}
+    /**
+     * @param string[] $deps
+     */
+    public function __construct(string $app, array $deps = [])
+    {
+        $this->app = $app;
+        $this->deps = $deps;
+    }
 
-	public function addDep(string $dep): void
-	{
-		$this->deps[] = $dep;
-	}
+    public function addDep(string $dep): void
+    {
+        $this->deps[] = $dep;
+    }
 
-	public function getApp(): string
-	{
-		return $this->app;
-	}
+    public function getApp(): string
+    {
+        return $this->app;
+    }
 
-	/**
-	 * @return string[]
-	 */
-	public function getDeps(): array
-	{
-		return $this->deps;
-	}
+    /**
+     * @return string[]
+     */
+    public function getDeps(): array
+    {
+        return $this->deps;
+    }
 }

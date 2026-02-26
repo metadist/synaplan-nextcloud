@@ -15,21 +15,21 @@ use OCP\Util;
  */
 class PageController extends Controller
 {
-	public function __construct(IRequest $request)
-	{
-		parent::__construct(Application::APP_ID, $request);
-	}
+    public function __construct(IRequest $request)
+    {
+        parent::__construct(Application::APP_ID, $request);
+    }
 
-	/**
-	 * Research chat page.
-	 *
-	 * @NoAdminRequired
-	 * @NoCSRFRequired
-	 */
-	public function research(): TemplateResponse
-	{
-		Util::addScript(Application::APP_ID, 'synaplan_integration-research');
+    /**
+     * Research chat page.
+     *
+     * @NoAdminRequired
+     * @NoCSRFRequired
+     */
+    public function research(): TemplateResponse
+    {
+        Util::addScript(Application::APP_ID, 'synaplan_integration-research');
 
-		return new TemplateResponse(Application::APP_ID, 'research');
-	}
+        return new TemplateResponse(Application::APP_ID, 'research');
+    }
 }

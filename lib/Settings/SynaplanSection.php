@@ -15,28 +15,28 @@ use OCP\Settings\IIconSection;
  */
 class SynaplanSection implements IIconSection
 {
-	public function __construct(
-		private IURLGenerator $urlGenerator,
-	) {
-	}
+    public function __construct(
+        private IURLGenerator $urlGenerator,
+    ) {
+    }
 
-	public function getID(): string
-	{
-		return Application::APP_ID;
-	}
+    public function getID(): string
+    {
+        return Application::APP_ID;
+    }
 
-	public function getName(): string
-	{
-		return 'Synaplan';
-	}
+    public function getName(): string
+    {
+        return 'Synaplan';
+    }
 
-	public function getPriority(): int
-	{
-		return 90;
-	}
+    public function getPriority(): int
+    {
+        return 90;
+    }
 
-	public function getIcon(): string
-	{
-		return $this->urlGenerator->imagePath(Application::APP_ID, 'app.svg');
-	}
+    public function getIcon(): string
+    {
+        return $this->urlGenerator->imagePath(Application::APP_ID, 'app.svg');
+    }
 }
