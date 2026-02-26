@@ -127,20 +127,47 @@
 				{{ error }}
 			</NcNoteCard>
 
-			<!-- Input -->
-			<div class="chat-input">
-				<NcTextField
-					v-model="inputMessage"
-					:placeholder="inputPlaceholder"
-					:disabled="loading"
-					@keydown.enter="sendMessage" />
-				<NcButton
-					type="primary"
-					:disabled="loading || !inputMessage.trim()"
-					@click="sendMessage">
-					{{ t('synaplan_integration', 'Send') }}
-				</NcButton>
+		<!-- Input -->
+		<div class="chat-input">
+			<div class="help-trigger-wrapper">
+				<button
+					class="help-trigger"
+					:title="t('synaplan_integration', 'Show available commands')"
+					@click="showHelp = !showHelp">
+					?
+				</button>
+				<div v-if="showHelp" class="help-popover">
+					<p class="help-title">
+						{{ t('synaplan_integration', 'Available commands') }}
+					</p>
+					<p v-if="capabilities.image" class="help-command">
+						<code>/pic [description]</code>
+						{{ t('synaplan_integration', 'Generate an image') }}
+					</p>
+					<p v-if="capabilities.video" class="help-command">
+						<code>/vid [description]</code>
+						{{ t('synaplan_integration', 'Generate a video') }}
+					</p>
+					<p v-if="!capabilities.image && !capabilities.video" class="help-hint">
+						{{ t('synaplan_integration', 'No media commands available. Configure image or video models in Synaplan.') }}
+					</p>
+					<p class="help-hint">
+						{{ t('synaplan_integration', 'Or just type a question to chat with the AI.') }}
+					</p>
+				</div>
 			</div>
+			<NcTextField
+				v-model="inputMessage"
+				:placeholder="inputPlaceholder"
+				:disabled="loading"
+				@keydown.enter="sendMessage" />
+			<NcButton
+				type="primary"
+				:disabled="loading || !inputMessage.trim()"
+				@click="sendMessage">
+				{{ t('synaplan_integration', 'Send') }}
+			</NcButton>
+		</div>
 		</div>
 	</div>
 </template>
@@ -198,6 +225,7 @@ const groupOptions = ref<string[]>([])
 const selectedModel = ref<ModelOption | null>(null)
 const modelOptions = ref<ModelOption[]>([])
 const capabilities = ref<Capabilities>({ image: false, video: false })
+const showHelp = ref(false)
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
@@ -596,5 +624,91 @@ onMounted(() => {
 
 .chat-input :deep(input) {
 	width: 100%;
+}
+
+/* Help trigger */
+.help-trigger-wrapper {
+	position: relative;
+	flex-shrink: 0;
+}
+
+.help-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	border: 1px solid var(--color-border-dark, #ccc);
+	background: var(--color-background-dark, #ededed);
+	color: var(--color-text-maxcontrast, #767676);
+	font-weight: 700;
+	font-size: 14px;
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
+}
+
+.help-trigger:hover {
+	background: var(--color-primary-element, #0082c9);
+	color: var(--color-primary-element-text, #fff);
+	border-color: var(--color-primary-element, #0082c9);
+}
+
+.help-popover {
+	position: absolute;
+	bottom: calc(100% + 10px);
+	left: 0;
+	min-width: 260px;
+	padding: 12px 16px;
+	background: var(--color-main-background, #fff);
+	border: 1px solid var(--color-border, #e0e0e0);
+	border-radius: 10px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+	z-index: 100;
+}
+
+.help-popover::after {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 14px;
+	border: 6px solid transparent;
+	border-top-color: var(--color-main-background, #fff);
+}
+
+.help-popover::before {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 13px;
+	border: 7px solid transparent;
+	border-top-color: var(--color-border, #e0e0e0);
+}
+
+.help-title {
+	margin: 0 0 8px;
+	font-weight: 700;
+	font-size: 0.9em;
+	color: var(--color-main-text, #222);
+}
+
+.help-command {
+	margin: 4px 0;
+	font-size: 0.85em;
+	color: var(--color-main-text, #222);
+}
+
+.help-command code {
+	background: var(--color-background-dark, #ededed);
+	padding: 2px 6px;
+	border-radius: 4px;
+	font-size: 0.9em;
+	font-weight: 600;
+}
+
+.help-hint {
+	margin: 6px 0 0;
+	font-size: 0.8em;
+	color: var(--color-text-maxcontrast, #767676);
 }
 </style>

@@ -39,7 +39,13 @@
 		"Settings saved": "Einstellungen gespeichert",
 		"Connection successful": "Verbindung erfolgreich",
 		"Connection failed": "Verbindung fehlgeschlagen",
-		"Research Chat": "Recherche-Chat"
+		"Research Chat": "Recherche-Chat",
+		"Show available commands": "Verfügbare Befehle anzeigen",
+		"Available commands": "Verfügbare Befehle",
+		"Generate an image": "Ein Bild generieren",
+		"Generate a video": "Ein Video generieren",
+		"No media commands available. Configure image or video models in Synaplan.": "Keine Medienbefehle verfügbar. Konfigurieren Sie Bild- oder Videomodelle in Synaplan.",
+		"Or just type a question to chat with the AI.": "Oder stellen Sie einfach eine Frage, um mit der KI zu chatten."
 	},
 	"plurals": {}
 }
