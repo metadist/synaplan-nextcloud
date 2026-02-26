@@ -279,22 +279,36 @@ class ApiController extends Controller
             $result = $this->synaplanClient->getModels();
             $models = $result['models'] ?? [];
 
-            // Extract CHAT models for the research chat
-            $chatModels = [];
-            if (isset($models['CHAT']) && is_array($models['CHAT'])) {
-                foreach ($models['CHAT'] as $model) {
-                    $chatModels[] = [
+            $extractModels = static function (array $group): array {
+                $out = [];
+                foreach ($group as $model) {
+                    $out[] = [
                         'id' => $model['id'] ?? 0,
                         'name' => $model['name'] ?? 'Unknown',
                         'service' => $model['service'] ?? '',
                         'providerId' => $model['providerId'] ?? '',
                     ];
                 }
-            }
+
+                return $out;
+            };
+
+            $chatModels = isset($models['CHAT']) && is_array($models['CHAT'])
+                ? $extractModels($models['CHAT']) : [];
+            $imageModels = isset($models['TEXT2PIC']) && is_array($models['TEXT2PIC'])
+                ? $extractModels($models['TEXT2PIC']) : [];
+            $videoModels = isset($models['TEXT2VID']) && is_array($models['TEXT2VID'])
+                ? $extractModels($models['TEXT2VID']) : [];
 
             return new JSONResponse([
                 'success' => true,
                 'models' => $chatModels,
+                'imageModels' => $imageModels,
+                'videoModels' => $videoModels,
+                'capabilities' => [
+                    'image' => count($imageModels) > 0,
+                    'video' => count($videoModels) > 0,
+                ],
             ]);
         } catch (\Exception $e) {
             $this->logger->error('Failed to fetch models: {message}', [
@@ -303,7 +317,7 @@ class ApiController extends Controller
             ]);
 
             return new JSONResponse(
-                ['success' => false, 'error' => $e->getMessage(), 'models' => []],
+                ['success' => false, 'error' => $e->getMessage(), 'models' => [], 'imageModels' => [], 'videoModels' => [], 'capabilities' => ['image' => false, 'video' => false]],
                 Http::STATUS_INTERNAL_SERVER_ERROR,
             );
         }

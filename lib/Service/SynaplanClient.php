@@ -19,6 +19,7 @@ use Psr\Log\LoggerInterface;
 class SynaplanClient
 {
     private const TIMEOUT = 120;
+    private const MEDIA_TIMEOUT = 180;
 
     public function __construct(
         private IClientService $clientService,
@@ -217,6 +218,93 @@ class SynaplanClient
             $this->logger->error('Synaplan file upload failed: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Generate an image or video via the Synaplan media endpoint.
+     *
+     * @param string   $prompt  Text description of the media to generate
+     * @param string   $type    "image" or "video"
+     * @param int|null $modelId Specific model ID (uses user default if null)
+     * @return array{success: bool, file: array{url: string, type: string, mimeType: string}, provider: string, model: string}
+     * @throws \Exception on API error
+     */
+    public function generateMedia(string $prompt, string $type, ?int $modelId = null): array
+    {
+        $body = [
+            'prompt' => $prompt,
+            'type' => $type,
+        ];
+
+        if ($modelId !== null) {
+            $body['modelId'] = $modelId;
+        }
+
+        $client = $this->clientService->newClient();
+        $url = $this->getBaseUrl() . '/api/v1/media/generate';
+
+        $options = [
+            'headers' => [
+                'X-API-Key' => $this->getApiKey(),
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ],
+            'body' => json_encode($body),
+            'timeout' => self::MEDIA_TIMEOUT,
+        ];
+
+        try {
+            $response = $client->post($url, $options);
+            $decoded = json_decode($response->getBody(), true);
+
+            if (!is_array($decoded)) {
+                throw new \RuntimeException('Invalid JSON response from Synaplan API');
+            }
+
+            return $decoded;
+        } catch (\Exception $e) {
+            $this->logger->error('Synaplan media generation failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+                'type' => $type,
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Download a file from Synaplan by its relative upload path.
+     *
+     * @param string $relativePath Relative file URL (e.g. "/api/v1/files/uploads/...")
+     * @return string Raw binary content
+     * @throws \Exception on download failure
+     */
+    public function downloadFile(string $relativePath): string
+    {
+        $client = $this->clientService->newClient();
+        $url = $this->getBaseUrl() . $relativePath;
+
+        $options = [
+            'headers' => [
+                'X-API-Key' => $this->getApiKey(),
+            ],
+            'timeout' => self::MEDIA_TIMEOUT,
+        ];
+
+        try {
+            $response = $client->get($url, $options);
+
+            return $response->getBody();
+        } catch (\Exception $e) {
+            $this->logger->error('Synaplan file download failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+                'path' => $relativePath,
             ]);
 
             throw $e;

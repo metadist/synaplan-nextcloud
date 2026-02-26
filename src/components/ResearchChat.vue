@@ -65,16 +65,59 @@
 							)
 						}}
 					</p>
+					<p v-if="capabilities.image || capabilities.video" class="command-hints">
+						{{
+							t(
+								'synaplan_integration',
+								'Try /pic to generate images{videoHint}.',
+								{
+									videoHint: capabilities.video
+										? t('synaplan_integration', ' or /vid for videos')
+										: '',
+								},
+							)
+						}}
+					</p>
 				</div>
 				<div
 					v-for="(msg, idx) in messages"
 					:key="idx"
 					:class="['message', msg.role]">
-					<div class="message-content" v-text="msg.text" />
+					<div v-if="msg.text" class="message-content" v-text="msg.text" />
+					<div v-if="msg.media" class="media-content">
+						<img
+							v-if="msg.media.type === 'image'"
+							:src="msg.media.url"
+							:alt="t('synaplan_integration', 'Generated image')"
+							class="generated-image" />
+						<video
+							v-else-if="msg.media.type === 'video'"
+							:src="msg.media.url"
+							controls
+							class="generated-video">
+							{{ t('synaplan_integration', 'Your browser does not support video playback.') }}
+						</video>
+						<div class="media-meta">
+							<span class="media-provider">{{ msg.media.provider }} / {{ msg.media.model }}</span>
+							<NcButton
+								v-if="!msg.media.saved"
+								type="secondary"
+								:disabled="msg.media.saving"
+								@click="saveMedia(idx)">
+								{{ msg.media.saving
+									? t('synaplan_integration', 'Saving...')
+									: t('synaplan_integration', 'Save to Nextcloud')
+								}}
+							</NcButton>
+							<span v-else class="save-success">
+								{{ t('synaplan_integration', 'Saved to {path}', { path: msg.media.savedPath ?? '' }) }}
+							</span>
+						</div>
+					</div>
 				</div>
 				<div v-if="loading" class="message assistant">
 					<div class="message-content loading-dots">
-						{{ t('synaplan_integration', 'Thinking...') }}
+						{{ loadingText }}
 					</div>
 				</div>
 			</div>
@@ -88,7 +131,7 @@
 			<div class="chat-input">
 				<NcTextField
 					v-model="inputMessage"
-					:placeholder="t('synaplan_integration', 'Ask a question...')"
+					:placeholder="inputPlaceholder"
 					:disabled="loading"
 					@keydown.enter="sendMessage" />
 				<NcButton
@@ -103,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import axios, { isAxiosError } from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
@@ -112,15 +155,33 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 
+interface MediaInfo {
+	url: string
+	type: 'image' | 'video'
+	provider: string
+	model: string
+	sourceUrl: string
+	filename: string
+	saved?: boolean
+	savedPath?: string
+	saving?: boolean
+}
+
 interface ChatMessage {
 	role: 'user' | 'assistant'
 	text: string
+	media?: MediaInfo
 }
 
 interface ModelOption {
 	id: number
 	label: string
 	service: string
+}
+
+interface Capabilities {
+	image: boolean
+	video: boolean
 }
 
 const loading = ref(false)
@@ -130,18 +191,39 @@ const error = ref('')
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
 const messagesContainer = ref<HTMLElement | null>(null)
+const loadingText = ref(t('synaplan_integration', 'Thinking...'))
 
-// Controls
 const selectedGroup = ref<string | null>(null)
 const groupOptions = ref<string[]>([])
 const selectedModel = ref<ModelOption | null>(null)
 const modelOptions = ref<ModelOption[]>([])
+const capabilities = ref<Capabilities>({ image: false, video: false })
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
-/**
- * Load available groups from Synaplan.
- */
+const inputPlaceholder = computed(() => {
+	if (capabilities.value.image && capabilities.value.video) {
+		return t('synaplan_integration', 'Ask a question, or use /pic or /vid...')
+	}
+	if (capabilities.value.image) {
+		return t('synaplan_integration', 'Ask a question, or use /pic...')
+	}
+	return t('synaplan_integration', 'Ask a question...')
+})
+
+function parseCommand(text: string): { command: 'pic' | 'vid' | null; prompt: string } {
+	const trimmed = text.trim()
+	const picMatch = trimmed.match(/^\/pic\s+(.+)$/i)
+	if (picMatch) {
+		return { command: 'pic', prompt: picMatch[1].trim() }
+	}
+	const vidMatch = trimmed.match(/^\/vid(?:eo)?\s+(.+)$/i)
+	if (vidMatch) {
+		return { command: 'vid', prompt: vidMatch[1].trim() }
+	}
+	return { command: null, prompt: trimmed }
+}
+
 async function loadGroups() {
 	loadingGroups.value = true
 	try {
@@ -156,9 +238,6 @@ async function loadGroups() {
 	}
 }
 
-/**
- * Load available chat models from Synaplan.
- */
 async function loadModels() {
 	loadingModels.value = true
 	try {
@@ -172,6 +251,12 @@ async function loadModels() {
 				}),
 			)
 		}
+		if (data.capabilities) {
+			capabilities.value = {
+				image: !!data.capabilities.image,
+				video: !!data.capabilities.video,
+			}
+		}
 	} catch {
 		// Models are optional — will use default
 	} finally {
@@ -179,9 +264,6 @@ async function loadModels() {
 	}
 }
 
-/**
- * Scroll messages container to bottom.
- */
 async function scrollToBottom() {
 	await nextTick()
 	if (messagesContainer.value) {
@@ -189,12 +271,20 @@ async function scrollToBottom() {
 	}
 }
 
-/**
- * Send a research question to Synaplan.
- */
 async function sendMessage() {
 	const text = inputMessage.value.trim()
 	if (!text || loading.value) return
+
+	const { command, prompt } = parseCommand(text)
+
+	if (command === 'pic' && !capabilities.value.image) {
+		error.value = t('synaplan_integration', 'Image generation is not available. No image models are configured.')
+		return
+	}
+	if (command === 'vid' && !capabilities.value.video) {
+		error.value = t('synaplan_integration', 'Video generation is not available. No video models are configured.')
+		return
+	}
 
 	messages.value.push({ role: 'user', text })
 	inputMessage.value = ''
@@ -202,9 +292,66 @@ async function sendMessage() {
 	error.value = ''
 	await scrollToBottom()
 
+	if (command) {
+		await handleMediaGeneration(command, prompt)
+	} else {
+		await handleChatMessage(prompt)
+	}
+
+	loading.value = false
+	await scrollToBottom()
+}
+
+async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
+	const type = command === 'pic' ? 'image' : 'video'
+	loadingText.value = type === 'image'
+		? t('synaplan_integration', 'Generating image...')
+		: t('synaplan_integration', 'Generating video...')
+
+	try {
+		const payload: Record<string, unknown> = { prompt, type }
+		if (selectedModel.value) {
+			payload.modelId = selectedModel.value.id
+		}
+
+		const { data } = await axios.post(`${baseUrl}/api/v1/media/generate`, payload)
+
+		if (data.success && data.file) {
+			const fileUrl = data.file.url as string
+			const proxyUrl = `${baseUrl}/api/v1/media/proxy?url=${encodeURIComponent(fileUrl)}`
+			const filename = fileUrl.split('/').pop() ?? `generated.${type === 'image' ? 'png' : 'mp4'}`
+
+			messages.value.push({
+				role: 'assistant',
+				text: '',
+				media: {
+					url: proxyUrl,
+					type,
+					provider: (data.provider as string) ?? 'unknown',
+					model: (data.model as string) ?? 'unknown',
+					sourceUrl: fileUrl,
+					filename,
+					saved: false,
+					saving: false,
+				},
+			})
+		} else {
+			error.value = data.error ?? t('synaplan_integration', 'Media generation failed')
+		}
+	} catch (err: unknown) {
+		error.value = isAxiosError(err)
+			? err.response?.data?.error || err.message
+			: t('synaplan_integration', 'Unknown error')
+	} finally {
+		loadingText.value = t('synaplan_integration', 'Thinking...')
+	}
+}
+
+async function handleChatMessage(text: string) {
+	loadingText.value = t('synaplan_integration', 'Thinking...')
+
 	try {
 		const payload: Record<string, unknown> = { message: text }
-
 		if (selectedGroup.value) {
 			payload.groupKey = selectedGroup.value
 		}
@@ -222,10 +369,35 @@ async function sendMessage() {
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
 			? err.response?.data?.error || err.message
-			: 'Unknown error'
+			: t('synaplan_integration', 'Unknown error')
+	}
+}
+
+async function saveMedia(messageIdx: number) {
+	const msg = messages.value[messageIdx]
+	if (!msg?.media || msg.media.saved || msg.media.saving) return
+
+	msg.media.saving = true
+	error.value = ''
+
+	try {
+		const { data } = await axios.post(`${baseUrl}/api/v1/media/save`, {
+			mediaUrl: msg.media.sourceUrl,
+			filename: msg.media.filename,
+		})
+
+		if (data.success) {
+			msg.media.saved = true
+			msg.media.savedPath = data.path
+		} else {
+			error.value = data.error ?? t('synaplan_integration', 'Save failed')
+		}
+	} catch (err: unknown) {
+		error.value = isAxiosError(err)
+			? err.response?.data?.error || err.message
+			: t('synaplan_integration', 'Save failed')
 	} finally {
-		loading.value = false
-		await scrollToBottom()
+		msg.media.saving = false
 	}
 }
 
@@ -326,11 +498,19 @@ onMounted(() => {
 
 .empty-state {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	height: 100%;
 	color: var(--color-text-maxcontrast, #767676);
 	font-size: 1.05em;
+	text-align: center;
+}
+
+.command-hints {
+	margin-top: 8px;
+	font-size: 0.9em;
+	opacity: 0.8;
 }
 
 .message {
@@ -360,6 +540,44 @@ onMounted(() => {
 .loading-dots {
 	opacity: 0.7;
 	font-style: italic;
+}
+
+/* Media content */
+.media-content {
+	margin-top: 8px;
+}
+
+.generated-image {
+	max-width: 100%;
+	max-height: 400px;
+	border-radius: 8px;
+	display: block;
+}
+
+.generated-video {
+	max-width: 100%;
+	max-height: 400px;
+	border-radius: 8px;
+	display: block;
+}
+
+.media-meta {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+	flex-wrap: wrap;
+}
+
+.media-provider {
+	font-size: 0.8em;
+	color: var(--color-text-maxcontrast, #767676);
+}
+
+.save-success {
+	font-size: 0.85em;
+	color: var(--color-success, #46ba61);
+	font-weight: 500;
 }
 
 .chat-input {
