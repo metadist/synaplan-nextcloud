@@ -1,23 +1,36 @@
 import { registerFileAction } from '@nextcloud/files'
+import type { IFileAction } from '@nextcloud/files'
 import { summarizeAction } from './files_actions/summarizeAction'
 import { translateAction } from './files_actions/translateAction'
 import { chatAction } from './files_actions/chatAction'
 import { injectModalStyles } from './styles/modal-fix'
 
+/**
+ * Register a file action in both the v4 scoped registry and the legacy
+ * _nc_fileactions array. NC34 dev builds ship @nextcloud/files RC which
+ * stores actions in window._nc_fileactions, while stable v4.0.0 uses
+ * window._nc_files_scope.v4_0. Dual registration ensures compatibility.
+ */
+function registerAction(action: IFileAction): void {
+	registerFileAction(action)
+
+	const w = window as unknown as Record<string, unknown>
+	if (typeof w._nc_fileactions === 'undefined') {
+		w._nc_fileactions = []
+	}
+	const legacy = w._nc_fileactions as Array<{ id: string }>
+	if (!legacy.find((a) => a.id === action.id)) {
+		legacy.push(action as unknown as { id: string })
+	}
+}
+
 injectModalStyles()
 injectFormStyles()
 
-registerFileAction(summarizeAction)
-registerFileAction(translateAction)
-registerFileAction(chatAction)
+registerAction(summarizeAction)
+registerAction(translateAction)
+registerAction(chatAction)
 
-/**
- * Inject global styles for modal form fields.
- *
- * Scoped CSS in Vue components may not reliably apply inside NcDialog
- * due to data-v-* attribute mismatches. These unscoped rules ensure
- * consistent label + dropdown layouts in all Synaplan modals.
- */
 function injectFormStyles(): void {
 	const css = `
 .synaplan-summary-modal .options,

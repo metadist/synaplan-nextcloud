@@ -27,8 +27,8 @@ class ApiController extends Controller
     /** Max file size for direct text extraction (5 MB). */
     private const MAX_TEXT_FILE_SIZE = 5 * 1024 * 1024;
 
-    /** Max file size for binary upload to Synaplan (20 MB). */
-    private const MAX_UPLOAD_FILE_SIZE = 20 * 1024 * 1024;
+    /** Max file size for binary upload to Synaplan (100 MB). */
+    private const MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024;
 
     /** MIME types we can extract text from directly (in PHP). */
     private const TEXT_MIME_TYPES = [
