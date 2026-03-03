@@ -246,8 +246,8 @@ class SynaplanClientTest extends TestCase
                 'http://localhost:8000/api/v1/files/upload',
                 $this->callback(function (array $options): bool {
                     $multipart = $options['multipart'] ?? [];
-                    $filePart = array_values(array_filter($multipart, fn($p) => $p['name'] === 'files[]'))[0] ?? [];
-                    $groupPart = array_values(array_filter($multipart, fn($p) => $p['name'] === 'group_key'))[0] ?? [];
+                    $filePart = array_values(array_filter($multipart, fn ($p) => $p['name'] === 'files[]'))[0] ?? [];
+                    $groupPart = array_values(array_filter($multipart, fn ($p) => $p['name'] === 'group_key'))[0] ?? [];
 
                     return $options['headers']['X-API-Key'] === 'sk_test_key_123'
                         && ($filePart['contents'] ?? '') === 'Hello world'

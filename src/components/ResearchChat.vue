@@ -65,14 +65,19 @@
 							)
 						}}
 					</p>
-					<p v-if="capabilities.image || capabilities.video" class="command-hints">
+					<p
+						v-if="capabilities.image || capabilities.video"
+						class="command-hints">
 						{{
 							t(
 								'synaplan_integration',
 								'Try /pic to generate images{videoHint}.',
 								{
 									videoHint: capabilities.video
-										? t('synaplan_integration', ' or /vid for videos')
+										? t(
+												'synaplan_integration',
+												' or /vid for videos',
+											)
 										: '',
 								},
 							)
@@ -95,22 +100,38 @@
 							:src="msg.media.url"
 							controls
 							class="generated-video">
-							{{ t('synaplan_integration', 'Your browser does not support video playback.') }}
+							{{
+								t(
+									'synaplan_integration',
+									'Your browser does not support video playback.',
+								)
+							}}
 						</video>
 						<div class="media-meta">
-							<span class="media-provider">{{ msg.media.provider }} / {{ msg.media.model }}</span>
+							<span class="media-provider"
+								>{{ msg.media.provider }} /
+								{{ msg.media.model }}</span
+							>
 							<NcButton
 								v-if="!msg.media.saved"
 								type="secondary"
 								:disabled="msg.media.saving"
 								@click="saveMedia(idx)">
-								{{ msg.media.saving
-									? t('synaplan_integration', 'Saving...')
-									: t('synaplan_integration', 'Save to Nextcloud')
+								{{
+									msg.media.saving
+										? t('synaplan_integration', 'Saving...')
+										: t(
+												'synaplan_integration',
+												'Save to Nextcloud',
+											)
 								}}
 							</NcButton>
 							<span v-else class="save-success">
-								{{ t('synaplan_integration', 'Saved to {path}', { path: msg.media.savedPath ?? '' }) }}
+								{{
+									t('synaplan_integration', 'Saved to {path}', {
+										path: msg.media.savedPath ?? '',
+									})
+								}}
 							</span>
 						</div>
 					</div>
@@ -127,47 +148,59 @@
 				{{ error }}
 			</NcNoteCard>
 
-		<!-- Input -->
-		<div class="chat-input">
-			<div class="help-trigger-wrapper">
-				<button
-					class="help-trigger"
-					:title="t('synaplan_integration', 'Show available commands')"
-					@click="showHelp = !showHelp">
-					?
-				</button>
-				<div v-if="showHelp" class="help-popover">
-					<p class="help-title">
-						{{ t('synaplan_integration', 'Available commands') }}
-					</p>
-					<p v-if="capabilities.image" class="help-command">
-						<code>/pic [description]</code>
-						{{ t('synaplan_integration', 'Generate an image') }}
-					</p>
-					<p v-if="capabilities.video" class="help-command">
-						<code>/vid [description]</code>
-						{{ t('synaplan_integration', 'Generate a video') }}
-					</p>
-					<p v-if="!capabilities.image && !capabilities.video" class="help-hint">
-						{{ t('synaplan_integration', 'No media commands available. Configure image or video models in Synaplan.') }}
-					</p>
-					<p class="help-hint">
-						{{ t('synaplan_integration', 'Or just type a question to chat with the AI.') }}
-					</p>
+			<!-- Input -->
+			<div class="chat-input">
+				<div class="help-trigger-wrapper">
+					<button
+						class="help-trigger"
+						:title="t('synaplan_integration', 'Show available commands')"
+						@click="showHelp = !showHelp">
+						?
+					</button>
+					<div v-if="showHelp" class="help-popover">
+						<p class="help-title">
+							{{ t('synaplan_integration', 'Available commands') }}
+						</p>
+						<p v-if="capabilities.image" class="help-command">
+							<code>/pic [description]</code>
+							{{ t('synaplan_integration', 'Generate an image') }}
+						</p>
+						<p v-if="capabilities.video" class="help-command">
+							<code>/vid [description]</code>
+							{{ t('synaplan_integration', 'Generate a video') }}
+						</p>
+						<p
+							v-if="!capabilities.image && !capabilities.video"
+							class="help-hint">
+							{{
+								t(
+									'synaplan_integration',
+									'No media commands available. Configure image or video models in Synaplan.',
+								)
+							}}
+						</p>
+						<p class="help-hint">
+							{{
+								t(
+									'synaplan_integration',
+									'Or just type a question to chat with the AI.',
+								)
+							}}
+						</p>
+					</div>
 				</div>
+				<NcTextField
+					v-model="inputMessage"
+					:placeholder="inputPlaceholder"
+					:disabled="loading"
+					@keydown.enter="sendMessage" />
+				<NcButton
+					type="primary"
+					:disabled="loading || !inputMessage.trim()"
+					@click="sendMessage">
+					{{ t('synaplan_integration', 'Send') }}
+				</NcButton>
 			</div>
-			<NcTextField
-				v-model="inputMessage"
-				:placeholder="inputPlaceholder"
-				:disabled="loading"
-				@keydown.enter="sendMessage" />
-			<NcButton
-				type="primary"
-				:disabled="loading || !inputMessage.trim()"
-				@click="sendMessage">
-				{{ t('synaplan_integration', 'Send') }}
-			</NcButton>
-		</div>
 		</div>
 	</div>
 </template>
@@ -239,7 +272,14 @@ const inputPlaceholder = computed(() => {
 	return t('synaplan_integration', 'Ask a question...')
 })
 
-function parseCommand(text: string): { command: 'pic' | 'vid' | null; prompt: string } {
+/**
+ *
+ * @param text
+ */
+function parseCommand(text: string): {
+	command: 'pic' | 'vid' | null
+	prompt: string
+} {
 	const trimmed = text.trim()
 	const picMatch = trimmed.match(/^\/pic\s+(.+)$/i)
 	if (picMatch) {
@@ -252,6 +292,9 @@ function parseCommand(text: string): { command: 'pic' | 'vid' | null; prompt: st
 	return { command: null, prompt: trimmed }
 }
 
+/**
+ *
+ */
 async function loadGroups() {
 	loadingGroups.value = true
 	try {
@@ -266,6 +309,9 @@ async function loadGroups() {
 	}
 }
 
+/**
+ *
+ */
 async function loadModels() {
 	loadingModels.value = true
 	try {
@@ -292,6 +338,9 @@ async function loadModels() {
 	}
 }
 
+/**
+ *
+ */
 async function scrollToBottom() {
 	await nextTick()
 	if (messagesContainer.value) {
@@ -299,6 +348,9 @@ async function scrollToBottom() {
 	}
 }
 
+/**
+ *
+ */
 async function sendMessage() {
 	const text = inputMessage.value.trim()
 	if (!text || loading.value) return
@@ -306,11 +358,17 @@ async function sendMessage() {
 	const { command, prompt } = parseCommand(text)
 
 	if (command === 'pic' && !capabilities.value.image) {
-		error.value = t('synaplan_integration', 'Image generation is not available. No image models are configured.')
+		error.value = t(
+			'synaplan_integration',
+			'Image generation is not available. No image models are configured.',
+		)
 		return
 	}
 	if (command === 'vid' && !capabilities.value.video) {
-		error.value = t('synaplan_integration', 'Video generation is not available. No video models are configured.')
+		error.value = t(
+			'synaplan_integration',
+			'Video generation is not available. No video models are configured.',
+		)
 		return
 	}
 
@@ -330,11 +388,17 @@ async function sendMessage() {
 	await scrollToBottom()
 }
 
+/**
+ *
+ * @param command
+ * @param prompt
+ */
 async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 	const type = command === 'pic' ? 'image' : 'video'
-	loadingText.value = type === 'image'
-		? t('synaplan_integration', 'Generating image...')
-		: t('synaplan_integration', 'Generating video...')
+	loadingText.value =
+		type === 'image'
+			? t('synaplan_integration', 'Generating image...')
+			: t('synaplan_integration', 'Generating video...')
 
 	try {
 		const payload: Record<string, unknown> = { prompt, type }
@@ -342,12 +406,17 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 			payload.modelId = selectedModel.value.id
 		}
 
-		const { data } = await axios.post(`${baseUrl}/api/v1/media/generate`, payload)
+		const { data } = await axios.post(
+			`${baseUrl}/api/v1/media/generate`,
+			payload,
+		)
 
 		if (data.success && data.file) {
 			const fileUrl = data.file.url as string
 			const proxyUrl = `${baseUrl}/api/v1/media/proxy?url=${encodeURIComponent(fileUrl)}`
-			const filename = fileUrl.split('/').pop() ?? `generated.${type === 'image' ? 'png' : 'mp4'}`
+			const filename =
+				fileUrl.split('/').pop()
+				?? `generated.${type === 'image' ? 'png' : 'mp4'}`
 
 			messages.value.push({
 				role: 'assistant',
@@ -364,7 +433,8 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 				},
 			})
 		} else {
-			error.value = data.error ?? t('synaplan_integration', 'Media generation failed')
+			error.value =
+				data.error ?? t('synaplan_integration', 'Media generation failed')
 		}
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
@@ -375,6 +445,10 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 	}
 }
 
+/**
+ *
+ * @param text
+ */
 async function handleChatMessage(text: string) {
 	loadingText.value = t('synaplan_integration', 'Thinking...')
 
@@ -401,6 +475,10 @@ async function handleChatMessage(text: string) {
 	}
 }
 
+/**
+ *
+ * @param messageIdx
+ */
 async function saveMedia(messageIdx: number) {
 	const msg = messages.value[messageIdx]
 	if (!msg?.media || msg.media.saved || msg.media.saving) return
@@ -645,7 +723,9 @@ onMounted(() => {
 	font-weight: 700;
 	font-size: 14px;
 	cursor: pointer;
-	transition: background 0.15s, color 0.15s;
+	transition:
+		background 0.15s,
+		color 0.15s;
 }
 
 .help-trigger:hover {

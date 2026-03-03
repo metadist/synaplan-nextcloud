@@ -10,6 +10,7 @@ import { injectModalStyles } from './styles/modal-fix'
  * _nc_fileactions array. NC34 dev builds ship @nextcloud/files RC which
  * stores actions in window._nc_fileactions, while stable v4.0.0 uses
  * window._nc_files_scope.v4_0. Dual registration ensures compatibility.
+ * @param action
  */
 function registerAction(action: IFileAction): void {
 	registerFileAction(action)
@@ -31,6 +32,9 @@ registerAction(summarizeAction)
 registerAction(translateAction)
 registerAction(chatAction)
 
+/**
+ *
+ */
 function injectFormStyles(): void {
 	const css = `
 .synaplan-summary-modal .options,

@@ -17,6 +17,10 @@ export interface NodeCompat {
 	permissions: number
 }
 
+/**
+ *
+ * @param {...any} args
+ */
 export function extractNodesFromEnabled(...args: any[]): NodeCompat[] {
 	const first = args[0]
 	if (first?.nodes) return first.nodes
@@ -24,6 +28,10 @@ export function extractNodesFromEnabled(...args: any[]): NodeCompat[] {
 	return []
 }
 
+/**
+ *
+ * @param {...any} args
+ */
 export function extractNodeFromExec(...args: any[]): NodeCompat | null {
 	const first = args[0]
 	if (first?.nodes?.[0]) return first.nodes[0]
