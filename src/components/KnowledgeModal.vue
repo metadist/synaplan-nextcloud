@@ -13,14 +13,14 @@
 						t('synaplan_integration', 'Uploading and processing file...')
 					}}
 				</p>
-				<p class="loading-hint">
-					{{
-						t(
-							'synaplan_integration',
-							'Text extraction and vectorization may take a few minutes for large files.',
-						)
-					}}
-				</p>
+			<p class="loading-hint">
+				{{
+					t(
+						'synaplan_integration',
+						'Vectorization of text can take some time, please wait — this is a demo.',
+					)
+				}}
+			</p>
 				<p v-if="elapsedSeconds > 0" class="loading-timer">
 					{{ formattedElapsed }}
 				</p>
