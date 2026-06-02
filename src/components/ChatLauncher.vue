@@ -147,6 +147,7 @@ const open = ref(false)
 	height: 100%;
 	padding: 0;
 	align-items: stretch;
+	box-sizing: border-box;
 }
 
 .launcher-body :deep(.synaplan-research) {
@@ -157,8 +158,10 @@ const open = ref(false)
 	border: none;
 	border-radius: 0;
 	box-shadow: none;
-	padding: 14px 16px;
+	/* extra bottom padding keeps the input clear of the rounded panel edge */
+	padding: 14px 16px 16px;
 	background: transparent;
+	box-sizing: border-box;
 }
 
 /* The panel header already says "Synaplan AI" — drop the duplicate title. */

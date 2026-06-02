@@ -14,7 +14,7 @@ Bring Synaplan's AI capabilities directly into Nextcloud:
 
 Requires a running Synaplan instance and API key.
 	]]></description>
-	<version>1.1.1</version>
+	<version>1.1.2</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>

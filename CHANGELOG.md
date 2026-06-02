@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.1.2 – 2026-06-02
+
+### Fixed
+- **Chat launcher polish** — taller window (+50px), Knowledge/Model selectors closer together, and the input field no longer clipped at the bottom edge (box-sizing fix).
+
 ## 1.1.1 – 2026-06-02
 
 ### Fixed
