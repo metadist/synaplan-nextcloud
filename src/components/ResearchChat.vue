@@ -45,6 +45,17 @@
 				</div>
 			</div>
 
+			<!-- How to add a knowledge folder (RAG group). In Nextcloud, groups are
+			     created by adding documents to them via the file context menu. -->
+			<p v-if="!loadingGroups && groupOptions.length === 0" class="knowledge-hint">
+				{{
+					t(
+						'synaplan_integration',
+						'No knowledge folders yet. Add documents to one via a file\u2019s menu → Synaplan → Add to AI Knowledge.',
+					)
+				}}
+			</p>
+
 			<!-- Messages -->
 			<div ref="messagesContainer" class="messages">
 				<div v-if="messages.length === 0 && !loading" class="empty-state">
@@ -589,6 +600,13 @@ onMounted(() => {
 
 .control-select :deep(.v-select) {
 	width: 100%;
+}
+
+.knowledge-hint {
+	margin: 8px 0 0;
+	font-size: 0.82em;
+	line-height: 1.4;
+	color: var(--color-text-maxcontrast, #767676);
 }
 
 /* Messages */
