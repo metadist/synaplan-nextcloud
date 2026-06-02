@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **In-page chat launcher** — a floating button (bottom-right) on every Nextcloud page that opens the Synaplan AI assistant in a compact chat window, without navigating to the full-page Research view. Reuses the existing Research chat (knowledge group + model selection, `/pic` & `/vid` media commands).
+
 ## 1.0.0 – 2025-02-14
 
 ### Added

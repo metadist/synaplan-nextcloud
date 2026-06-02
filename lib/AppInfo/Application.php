@@ -31,6 +31,9 @@ class Application extends App implements IBootstrap
         // Load file actions script in the Files app
         Util::addScript(self::APP_ID, 'synaplan_integration-files-init');
 
+        // Floating in-page chat launcher (bottom-right button -> chat window)
+        Util::addScript(self::APP_ID, 'synaplan_integration-chat-launcher');
+
         // Register top-level navigation entry
         $context->getAppContainer()->get(INavigationManager::class)->add(function () use ($context) {
             $urlGenerator = $context->getAppContainer()->get(IURLGenerator::class);

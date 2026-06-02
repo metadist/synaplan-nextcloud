@@ -5,12 +5,35 @@
  * data-v-* attribute on NcModal may differ from the one in the server-side CSS.
  * This causes the modal overlay and centering styles to not apply.
  *
- * These unscoped rules provide the essential modal functionality regardless
- * of which @nextcloud/vue version the server ships.
+ * These rules provide the essential modal functionality regardless of which
+ * @nextcloud/vue version the server ships — but they MUST only target the
+ * plugin's OWN modals. Earlier they were global, which re-styled (and boxed)
+ * Nextcloud's own modals too — most visibly the Viewer modal that hosts the
+ * Collabora/Office editor, capping it at max-width: 900px. Every rule below is
+ * therefore scoped via `:has()` to a modal that contains one of our modal
+ * bodies, so the Office editor (and any other NC modal) is left full-width.
  */
 
+// Content classes rendered inside our own modals (see files-init.ts styles).
+const PLUGIN_MODAL_BODIES = [
+	'.synaplan-summary-modal',
+	'.synaplan-translate-modal',
+	'.synaplan-chat-modal',
+	'.synaplan-knowledge-modal',
+]
+
+/**
+ * Build a selector list scoping `suffix` to our own modals only.
+ * @param suffix e.g. '' for the mask itself, or ' .modal-container'
+ */
+function ours(suffix: string): string {
+	return PLUGIN_MODAL_BODIES.map((b) => `.modal-mask:has(${b})${suffix}`).join(
+		',\n',
+	)
+}
+
 const MODAL_CSS = `
-.modal-mask {
+${ours('')} {
 	position: fixed;
 	z-index: 9998;
 	top: 0;
@@ -21,12 +44,12 @@ const MODAL_CSS = `
 	display: block;
 }
 
-.modal-mask,
-.modal-mask * {
+${ours('')},
+${ours(' *')} {
 	box-sizing: border-box;
 }
 
-.modal-wrapper {
+${ours(' .modal-wrapper')} {
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -34,7 +57,7 @@ const MODAL_CSS = `
 	height: 100%;
 }
 
-.modal-container {
+${ours(' .modal-container')} {
 	background: var(--color-main-background, #fff);
 	border-radius: var(--border-radius-large, 10px);
 	padding: 0;
@@ -46,39 +69,39 @@ const MODAL_CSS = `
 	box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
 }
 
-.modal-container--normal {
+${ours(' .modal-container--normal')} {
 	max-width: 600px;
 }
 
-.modal-container--small {
+${ours(' .modal-container--small')} {
 	max-width: 400px;
 }
 
-.modal-container__close {
+${ours(' .modal-container__close')} {
 	position: absolute;
 	right: 4px;
 	top: 4px;
 	z-index: 1;
 }
 
-.dialog__wrapper {
+${ours(' .dialog__wrapper')} {
 	display: flex;
 	flex-direction: column;
 }
 
-.dialog__content {
+${ours(' .dialog__content')} {
 	padding: 12px 20px;
 	flex: 1 1 auto;
 	overflow: auto;
 }
 
-.dialog__name {
+${ours(' .dialog__name')} {
 	text-align: center;
 	padding: 12px 20px 0;
 	margin: 0;
 }
 
-.dialog__actions {
+${ours(' .dialog__actions')} {
 	display: flex;
 	justify-content: flex-end;
 	gap: 8px;
@@ -89,7 +112,7 @@ const MODAL_CSS = `
 let injected = false
 
 /**
- *
+ * Inject the scoped modal styles once.
  */
 export function injectModalStyles(): void {
 	if (injected) return
