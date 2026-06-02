@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.1.1 – 2026-06-02
+
+### Fixed
+- **Chat launcher layout** — enlarged the window, stacked the Knowledge/Model selectors (no more overlap), tuned fonts/margins, raised contrast (brand-coloured header), and the floating button now hides while the window is open so they never overlap.
+
 ## 1.1.0 – 2026-06-02
 
 ### Added
