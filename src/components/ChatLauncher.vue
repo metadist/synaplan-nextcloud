@@ -88,7 +88,7 @@ const open = ref(false)
 	right: 24px;
 	bottom: 24px;
 	width: min(460px, calc(100vw - 32px));
-	height: min(700px, calc(100vh - 96px));
+	height: min(750px, calc(100vh - 46px));
 	background: var(--color-main-background, #fff);
 	border: 1px solid var(--color-border-dark, #c0c0c0);
 	border-radius: 16px;
@@ -169,7 +169,7 @@ const open = ref(false)
 /* Stack Knowledge + Model so the selects get full width (no overlap). */
 .launcher-body :deep(.controls-bar) {
 	flex-direction: column;
-	gap: 10px;
+	gap: 5px;
 	padding: 4px 0 12px;
 	border-bottom: 2px solid var(--color-border-dark, #c0c0c0);
 	margin-bottom: 10px;
