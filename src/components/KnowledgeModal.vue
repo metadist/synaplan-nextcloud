@@ -7,20 +7,55 @@
 		<div class="synaplan-knowledge-modal">
 			<!-- Status: Uploading -->
 			<div v-if="loading" class="loading-state">
-				<NcLoadingIcon :size="44" />
+				<div
+					class="progress-track"
+					role="progressbar"
+					:aria-valuenow="progressValue"
+					aria-valuemin="0"
+					aria-valuemax="100">
+					<div
+						class="progress-fill"
+						:style="{ width: progressValue + '%' }" />
+				</div>
+
 				<p class="loading-text">
+					{{ stages[currentStageIndex] }}
+				</p>
+
+				<ul class="stage-list">
+					<li
+						v-for="(stage, i) in stages"
+						:key="i"
+						:class="[
+							'stage-item',
+							{
+								done: i < currentStageIndex,
+								active: i === currentStageIndex,
+							},
+						]">
+						<span class="stage-marker">
+							<NcLoadingIcon
+								v-if="i === currentStageIndex"
+								:size="16" />
+							<span
+								v-else-if="i < currentStageIndex"
+								class="stage-check"
+								>✓</span
+							>
+							<span v-else class="stage-dot" />
+						</span>
+						<span class="stage-name">{{ stage }}</span>
+					</li>
+				</ul>
+
+				<p class="loading-hint">
 					{{
-						t('synaplan_integration', 'Uploading and processing file...')
+						t(
+							'synaplan_integration',
+							'Large documents take a little longer to vectorize.',
+						)
 					}}
 				</p>
-			<p class="loading-hint">
-				{{
-					t(
-						'synaplan_integration',
-						'Vectorization of text can take some time, please wait.',
-					)
-				}}
-			</p>
 				<p v-if="elapsedSeconds > 0" class="loading-timer">
 					{{ formattedElapsed }}
 				</p>
@@ -184,6 +219,31 @@ const formattedElapsed = computed(() => {
 	}
 	return `${secs}s`
 })
+
+// Ordered processing phases shown while the (single, blocking) upload request
+// runs server-side. We can't read true per-chunk progress, so the stage is
+// advanced on an elapsed-time heuristic and dwells on the slow embedding step.
+const stages = computed(() => [
+	t('synaplan_integration', 'Uploading file'),
+	t('synaplan_integration', 'Extracting text'),
+	t('synaplan_integration', 'Creating chunks'),
+	t('synaplan_integration', 'Generating embeddings'),
+])
+
+const currentStageIndex = computed(() => {
+	const s = elapsedSeconds.value
+	if (s < 2) return 0
+	if (s < 4) return 1
+	if (s < 6) return 2
+	return 3
+})
+
+// Asymptotic fill that approaches but never reaches 100% until the request
+// actually returns (then the dialog switches to the success state). Avoids
+// claiming a precise percentage we don't have.
+const progressValue = computed(() =>
+	Math.min(95, Math.round((1 - Math.exp(-elapsedSeconds.value / 12)) * 100)),
+)
 
 /**
  * Start the elapsed-time counter.
@@ -349,8 +409,26 @@ onMounted(() => {
 	flex-direction: column;
 	align-items: center;
 	gap: 8px;
-	padding: 32px 16px;
+	padding: 28px 16px;
 	text-align: center;
+}
+
+/* Progress bar */
+.progress-track {
+	width: 100%;
+	max-width: 360px;
+	height: 8px;
+	border-radius: 999px;
+	background: var(--color-background-dark, #ededed);
+	overflow: hidden;
+	margin-bottom: 4px;
+}
+
+.progress-fill {
+	height: 100%;
+	border-radius: 999px;
+	background: var(--color-primary-element, #0082c9);
+	transition: width 0.6s ease;
 }
 
 .loading-text {
@@ -360,10 +438,61 @@ onMounted(() => {
 	color: var(--color-main-text, #222);
 }
 
+/* Stage checklist */
+.stage-list {
+	list-style: none;
+	margin: 4px 0 0;
+	padding: 0;
+	text-align: left;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.stage-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 0.92em;
+	color: var(--color-text-maxcontrast, #767676);
+	transition: color 0.2s ease;
+}
+
+.stage-item.active {
+	color: var(--color-main-text, #222);
+	font-weight: 600;
+}
+
+.stage-item.done {
+	color: var(--color-main-text, #222);
+}
+
+.stage-marker {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+}
+
+.stage-check {
+	color: var(--color-success, #2fa84f);
+	font-weight: 700;
+	line-height: 1;
+}
+
+.stage-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	border: 1.5px solid var(--color-border-dark, #c8c8c8);
+}
+
 .loading-hint {
 	color: var(--color-text-maxcontrast, #767676);
 	font-size: 0.9em;
-	margin: 0;
+	margin: 4px 0 0;
 	line-height: 1.4;
 }
 

@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Streaming chat answers** — chat replies now stream token-by-token (SSE) instead of appearing all at once after a ~15s wait. The PHP `chat#chatStream` endpoint proxies Synaplan's OpenAI-compatible streaming API; the frontend consumes it via `fetch`/`ReadableStream` and falls back to the blocking endpoint if streaming is unavailable.
+- **Markdown rendering in chat answers** — assistant replies in the Research/launcher chat now render Markdown (headings, bold, lists, code, links) via `NcRichText` instead of showing raw `##`/`**` source.
+- **Staged upload progress** — the "Add to Knowledge" dialog now shows a progress bar and a phase checklist (Uploading → Extracting text → Creating chunks → Generating embeddings) with elapsed time, instead of a bare spinner.
+
 ### Fixed
 - **Knowledge upload no longer shows a false success** — when the server stores 0 chunks (empty/image-only file, or the embedding service is unavailable), the dialog now reports a clear error instead of a green "File added" screen with "Chunks created: 0".
 - **Removed leftover "this is a demo" text** from the knowledge-upload progress hint.

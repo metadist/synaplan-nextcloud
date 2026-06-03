@@ -47,7 +47,9 @@
 
 			<!-- How to add a knowledge folder (RAG group). In Nextcloud, groups are
 			     created by adding documents to them via the file context menu. -->
-			<p v-if="!loadingGroups && groupOptions.length === 0" class="knowledge-hint">
+			<p
+				v-if="!loadingGroups && groupOptions.length === 0"
+				class="knowledge-hint">
 				{{
 					t(
 						'synaplan_integration',
@@ -99,7 +101,16 @@
 					v-for="(msg, idx) in messages"
 					:key="idx"
 					:class="['message', msg.role]">
-					<div v-if="msg.text" class="message-content" v-text="msg.text" />
+					<NcRichText
+						v-if="msg.text && msg.role === 'assistant'"
+						class="message-content markdown-body"
+						:text="msg.text"
+						:use-markdown="true"
+						:use-extended-markdown="true" />
+					<div
+						v-else-if="msg.text"
+						class="message-content"
+						v-text="msg.text" />
 					<div v-if="msg.media" class="media-content">
 						<img
 							v-if="msg.media.type === 'image'"
@@ -147,7 +158,7 @@
 						</div>
 					</div>
 				</div>
-				<div v-if="loading" class="message assistant">
+				<div v-if="loading && !streaming" class="message assistant">
 					<div class="message-content loading-dots">
 						{{ loadingText }}
 					</div>
@@ -223,6 +234,7 @@ import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 
@@ -248,6 +260,8 @@ interface ModelOption {
 	id: number
 	label: string
 	service: string
+	// Provider model id or name — what the OpenAI-compatible endpoint resolves.
+	model: string
 }
 
 interface Capabilities {
@@ -256,6 +270,7 @@ interface Capabilities {
 }
 
 const loading = ref(false)
+const streaming = ref(false)
 const loadingGroups = ref(false)
 const loadingModels = ref(false)
 const error = ref('')
@@ -329,10 +344,16 @@ async function loadModels() {
 		const { data } = await axios.get(`${baseUrl}/api/v1/knowledge/models`)
 		if (data.success && Array.isArray(data.models)) {
 			modelOptions.value = data.models.map(
-				(m: { id: number; name: string; service: string }) => ({
+				(m: {
+					id: number
+					name: string
+					service: string
+					providerId?: string
+				}) => ({
 					id: m.id,
 					label: `${m.name} (${m.service})`,
 					service: m.service,
+					model: m.providerId || m.name,
 				}),
 			)
 		}
@@ -460,19 +481,132 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
  *
  * @param text
  */
+/**
+ * Read Nextcloud's CSRF request token from the document head (the same source
+ * the Nextcloud auth helper uses) so plain fetch() calls pass CSRF checks.
+ */
+function getCsrfToken(): string {
+	const head = document.getElementsByTagName('head')[0]
+	return head?.getAttribute('data-requesttoken') ?? ''
+}
+
+/**
+ * Stream a chat answer token-by-token from the SSE proxy, appending deltas to a
+ * live assistant message. Falls back to the blocking endpoint on any failure.
+ *
+ * @param text The user's question
+ */
 async function handleChatMessage(text: string) {
 	loadingText.value = t('synaplan_integration', 'Thinking...')
 
-	try {
-		const payload: Record<string, unknown> = { message: text }
-		if (selectedGroup.value) {
-			payload.groupKey = selectedGroup.value
+	const payload: Record<string, unknown> = { message: text }
+	if (selectedGroup.value) {
+		payload.groupKey = selectedGroup.value
+	}
+	if (selectedModel.value?.model) {
+		payload.model = selectedModel.value.model
+	}
+
+	// The assistant message is created on the first token so the "Thinking…"
+	// bubble stays visible until content actually starts arriving.
+	let assistantIndex = -1
+	const appendDelta = (delta: string) => {
+		if (assistantIndex === -1) {
+			assistantIndex = messages.value.push({ role: 'assistant', text: '' }) - 1
+			streaming.value = true
 		}
-		if (selectedModel.value) {
-			payload.modelId = selectedModel.value.id
+		messages.value[assistantIndex].text += delta
+		scrollToBottom()
+	}
+
+	try {
+		const response = await fetch(`${baseUrl}/api/v1/chat/stream`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Accept: 'text/event-stream',
+				requesttoken: getCsrfToken(),
+			},
+			body: JSON.stringify(payload),
+		})
+
+		if (!response.ok || !response.body) {
+			await handleChatMessageBlocking(payload)
+			return
 		}
 
-		const { data } = await axios.post(`${baseUrl}/api/v1/chat`, payload)
+		const reader = response.body.getReader()
+		const decoder = new TextDecoder()
+		let buffer = ''
+		let streamError = ''
+
+		for (;;) {
+			const { value, done } = await reader.read()
+			if (done) {
+				break
+			}
+			buffer += decoder.decode(value, { stream: true })
+
+			const events = buffer.split('\n\n')
+			buffer = events.pop() ?? ''
+
+			for (const event of events) {
+				const dataLine = event
+					.split('\n')
+					.find((line) => line.startsWith('data:'))
+				if (!dataLine) {
+					continue
+				}
+				const data = dataLine.slice(5).trim()
+				if (data === '' || data === '[DONE]') {
+					continue
+				}
+				try {
+					const json = JSON.parse(data)
+					if (json.error) {
+						streamError = json.error.message || ''
+						continue
+					}
+					const delta = json.choices?.[0]?.delta?.content
+					if (typeof delta === 'string' && delta.length > 0) {
+						appendDelta(delta)
+					}
+				} catch {
+					// Ignore keep-alives and partial frames.
+				}
+			}
+		}
+
+		if (assistantIndex === -1) {
+			if (streamError) {
+				error.value = streamError
+			} else {
+				await handleChatMessageBlocking(payload)
+			}
+		} else if (streamError) {
+			error.value = streamError
+		}
+	} catch {
+		if (assistantIndex === -1) {
+			await handleChatMessageBlocking(payload)
+		}
+	} finally {
+		streaming.value = false
+	}
+}
+
+/**
+ * Non-streaming fallback: single blocking request to the JSON chat endpoint.
+ *
+ * @param payload The chat payload (message, optional groupKey/model)
+ */
+async function handleChatMessageBlocking(payload: Record<string, unknown>) {
+	try {
+		const { data } = await axios.post(`${baseUrl}/api/v1/chat`, {
+			...payload,
+			// The blocking endpoint expects a numeric modelId, not a model name.
+			modelId: selectedModel.value?.id,
+		})
 
 		if (data.success) {
 			messages.value.push({ role: 'assistant', text: data.response })
@@ -659,6 +793,62 @@ onMounted(() => {
 .message-content {
 	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+/* Rendered markdown (assistant messages) — trim default block margins so the
+   content sits flush inside the chat bubble, and keep code/quotes readable. */
+.markdown-body {
+	white-space: normal;
+}
+
+.markdown-body :deep(> *:first-child) {
+	margin-top: 0;
+}
+
+.markdown-body :deep(> *:last-child) {
+	margin-bottom: 0;
+}
+
+.markdown-body :deep(p) {
+	margin: 0 0 8px;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+	margin: 0 0 8px;
+	padding-left: 20px;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3) {
+	margin: 12px 0 6px;
+	line-height: 1.3;
+}
+
+.markdown-body :deep(pre),
+.markdown-body :deep(code) {
+	background: var(--color-background-darker, rgba(0, 0, 0, 0.06));
+	border-radius: 4px;
+	font-family: var(--font-face-monospace, monospace);
+}
+
+.markdown-body :deep(pre) {
+	padding: 10px 12px;
+	overflow-x: auto;
+}
+
+.markdown-body :deep(code) {
+	padding: 1px 5px;
+}
+
+.markdown-body :deep(pre code) {
+	padding: 0;
+	background: none;
+}
+
+.markdown-body :deep(a) {
+	color: var(--color-primary-element, #0082c9);
 }
 
 .loading-dots {

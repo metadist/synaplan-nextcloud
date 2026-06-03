@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Http\SseRelayResponse;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
@@ -92,6 +94,86 @@ class ChatController extends Controller
             );
         } catch (\Exception $e) {
             $this->logger->error('Chat failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return new JSONResponse(
+                ['success' => false, 'error' => $e->getMessage()],
+                Http::STATUS_INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * Ask a question and stream the answer token-by-token via SSE.
+     *
+     * Proxies Synaplan's OpenAI-compatible `/v1/chat/completions` streaming
+     * endpoint. RAG (group) and file context are resolved here, exactly like
+     * {@see self::chat()}, then relayed to the browser as it arrives.
+     *
+     * @NoAdminRequired
+     *
+     * @param string      $message  User's question
+     * @param int|null    $fileId   Nextcloud file ID for document context
+     * @param string|null $groupKey RAG group key for knowledge base context
+     * @param string|null $model    Provider model id/name (null = user default)
+     */
+    public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null): Response
+    {
+        if ($message === '') {
+            $body = file_get_contents('php://input');
+            if ($body !== false && $body !== '') {
+                $decoded = json_decode($body, true);
+                if (is_array($decoded)) {
+                    $message = trim((string) ($decoded['message'] ?? ''));
+                    $fileId = isset($decoded['fileId']) ? (int) $decoded['fileId'] : $fileId;
+                    $groupKey = isset($decoded['groupKey']) ? trim((string) $decoded['groupKey']) : $groupKey;
+                    $model = isset($decoded['model']) ? trim((string) $decoded['model']) : $model;
+                }
+            }
+        }
+
+        if ($message === '') {
+            return new JSONResponse(
+                ['success' => false, 'error' => 'Message is required'],
+                Http::STATUS_BAD_REQUEST,
+            );
+        }
+
+        try {
+            $context = '';
+
+            if ($fileId !== null) {
+                $context = $this->getFileInfo($fileId)['content'];
+            }
+
+            if ($groupKey !== null && $groupKey !== '') {
+                $ragContext = $this->synaplanClient->searchRagContext($message, $groupKey);
+                if ($ragContext !== '') {
+                    $context = $ragContext . ($context !== '' ? "\n\n" . $context : '');
+                }
+            }
+
+            $userContent = $context !== ''
+                ? "Based on the following context, answer the user's question.\n\n"
+                    . "--- CONTEXT ---\n" . $context . "\n--- END CONTEXT ---\n\n"
+                    . 'Question: ' . $message
+                : $message;
+
+            $stream = $this->synaplanClient->chatStream(
+                [['role' => 'user', 'content' => $userContent]],
+                ($model !== null && $model !== '') ? $model : null,
+            );
+
+            return new SseRelayResponse($stream);
+        } catch (NotFoundException $e) {
+            return new JSONResponse(
+                ['success' => false, 'error' => 'File not found'],
+                Http::STATUS_NOT_FOUND,
+            );
+        } catch (\Exception $e) {
+            $this->logger->error('Chat stream failed: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
             ]);

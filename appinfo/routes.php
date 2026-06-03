@@ -23,6 +23,7 @@ return [
 
 		// Chat API
 		['name' => 'chat#chat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
+		['name' => 'chat#chatStream', 'url' => '/api/v1/chat/stream', 'verb' => 'POST'],
 
 		// Media generation API
 		['name' => 'media#generate', 'url' => '/api/v1/media/generate', 'verb' => 'POST'],

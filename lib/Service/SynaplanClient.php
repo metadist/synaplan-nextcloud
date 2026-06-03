@@ -90,27 +90,10 @@ class SynaplanClient
     ): array {
         // If a group key is provided, search RAG for relevant context
         if ($groupKey !== null && $groupKey !== '') {
-            try {
-                $ragResults = $this->request('POST', '/api/v1/rag/search', [
-                    'query' => $question,
-                    'group_key' => $groupKey,
-                    'limit' => 5,
-                    'min_score' => 0.3,
-                ]);
-
-                if (!empty($ragResults['results'])) {
-                    $ragContext = '';
-                    foreach ($ragResults['results'] as $result) {
-                        $ragContext .= ($result['text'] ?? '') . "\n\n";
-                    }
-                    // Prepend RAG context to any existing file context
-                    $context = trim($ragContext) . ($context !== '' ? "\n\n" . $context : '');
-                }
-            } catch (\Exception $e) {
-                $this->logger->warning('RAG search failed, continuing without context: {message}', [
-                    'app' => Application::APP_ID,
-                    'message' => $e->getMessage(),
-                ]);
+            $ragContext = $this->searchRagContext($question, $groupKey);
+            if ($ragContext !== '') {
+                // Prepend RAG context to any existing file context
+                $context = $ragContext . ($context !== '' ? "\n\n" . $context : '');
             }
         }
 
@@ -132,6 +115,94 @@ class SynaplanClient
         }
 
         return $this->request('POST', '/api/v1/summary/generate', $body);
+    }
+
+    /**
+     * Search the RAG knowledge base and return concatenated context text.
+     *
+     * Failures are logged and swallowed (returns '') so chat can continue
+     * without knowledge-base context rather than erroring out.
+     */
+    public function searchRagContext(string $query, string $groupKey, int $limit = 5, float $minScore = 0.3): string
+    {
+        if ($groupKey === '') {
+            return '';
+        }
+
+        try {
+            $ragResults = $this->request('POST', '/api/v1/rag/search', [
+                'query' => $query,
+                'group_key' => $groupKey,
+                'limit' => $limit,
+                'min_score' => $minScore,
+            ]);
+
+            if (!empty($ragResults['results'])) {
+                $ragContext = '';
+                foreach ($ragResults['results'] as $result) {
+                    $ragContext .= ($result['text'] ?? '') . "\n\n";
+                }
+
+                return trim($ragContext);
+            }
+        } catch (\Exception $e) {
+            $this->logger->warning('RAG search failed, continuing without context: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return '';
+    }
+
+    /**
+     * Open a streaming chat completion against the OpenAI-compatible endpoint.
+     *
+     * Returns the raw SSE response body as a stream resource so the caller can
+     * relay it to the browser chunk-by-chunk.
+     *
+     * @param array<int, array{role: string, content: string}> $messages
+     * @param string|null $model Provider model id or name (null = user default)
+     * @return resource Readable stream of the SSE response body
+     * @throws \Exception on connection failure
+     */
+    public function chatStream(array $messages, ?string $model = null)
+    {
+        $client = $this->clientService->newClient();
+        $url = $this->getBaseUrl() . '/v1/chat/completions';
+
+        $body = [
+            'messages' => $messages,
+            'stream' => true,
+        ];
+        if ($model !== null && $model !== '') {
+            $body['model'] = $model;
+        }
+
+        $response = $client->post($url, [
+            'headers' => [
+                'X-API-Key' => $this->getApiKey(),
+                'Accept' => 'text/event-stream',
+                'Content-Type' => 'application/json',
+            ],
+            'body' => json_encode($body),
+            'stream' => true,
+            'timeout' => 300,
+        ]);
+
+        $stream = $response->getBody();
+
+        // If the client buffered the body into a string (no streaming), wrap it
+        // in an in-memory stream so the relay logic stays uniform.
+        if (!\is_resource($stream)) {
+            $tmp = fopen('php://temp', 'r+');
+            fwrite($tmp, (string) $stream);
+            rewind($tmp);
+
+            return $tmp;
+        }
+
+        return $stream;
     }
 
     /**

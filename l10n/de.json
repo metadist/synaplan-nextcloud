@@ -46,7 +46,11 @@
 		"Generate a video": "Ein Video generieren",
 		"No media commands available. Configure image or video models in Synaplan.": "Keine Medienbefehle verfügbar. Konfigurieren Sie Bild- oder Videomodelle in Synaplan.",
 		"Or just type a question to chat with the AI.": "Oder stellen Sie einfach eine Frage, um mit der KI zu chatten.",
-		"Vectorization of text can take some time, please wait.": "Die Vektorisierung des Textes kann einige Zeit dauern, bitte warten.",
+		"Large documents take a little longer to vectorize.": "Bei großen Dokumenten dauert die Vektorisierung etwas länger.",
+		"Uploading file": "Datei wird hochgeladen",
+		"Extracting text": "Text wird extrahiert",
+		"Creating chunks": "Chunks werden erstellt",
+		"Generating embeddings": "Embeddings werden erzeugt",
 		"No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.": "Es konnte kein Text indexiert werden (0 Chunks erstellt). Die Datei ist möglicherweise leer oder enthält nur Bilder, oder der Embedding-Dienst ist nicht verfügbar. Bitte überprüfen Sie das Dokument und versuchen Sie es erneut."
 	},
 	"plurals": {}
