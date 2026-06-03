@@ -17,7 +17,7 @@
 				{{
 					t(
 						'synaplan_integration',
-						'Vectorization of text can take some time, please wait — this is a demo.',
+						'Vectorization of text can take some time, please wait.',
 					)
 				}}
 			</p>
@@ -255,10 +255,18 @@ async function uploadFile() {
 			{ groupKey: selectedGroup.value },
 		)
 
-		if (data.success) {
+		const created = data.chunksCreated || 0
+		if (data.success && created > 0) {
 			uploadSuccess.value = true
-			chunksCreated.value = data.chunksCreated || 0
+			chunksCreated.value = created
 			extractedLength.value = data.extractedTextLength || 0
+		} else if (data.success) {
+			// The server accepted the file but stored zero chunks. Surface this
+			// as a failure instead of a misleading green success screen.
+			error.value = t(
+				'synaplan_integration',
+				'No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.',
+			)
 		} else {
 			error.value = data.error || t('synaplan_integration', 'Upload failed')
 		}

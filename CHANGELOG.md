@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Knowledge upload no longer shows a false success** — when the server stores 0 chunks (empty/image-only file, or the embedding service is unavailable), the dialog now reports a clear error instead of a green "File added" screen with "Chunks created: 0".
+- **Removed leftover "this is a demo" text** from the knowledge-upload progress hint.
+
 ## 1.1.2 – 2026-06-02
 
 ### Fixed
