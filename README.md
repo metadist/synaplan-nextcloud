@@ -6,10 +6,22 @@ AI-powered document summarization, translation, knowledge base, and research cha
 
 ## Features
 
-- **Summarize** — Generate document summaries from the file context menu (bullet points, paragraph, or abstractive; adjustable length and output language)
-- **Translate** — Translate files to 12 languages via the file context menu
-- **Add to Knowledge** — Upload files to the Synaplan AI knowledge base for RAG-powered search and chat, with group management
-- **Research Chat** — Full-page AI assistant with knowledge group selection and LLM model picker, accessible from the top navigation bar
+- **Summarize** — Generate document summaries from the file context menu (bullet points, paragraph, or abstractive; adjustable length and output language). Results are rendered as formatted Markdown.
+- **Translate** — Translate files to multiple languages via the file context menu, with the result rendered as Markdown.
+- **Add to Knowledge** — Upload files to the Synaplan AI knowledge base for RAG-powered search and chat, with group management and a staged upload progress view.
+- **Research Chat** — AI assistant (full-page view **and** a floating in-page launcher) with knowledge-group selection, model picker, streaming answers, and Markdown rendering. The `/pic` and `/vid` commands generate images and videos when the corresponding models are configured.
+
+### Language handling
+
+- Set a **default answer language** in the admin settings.
+- Optionally **follow each user's Nextcloud interface language** automatically, falling back to the default when a language isn't supported.
+- The resolved language applies to chat answers, summaries, and translations — no more "always English".
+
+### Personalisation & live feedback
+
+- **Personal memories** — when Synaplan's memory service (Qdrant) is available and enabled by the admin, the chat can enrich answers with the user's memories (toggle in the chat).
+- **Live status** — the chat shows the active model, answer language, image/video availability, the selected knowledge base, and memory state, and reports staged progress (*sorting → searching → generating*) while the answer is prepared.
+- **Real streaming** — answers stream token-by-token rather than appearing all at once.
 
 ### Supported File Types
 
@@ -71,6 +83,12 @@ php /path/to/nextcloud/occ app:enable synaplan_integration
 2. Enter your Synaplan instance URL (e.g., `https://synaplan.example.com`)
 3. Enter your Synaplan API key
 4. Click **Test connection** to verify
+
+### Language & AI behaviour (admin)
+
+- **Default answer language** — the language the AI replies in by default.
+- **Use each user's Nextcloud interface language when supported** — when enabled, answers follow the signed-in user's interface language and fall back to the default otherwise.
+- **Allow personal memories in chat** — lets users enrich answers with their Synaplan memories (requires the memory service, Qdrant, to be available in Synaplan).
 
 ## Development
 
