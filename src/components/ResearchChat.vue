@@ -4,12 +4,7 @@
 			<div class="research-header">
 				<h2>{{ t('synaplan_integration', 'Synaplan AI Assistant') }}</h2>
 				<p class="subtitle">
-					{{
-						t(
-							'synaplan_integration',
-							'Ask anything — powered by Synaplan',
-						)
-					}}
+					{{ tagline }}
 				</p>
 			</div>
 
@@ -368,8 +363,15 @@ const showHelp = ref(false)
 const languageName = ref('')
 const memoryAvailable = ref(false)
 const useMemories = ref(false)
+const appVersion = ref('')
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
+
+const tagline = computed(() =>
+	t('synaplan_integration', 'Ask anything{version} — powered by Synaplan', {
+		version: appVersion.value ? ` v${appVersion.value}` : '',
+	}),
+)
 
 const activeModelLabel = computed(
 	() =>
@@ -509,6 +511,7 @@ async function loadClientConfig() {
 	try {
 		const { data } = await axios.get(`${baseUrl}/api/v1/client-config`)
 		if (data.success) {
+			appVersion.value = data.version || ''
 			languageName.value = data.languageName || ''
 			memoryAvailable.value = !!(
 				data.memory?.allowed && data.memory?.available

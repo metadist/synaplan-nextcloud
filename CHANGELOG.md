@@ -6,11 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 1.2.0 – 2026-06-24
+## 1.2.1 – 2026-06-24
 
 Major upgrade focused on language handling, personalisation, real streaming, and a clearer, better-formatted chat experience.
 
 ### Added
+- **App version in the chat tagline** — the Research/launcher header now shows the running version (e.g. "Ask anything v1.2.1 — powered by Synaplan"), read dynamically from the installed app version.
 - **Configurable answer language** — a new **"Language & AI behaviour"** admin section lets you pick a **default answer language** and toggle **"Use each user's Nextcloud interface language when supported"**. A German user then gets German answers automatically, with the default as the fallback. This replaces the previous behaviour where chat and document tools were effectively always English. The resolved language is injected as a system instruction into the streaming chat and passed through to summaries/translations, and the Summarize/Translate dialogs pre-select it.
 - **Personal memories in chat** — when Synaplan's memory service (Qdrant) is reachable and the admin has enabled it (**"Allow personal memories in chat"**), the Research/launcher chat shows a **"Use my memories"** switch (on by default). Relevant memories are searched per question and injected as context so answers are personalised. The control is hidden entirely when the service is unavailable.
 - **Live chat status row** — at-a-glance chips show the **active model**, the **answer language**, whether **image (`/pic`) and video (`/vid`) generation** are available, the selected knowledge base, and the memory state. Each answer is captioned with the model that actually produced it.
@@ -24,6 +25,7 @@ Major upgrade focused on language handling, personalisation, real streaming, and
 - **Higher-contrast status chips** — active capabilities use a solid brand fill with guaranteed-contrast text; disabled ones are clearly muted but still legible in both light and dark mode.
 - **Single-ring loading spinner** — Summarize/Translate dialogs use one clean spinner instead of the twin-circle icon.
 - **Tighter Markdown spacing** — list items in rendered answers no longer have oversized gaps.
+- **Per-chunk CSS injection** (`relativeCSSInjection`) so shared component styles (NcSelect, NcCheckboxRadioSwitch) are injected by every entry that uses them — fixes unstyled dropdowns/switches on the Research page, the in-page launcher, and the file-action dialogs.
 
 ### Fixed
 - **Answers are no longer "always English"** — the chat/streaming path previously sent a hard-coded `en` output language; it now respects the admin default and/or the user's interface language.

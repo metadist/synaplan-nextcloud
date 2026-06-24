@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 use OCA\SynaplanIntegration\Controller\ApiController;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCP\App\IAppManager;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -26,6 +27,7 @@ class ApiControllerTest extends TestCase
     private IUserSession&MockObject $userSession;
     private LanguageService&MockObject $languageService;
     private IConfig&MockObject $config;
+    private IAppManager&MockObject $appManager;
     private LoggerInterface&MockObject $logger;
     private ApiController $controller;
 
@@ -37,12 +39,14 @@ class ApiControllerTest extends TestCase
         $this->userSession = $this->createMock(IUserSession::class);
         $this->languageService = $this->createMock(LanguageService::class);
         $this->config = $this->createMock(IConfig::class);
+        $this->appManager = $this->createMock(IAppManager::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
         // Default: resolve to English so summarize/translate without an explicit
         // language behave as before.
         $this->languageService->method('resolveLanguage')->willReturn('en');
         $this->languageService->method('getLanguageName')->willReturn('English');
+        $this->appManager->method('getAppVersion')->willReturn('1.2.1');
 
         $this->controller = new ApiController(
             $this->request,
@@ -51,6 +55,7 @@ class ApiControllerTest extends TestCase
             $this->userSession,
             $this->languageService,
             $this->config,
+            $this->appManager,
             $this->logger,
         );
     }
@@ -389,6 +394,7 @@ class ApiControllerTest extends TestCase
         $data = $response->getData();
 
         $this->assertTrue($data['success']);
+        $this->assertSame('1.2.1', $data['version']);
         $this->assertSame('en', $data['language']);
         $this->assertSame('English', $data['languageName']);
         $this->assertTrue($data['memory']['allowed']);

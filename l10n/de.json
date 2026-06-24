@@ -2,6 +2,7 @@
 	"translations": {
 		"Synaplan AI Assistant": "Synaplan KI-Assistent",
 		"Ask anything — powered by Synaplan": "Fragen Sie alles — unterstützt von Synaplan",
+		"Ask anything{version} — powered by Synaplan": "Fragen Sie alles{version} — unterstützt von Synaplan",
 		"Knowledge": "Wissen",
 		"No knowledge group": "Keine Wissensgruppe",
 		"Model": "Modell",

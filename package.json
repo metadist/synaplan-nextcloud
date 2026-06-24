@@ -1,6 +1,6 @@
 {
   "name": "synaplan-nextcloud",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,7 @@
     "@nextcloud/initial-state": "^3.0.0",
     "@nextcloud/l10n": "^3.1.0",
     "@nextcloud/router": "^3.0.1",
-    "@nextcloud/vue": "^9.3.1",
+    "@nextcloud/vue": "^9.8.2",
     "vue": "^3.5.0"
   },
   "devDependencies": {

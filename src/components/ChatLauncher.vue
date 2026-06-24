@@ -5,8 +5,7 @@
 			v-if="open"
 			class="synaplan-chat-launcher-panel"
 			role="dialog"
-			:aria-label="t('synaplan_integration', 'Synaplan AI chat')"
-		>
+			:aria-label="t('synaplan_integration', 'Synaplan AI chat')">
 			<div class="launcher-header">
 				<span class="launcher-title">{{
 					t('synaplan_integration', 'Synaplan AI')
@@ -15,8 +14,7 @@
 					class="launcher-close"
 					:title="t('synaplan_integration', 'Close')"
 					:aria-label="t('synaplan_integration', 'Close')"
-					@click="open = false"
-				>
+					@click="open = false">
 					×
 				</button>
 			</div>
@@ -31,18 +29,15 @@
 			class="synaplan-chat-fab"
 			:title="t('synaplan_integration', 'Chat with Synaplan AI')"
 			:aria-label="t('synaplan_integration', 'Chat with Synaplan AI')"
-			@click="open = true"
-		>
+			@click="open = true">
 			<svg
 				width="28"
 				height="28"
 				viewBox="0 0 24 24"
 				fill="currentColor"
-				aria-hidden="true"
-			>
+				aria-hidden="true">
 				<path
-					d="M12 3C6.48 3 2 6.86 2 11.5c0 2.3 1.1 4.38 2.9 5.9-.13 1.2-.6 2.5-1.5 3.6 1.7-.2 3.3-.8 4.6-1.8 1.2.4 2.6.6 4 .6 5.52 0 10-3.86 10-8.3S17.52 3 12 3z"
-				/>
+					d="M12 3C6.48 3 2 6.86 2 11.5c0 2.3 1.1 4.38 2.9 5.9-.13 1.2-.6 2.5-1.5 3.6 1.7-.2 3.3-.8 4.6-1.8 1.2.4 2.6.6 4 .6 5.52 0 10-3.86 10-8.3S17.52 3 12 3z" />
 			</svg>
 		</button>
 	</div>
@@ -166,6 +161,14 @@ const open = ref(false)
 
 /* The panel header already says "Synaplan AI" — drop the duplicate title. */
 .launcher-body :deep(.research-header) {
+	display: none;
+}
+
+/* The compact widget has limited room: the status chips (model/language/media)
+   and the verbose memory hint are too much here. Hide them — the two selects
+   plus the memory switch are enough. They stay visible on the full-page view. */
+.launcher-body :deep(.status-row),
+.launcher-body :deep(.memory-hint) {
 	display: none;
 }
 
