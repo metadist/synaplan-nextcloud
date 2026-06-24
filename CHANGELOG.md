@@ -31,6 +31,10 @@ Major upgrade focused on language handling, personalisation, real streaming, and
 - **Knowledge upload no longer shows a false success** — when the server stores 0 chunks (empty/image-only file, or the embedding service is unavailable), the dialog reports a clear error instead of a green "File added" screen with "Chunks created: 0".
 - **Removed leftover "this is a demo" text** from the knowledge-upload progress hint.
 
+### Security / dependencies
+- Updated `vite` to `7.3.5`, fixing a moderate dev-server advisory affecting `7.0.0–7.3.3`.
+- Refreshed dependency lockfiles: `friendsofphp/php-cs-fixer` `3.95.2`, `prettier` `3.8.4`, `@nextcloud/vue` `9.8.2`, `@nextcloud/axios` `2.6.0`, `@nextcloud/dialogs` `7.4.0`, `vue` `3.5.38`, and `@nextcloud/initial-state` `3.0.0`.
+
 ## 1.1.2 – 2026-06-02
 
 ### Fixed
