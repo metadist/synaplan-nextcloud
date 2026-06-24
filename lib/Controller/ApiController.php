@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -12,6 +13,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
@@ -62,9 +64,42 @@ class ApiController extends Controller
         private SynaplanClient $synaplanClient,
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
+        private LanguageService $languageService,
+        private IConfig $config,
         private LoggerInterface $logger,
     ) {
         parent::__construct(Application::APP_ID, $request);
+    }
+
+    /**
+     * Client runtime config for the chat UI.
+     *
+     * Tells the frontend which output language will be used (so the user knows
+     * up front), and whether the Synaplan memory service is reachable so the
+     * memory toggle can be shown only when it actually works.
+     *
+     * @NoAdminRequired
+     */
+    public function clientConfig(): JSONResponse
+    {
+        $language = $this->languageService->resolveLanguage();
+
+        $memoryAllowed = $this->config->getAppValue(Application::APP_ID, 'enable_memories', '1') === '1';
+        $memory = ['allowed' => $memoryAllowed, 'available' => false, 'configured' => false];
+
+        if ($memoryAllowed) {
+            $serviceState = $this->synaplanClient->checkMemoryService();
+            $memory['available'] = $serviceState['available'];
+            $memory['configured'] = $serviceState['configured'];
+        }
+
+        return new JSONResponse([
+            'success' => true,
+            'language' => $language,
+            'languageName' => $this->languageService->getLanguageName($language),
+            'useInterfaceLanguage' => $this->languageService->useInterfaceLanguage(),
+            'memory' => $memory,
+        ]);
     }
 
     /**
@@ -81,9 +116,13 @@ class ApiController extends Controller
         int $fileId,
         string $summaryType = 'bullet-points',
         string $length = 'medium',
-        string $outputLanguage = 'en',
+        string $outputLanguage = '',
     ): JSONResponse {
         try {
+            if (trim($outputLanguage) === '') {
+                $outputLanguage = $this->languageService->resolveLanguage();
+            }
+
             $text = $this->extractFileText($fileId);
 
             $result = $this->synaplanClient->summarize(
@@ -129,9 +168,13 @@ class ApiController extends Controller
      */
     public function translate(
         int $fileId,
-        string $targetLanguage = 'en',
+        string $targetLanguage = '',
     ): JSONResponse {
         try {
+            if (trim($targetLanguage) === '') {
+                $targetLanguage = $this->languageService->resolveLanguage();
+            }
+
             $text = $this->extractFileText($fileId);
 
             $result = $this->synaplanClient->summarize(

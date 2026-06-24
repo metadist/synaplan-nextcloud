@@ -45,6 +45,73 @@
 				</div>
 			</div>
 
+			<!-- Memory toggle (only when the memory service is reachable). -->
+			<div v-if="memoryAvailable" class="memory-row">
+				<NcCheckboxRadioSwitch v-model="useMemories" type="switch">
+					{{ t('synaplan_integration', 'Use my memories') }}
+				</NcCheckboxRadioSwitch>
+				<span class="memory-hint">{{
+					t(
+						'synaplan_integration',
+						'Personalise answers with what Synaplan remembers about you.',
+					)
+				}}</span>
+			</div>
+
+			<!-- Status row: tells the user up front which model/language is used
+			     and what the assistant can do right now. -->
+			<div class="status-row">
+				<span
+					class="status-chip"
+					:title="t('synaplan_integration', 'Active model')">
+					<span class="chip-icon">&#129302;</span>
+					{{ activeModelLabel }}
+				</span>
+				<span
+					v-if="languageName"
+					class="status-chip"
+					:title="t('synaplan_integration', 'Answer language')">
+					<span class="chip-icon">&#127760;</span>
+					{{ languageName }}
+				</span>
+				<span
+					class="status-chip"
+					:class="capabilities.image ? 'on' : 'off'"
+					:title="t('synaplan_integration', 'Image generation')">
+					<span class="chip-icon">&#127912;</span>
+					{{
+						capabilities.image
+							? t('synaplan_integration', 'Images: /pic')
+							: t('synaplan_integration', 'Images off')
+					}}
+				</span>
+				<span
+					class="status-chip"
+					:class="capabilities.video ? 'on' : 'off'"
+					:title="t('synaplan_integration', 'Video generation')">
+					<span class="chip-icon">&#127909;</span>
+					{{
+						capabilities.video
+							? t('synaplan_integration', 'Videos: /vid')
+							: t('synaplan_integration', 'Videos off')
+					}}
+				</span>
+				<span
+					v-if="memoryAvailable && useMemories"
+					class="status-chip on"
+					:title="t('synaplan_integration', 'Memories')">
+					<span class="chip-icon">&#129504;</span>
+					{{ t('synaplan_integration', 'Memories on') }}
+				</span>
+				<span
+					v-if="selectedGroup"
+					class="status-chip on"
+					:title="t('synaplan_integration', 'Knowledge base')">
+					<span class="chip-icon">&#128218;</span>
+					{{ selectedGroup }}
+				</span>
+			</div>
+
 			<!-- How to add a knowledge folder (RAG group). In Nextcloud, groups are
 			     created by adding documents to them via the file context menu. -->
 			<p
@@ -111,6 +178,14 @@
 						v-else-if="msg.text"
 						class="message-content"
 						v-text="msg.text" />
+					<span
+						v-if="msg.role === 'assistant' && msg.model"
+						class="message-model"
+						:title="
+							t('synaplan_integration', 'Model used for this answer')
+						">
+						{{ msg.model }}
+					</span>
 					<div v-if="msg.media" class="media-content">
 						<img
 							v-if="msg.media.type === 'image'"
@@ -233,6 +308,7 @@ import axios, { isAxiosError } from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
@@ -254,6 +330,8 @@ interface ChatMessage {
 	role: 'user' | 'assistant'
 	text: string
 	media?: MediaInfo
+	// Model that actually produced this answer (captured from the stream).
+	model?: string
 }
 
 interface ModelOption {
@@ -286,7 +364,18 @@ const modelOptions = ref<ModelOption[]>([])
 const capabilities = ref<Capabilities>({ image: false, video: false })
 const showHelp = ref(false)
 
+// Answer language + personal memories (loaded from the client-config endpoint).
+const languageName = ref('')
+const memoryAvailable = ref(false)
+const useMemories = ref(false)
+
 const baseUrl = generateUrl('/apps/synaplan_integration')
+
+const activeModelLabel = computed(
+	() =>
+		selectedModel.value?.label
+		?? t('synaplan_integration', 'Server default model'),
+)
 
 const inputPlaceholder = computed(() => {
 	if (capabilities.value.image && capabilities.value.video) {
@@ -367,6 +456,71 @@ async function loadModels() {
 		// Models are optional — will use default
 	} finally {
 		loadingModels.value = false
+	}
+}
+
+let stageTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Show staged progress while we wait for the first token, so the user sees what
+ * the backend is doing (sorting → searching context → generating) instead of a
+ * single static "Thinking…". Stops as soon as the answer starts streaming.
+ */
+function startThinkingStages() {
+	stopThinkingStages()
+	const stages: string[] = [t('synaplan_integration', 'Sorting your request…')]
+	if (selectedGroup.value) {
+		stages.push(t('synaplan_integration', 'Searching the knowledge base…'))
+	}
+	if (useMemories.value && memoryAvailable.value) {
+		stages.push(t('synaplan_integration', 'Recalling your memories…'))
+	}
+	stages.push(t('synaplan_integration', 'Generating the answer…'))
+
+	let i = 0
+	loadingText.value = stages[0]
+	stageTimer = setInterval(() => {
+		i = Math.min(i + 1, stages.length - 1)
+		loadingText.value = stages[i]
+		if (i === stages.length - 1 && stageTimer) {
+			clearInterval(stageTimer)
+			stageTimer = null
+		}
+	}, 1300)
+}
+
+/**
+ * Stop the staged-progress cycler and reset the label.
+ */
+function stopThinkingStages() {
+	if (stageTimer) {
+		clearInterval(stageTimer)
+		stageTimer = null
+	}
+	loadingText.value = t('synaplan_integration', 'Thinking...')
+}
+
+/**
+ * Load runtime config: the resolved answer language and whether the memory
+ * service is available, so the UI can show an accurate status and only offer
+ * the "use my memories" toggle when it will actually work.
+ */
+async function loadClientConfig() {
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/client-config`)
+		if (data.success) {
+			languageName.value = data.languageName || ''
+			memoryAvailable.value = !!(
+				data.memory?.allowed && data.memory?.available
+			)
+			// When memories are available and admin-enabled, use them by
+			// default (the toggle becomes an opt-out) — otherwise the switch
+			// would show up "on screen but doing nothing". When unavailable the
+			// row is hidden entirely.
+			useMemories.value = memoryAvailable.value
+		}
+	} catch {
+		// Non-fatal — chat still works without the status row.
 	}
 }
 
@@ -497,7 +651,7 @@ function getCsrfToken(): string {
  * @param text The user's question
  */
 async function handleChatMessage(text: string) {
-	loadingText.value = t('synaplan_integration', 'Thinking...')
+	startThinkingStages()
 
 	const payload: Record<string, unknown> = { message: text }
 	if (selectedGroup.value) {
@@ -506,16 +660,23 @@ async function handleChatMessage(text: string) {
 	if (selectedModel.value?.model) {
 		payload.model = selectedModel.value.model
 	}
+	if (useMemories.value) {
+		payload.useMemories = true
+	}
 
 	// The assistant message is created on the first token so the "Thinking…"
 	// bubble stays visible until content actually starts arriving.
 	let assistantIndex = -1
-	const appendDelta = (delta: string) => {
+	const appendDelta = (delta: string, model?: string) => {
 		if (assistantIndex === -1) {
 			assistantIndex = messages.value.push({ role: 'assistant', text: '' }) - 1
 			streaming.value = true
+			stopThinkingStages()
 		}
 		messages.value[assistantIndex].text += delta
+		if (model && !messages.value[assistantIndex].model) {
+			messages.value[assistantIndex].model = model
+		}
 		scrollToBottom()
 	}
 
@@ -569,7 +730,10 @@ async function handleChatMessage(text: string) {
 					}
 					const delta = json.choices?.[0]?.delta?.content
 					if (typeof delta === 'string' && delta.length > 0) {
-						appendDelta(delta)
+						appendDelta(
+							delta,
+							typeof json.model === 'string' ? json.model : undefined,
+						)
 					}
 				} catch {
 					// Ignore keep-alives and partial frames.
@@ -592,6 +756,7 @@ async function handleChatMessage(text: string) {
 		}
 	} finally {
 		streaming.value = false
+		stopThinkingStages()
 	}
 }
 
@@ -655,6 +820,7 @@ async function saveMedia(messageIdx: number) {
 onMounted(() => {
 	loadGroups()
 	loadModels()
+	loadClientConfig()
 })
 </script>
 
@@ -743,6 +909,77 @@ onMounted(() => {
 	color: var(--color-text-maxcontrast, #767676);
 }
 
+/* Memory toggle row */
+.memory-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	padding: 8px 0 0;
+}
+
+.memory-hint {
+	font-size: 0.8em;
+	color: var(--color-text-maxcontrast, #767676);
+}
+
+/* Status chips */
+.status-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 8px 0 0;
+	flex-shrink: 0;
+}
+
+.status-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 0.78em;
+	font-weight: 600;
+	line-height: 1.2;
+	padding: 4px 10px;
+	border-radius: 999px;
+	/* Neutral surface that stays legible in light and dark themes. */
+	background: var(--color-background-hover, var(--color-background-dark, #ededed));
+	color: var(--color-main-text, #222);
+	border: 1px solid var(--color-border-dark, var(--color-border, #d0d0d0));
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Active capability: solid brand fill with its guaranteed-contrast text token. */
+.status-chip.on {
+	background: var(--color-primary-element, #0082c9);
+	border-color: var(--color-primary-element, #0082c9);
+	color: var(--color-primary-element-text, #fff);
+}
+
+/* Unavailable capability: clearly muted but still readable (no faint text). */
+.status-chip.off {
+	background: transparent;
+	border-style: dashed;
+	border-color: var(--color-border-dark, var(--color-border, #d0d0d0));
+	color: var(--color-text-maxcontrast, #767676);
+}
+
+.chip-icon {
+	font-size: 1.05em;
+	line-height: 1;
+}
+
+/* Per-answer model caption */
+.message-model {
+	display: block;
+	margin-top: 6px;
+	font-size: 0.72em;
+	opacity: 0.7;
+	font-variant-numeric: tabular-nums;
+}
+
 /* Messages */
 .messages {
 	flex: 1;
@@ -810,13 +1047,27 @@ onMounted(() => {
 }
 
 .markdown-body :deep(p) {
-	margin: 0 0 8px;
+	margin: 0 0 6px;
 }
 
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-	margin: 0 0 8px;
-	padding-left: 20px;
+	margin: 4px 0 6px;
+	padding-left: 18px;
+}
+
+.markdown-body :deep(li) {
+	margin: 1px 0;
+}
+
+/* Markdown "loose" lists wrap each item's text in a <p>; strip that margin so
+   list items don't get a big gap between them. */
+.markdown-body :deep(li > p) {
+	margin: 0;
+}
+
+.markdown-body :deep(li + li) {
+	margin-top: 2px;
 }
 
 .markdown-body :deep(h1),

@@ -43,13 +43,17 @@
 
 			<!-- Loading state -->
 			<div v-if="loading" class="loading">
-				<NcLoadingIcon :size="44" />
+				<span class="syn-spinner" aria-hidden="true" />
 				<p>{{ t('synaplan_integration', 'Generating summary...') }}</p>
 			</div>
 
 			<!-- Result -->
 			<div v-if="result" class="result">
-				<div class="result-content" v-text="result" />
+				<NcRichText
+					class="result-md markdown-body"
+					:text="result"
+					:use-markdown="true"
+					:use-extended-markdown="true" />
 			</div>
 
 			<!-- Error -->
@@ -77,14 +81,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios, { isAxiosError } from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
-import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 
 const props = defineProps<{
@@ -137,6 +141,26 @@ const dialogTitle = computed(() =>
 )
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
+
+/**
+ * Preselect the admin-configured / interface-resolved default language so the
+ * output isn't silently English for non-English users.
+ */
+async function loadDefaultLanguage() {
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/client-config`)
+		const match = languageOptions.find((o) => o.id === data.language)
+		if (match) {
+			outputLanguage.value = match
+		}
+	} catch {
+		// Keep the English default if the config can't be loaded.
+	}
+}
+
+onMounted(() => {
+	loadDefaultLanguage()
+})
 
 /**
  * Send summarization request to backend.
@@ -233,13 +257,87 @@ function onClose() {
 	padding: 24px;
 }
 
-.result-content {
-	white-space: pre-wrap;
+/* Single-ring spinner (replaces NcLoadingIcon's twin-circle look). */
+.syn-spinner {
+	width: 40px;
+	height: 40px;
+	border: 3px solid var(--color-border-dark, rgba(127, 127, 127, 0.4));
+	border-top-color: var(--color-primary-element, #0082c9);
+	border-radius: 50%;
+	animation: syn-spin 0.8s linear infinite;
+}
+
+@keyframes syn-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.result-md {
 	line-height: 1.6;
 	background: var(--color-background-dark);
 	border-radius: var(--border-radius-large);
 	padding: 16px;
 	max-height: 400px;
 	overflow-y: auto;
+}
+
+/* Rendered markdown — trim default block margins and keep lists tight. */
+.markdown-body :deep(> *:first-child) {
+	margin-top: 0;
+}
+
+.markdown-body :deep(> *:last-child) {
+	margin-bottom: 0;
+}
+
+.markdown-body :deep(p) {
+	margin: 0 0 8px;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+	margin: 4px 0 8px;
+	padding-left: 18px;
+}
+
+.markdown-body :deep(li) {
+	margin: 1px 0;
+}
+
+.markdown-body :deep(li > p) {
+	margin: 0;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3) {
+	margin: 12px 0 6px;
+	line-height: 1.3;
+}
+
+.markdown-body :deep(pre),
+.markdown-body :deep(code) {
+	background: var(--color-background-darker, rgba(0, 0, 0, 0.06));
+	border-radius: 4px;
+	font-family: var(--font-face-monospace, monospace);
+}
+
+.markdown-body :deep(pre) {
+	padding: 10px 12px;
+	overflow-x: auto;
+}
+
+.markdown-body :deep(code) {
+	padding: 1px 5px;
+}
+
+.markdown-body :deep(pre code) {
+	padding: 0;
+	background: none;
+}
+
+.markdown-body :deep(a) {
+	color: var(--color-primary-element, #0082c9);
 }
 </style>

@@ -7,11 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Configurable answer language** — a new "Language & AI behaviour" admin section lets you pick a **default answer language** and toggle **"Use each user's Nextcloud interface language when supported"**, so a German user gets German answers automatically while the default acts as the fallback. This replaces the previous behaviour where the chat and document tools were hard-coded to English. The resolved language is injected as a system instruction into the streaming chat and passed through to summaries/translations, and the Summarize/Translate dialogs now pre-select it.
+- **Personal memories in chat** — when Synaplan's memory service (Qdrant) is reachable and the admin has enabled it, the Research/launcher chat shows a **"Use my memories"** switch. Relevant memories are searched per question and injected as context so answers can be personalised. The toggle is hidden automatically when the service is unavailable.
+- **Live chat status row** — the chat now shows at-a-glance chips for the **active model**, the **answer language**, and whether **image (`/pic`) and video (`/vid`) generation** are available, plus the selected knowledge base and memory state. Each streamed answer is captioned with the model that actually produced it.
+- **Client-config endpoint** (`api#clientConfig`) exposing the resolved language and memory availability to the frontend.
 - **Streaming chat answers** — chat replies now stream token-by-token (SSE) instead of appearing all at once after a ~15s wait. The PHP `chat#chatStream` endpoint proxies Synaplan's OpenAI-compatible streaming API; the frontend consumes it via `fetch`/`ReadableStream` and falls back to the blocking endpoint if streaming is unavailable.
 - **Markdown rendering in chat answers** — assistant replies in the Research/launcher chat now render Markdown (headings, bold, lists, code, links) via `NcRichText` instead of showing raw `##`/`**` source.
 - **Staged upload progress** — the "Add to Knowledge" dialog now shows a progress bar and a phase checklist (Uploading → Extracting text → Creating chunks → Generating embeddings) with elapsed time, instead of a bare spinner.
 
 ### Fixed
+- **Answers are no longer "always English"** — the chat/streaming path previously sent a hard-coded `en` output language; it now respects the admin default and/or the user's interface language.
 - **Knowledge upload no longer shows a false success** — when the server stores 0 chunks (empty/image-only file, or the embedding service is unavailable), the dialog now reports a clear error instead of a green "File added" screen with "Chunks created: 0".
 - **Removed leftover "this is a demo" text** from the knowledge-upload progress hint.
 

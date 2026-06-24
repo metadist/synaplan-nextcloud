@@ -21,6 +21,9 @@ return [
 		['name' => 'api#getGroups', 'url' => '/api/v1/knowledge/groups', 'verb' => 'GET'],
 		['name' => 'api#getModels', 'url' => '/api/v1/knowledge/models', 'verb' => 'GET'],
 
+		// Client runtime config (language + memory availability) for the chat UI
+		['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],
+
 		// Chat API
 		['name' => 'chat#chat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
 		['name' => 'chat#chatStream', 'url' => '/api/v1/chat/stream', 'verb' => 'POST'],

@@ -156,53 +156,76 @@ class SynaplanClient
     }
 
     /**
-     * Open a streaming chat completion against the OpenAI-compatible endpoint.
+     * Check whether the Synaplan memory (Qdrant) service is reachable.
      *
-     * Returns the raw SSE response body as a stream resource so the caller can
-     * relay it to the browser chunk-by-chunk.
+     * Never throws — a failure simply means "memories not available", which the
+     * chat UI uses to hide the memory toggle gracefully.
      *
-     * @param array<int, array{role: string, content: string}> $messages
-     * @param string|null $model Provider model id or name (null = user default)
-     * @return resource Readable stream of the SSE response body
-     * @throws \Exception on connection failure
+     * @return array{available: bool, configured: bool}
      */
-    public function chatStream(array $messages, ?string $model = null)
+    public function checkMemoryService(): array
     {
-        $client = $this->clientService->newClient();
-        $url = $this->getBaseUrl() . '/v1/chat/completions';
+        try {
+            $result = $this->request('GET', '/api/v1/config/memory-service/check');
 
-        $body = [
-            'messages' => $messages,
-            'stream' => true,
-        ];
-        if ($model !== null && $model !== '') {
-            $body['model'] = $model;
+            return [
+                'available' => (bool) ($result['available'] ?? false),
+                'configured' => (bool) ($result['configured'] ?? false),
+            ];
+        } catch (\Exception $e) {
+            $this->logger->info('Memory service check failed, treating as unavailable: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['available' => false, 'configured' => false];
+        }
+    }
+
+    /**
+     * Search the user's personal memories and return them as a context string.
+     *
+     * Failures are logged and swallowed (returns '') so chat can continue
+     * without memory context rather than erroring out.
+     */
+    public function searchMemoryContext(string $query, int $limit = 6): string
+    {
+        if (trim($query) === '') {
+            return '';
         }
 
-        $response = $client->post($url, [
-            'headers' => [
-                'X-API-Key' => $this->getApiKey(),
-                'Accept' => 'text/event-stream',
-                'Content-Type' => 'application/json',
-            ],
-            'body' => json_encode($body),
-            'stream' => true,
-            'timeout' => 300,
-        ]);
+        try {
+            $result = $this->request('POST', '/api/v1/user/memories/search', [
+                'query' => $query,
+                'limit' => $limit,
+            ]);
 
-        $stream = $response->getBody();
+            if (empty($result['memories']) || !is_array($result['memories'])) {
+                return '';
+            }
 
-        // If the client buffered the body into a string (no streaming), wrap it
-        // in an in-memory stream so the relay logic stays uniform.
-        if (!\is_resource($stream)) {
-            $tmp = fopen('php://temp', 'r+');
-            fwrite($tmp, (string) $stream);
-            rewind($tmp);
+            $lines = [];
+            foreach ($result['memories'] as $memory) {
+                if (!is_array($memory)) {
+                    continue;
+                }
+                $key = trim((string) ($memory['key'] ?? ''));
+                $value = trim((string) ($memory['value'] ?? ''));
+                if ($value === '') {
+                    continue;
+                }
+                $lines[] = $key !== '' ? ('- ' . $key . ': ' . $value) : ('- ' . $value);
+            }
 
-            return $tmp;
+            return implode("\n", $lines);
+        } catch (\Exception $e) {
+            $this->logger->warning('Memory search failed, continuing without memories: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return '';
         }
-
-        return $stream;
     }
 
     /**

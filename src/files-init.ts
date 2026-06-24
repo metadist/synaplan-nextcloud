@@ -81,17 +81,6 @@ function injectFormStyles(): void {
 	padding: 24px;
 }
 
-.synaplan-summary-modal .result-content,
-.synaplan-translate-modal .result-content {
-	white-space: pre-wrap;
-	line-height: 1.6;
-	background: var(--color-background-dark, #2a2a2a);
-	border-radius: var(--border-radius-large, 10px);
-	padding: 16px;
-	max-height: 400px;
-	overflow-y: auto;
-}
-
 .synaplan-chat-modal {
 	display: flex;
 	flex-direction: column;

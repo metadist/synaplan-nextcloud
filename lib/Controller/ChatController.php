@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
-use OCA\SynaplanIntegration\Http\SseRelayResponse;
+use OCA\SynaplanIntegration\Http\SseProxyResponse;
+use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -34,6 +35,7 @@ class ChatController extends Controller
         private SynaplanClient $synaplanClient,
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
+        private LanguageService $languageService,
         private LoggerInterface $logger,
     ) {
         parent::__construct(Application::APP_ID, $request);
@@ -44,12 +46,13 @@ class ChatController extends Controller
      *
      * @NoAdminRequired
      *
-     * @param string      $message  User's question
-     * @param int|null    $fileId   Nextcloud file ID for document context
-     * @param string|null $groupKey RAG group key for knowledge base context
-     * @param int|null    $modelId  Specific model ID to use
+     * @param string      $message     User's question
+     * @param int|null    $fileId      Nextcloud file ID for document context
+     * @param string|null $groupKey    RAG group key for knowledge base context
+     * @param int|null    $modelId     Specific model ID to use
+     * @param bool        $useMemories Whether to enrich the answer with the user's memories
      */
-    public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?int $modelId = null): JSONResponse
+    public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?int $modelId = null, bool $useMemories = false): JSONResponse
     {
         // Parse JSON body as fallback
         if ($message === '') {
@@ -61,6 +64,7 @@ class ChatController extends Controller
                     $fileId = isset($decoded['fileId']) ? (int) $decoded['fileId'] : $fileId;
                     $groupKey = isset($decoded['groupKey']) ? trim((string) $decoded['groupKey']) : $groupKey;
                     $modelId = isset($decoded['modelId']) ? (int) $decoded['modelId'] : $modelId;
+                    $useMemories = isset($decoded['useMemories']) ? (bool) $decoded['useMemories'] : $useMemories;
                 }
             }
         }
@@ -80,7 +84,16 @@ class ChatController extends Controller
                 $context = $fileInfo['content'];
             }
 
-            $result = $this->synaplanClient->ask($message, $context, 'en', $groupKey, $modelId);
+            if ($useMemories) {
+                $memoryContext = $this->synaplanClient->searchMemoryContext($message);
+                if ($memoryContext !== '') {
+                    $context = "What you remember about the user:\n" . $memoryContext
+                        . ($context !== '' ? "\n\n" . $context : '');
+                }
+            }
+
+            $language = $this->languageService->resolveLanguage();
+            $result = $this->synaplanClient->ask($message, $context, $language, $groupKey, $modelId);
 
             return new JSONResponse([
                 'success' => true,
@@ -114,12 +127,13 @@ class ChatController extends Controller
      *
      * @NoAdminRequired
      *
-     * @param string      $message  User's question
-     * @param int|null    $fileId   Nextcloud file ID for document context
-     * @param string|null $groupKey RAG group key for knowledge base context
-     * @param string|null $model    Provider model id/name (null = user default)
+     * @param string      $message     User's question
+     * @param int|null    $fileId      Nextcloud file ID for document context
+     * @param string|null $groupKey    RAG group key for knowledge base context
+     * @param string|null $model       Provider model id/name (null = user default)
+     * @param bool        $useMemories Whether to enrich the answer with the user's memories
      */
-    public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null): Response
+    public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false): Response
     {
         if ($message === '') {
             $body = file_get_contents('php://input');
@@ -130,6 +144,7 @@ class ChatController extends Controller
                     $fileId = isset($decoded['fileId']) ? (int) $decoded['fileId'] : $fileId;
                     $groupKey = isset($decoded['groupKey']) ? trim((string) $decoded['groupKey']) : $groupKey;
                     $model = isset($decoded['model']) ? trim((string) $decoded['model']) : $model;
+                    $useMemories = isset($decoded['useMemories']) ? (bool) $decoded['useMemories'] : $useMemories;
                 }
             }
         }
@@ -155,18 +170,33 @@ class ChatController extends Controller
                 }
             }
 
+            $memoryContext = '';
+            if ($useMemories) {
+                $memoryContext = $this->synaplanClient->searchMemoryContext($message);
+            }
+
             $userContent = $context !== ''
                 ? "Based on the following context, answer the user's question.\n\n"
                     . "--- CONTEXT ---\n" . $context . "\n--- END CONTEXT ---\n\n"
                     . 'Question: ' . $message
                 : $message;
 
-            $stream = $this->synaplanClient->chatStream(
-                [['role' => 'user', 'content' => $userContent]],
-                ($model !== null && $model !== '') ? $model : null,
-            );
+            $messages = [
+                ['role' => 'system', 'content' => $this->buildSystemPrompt($memoryContext)],
+                ['role' => 'user', 'content' => $userContent],
+            ];
 
-            return new SseRelayResponse($stream);
+            $payload = ['messages' => $messages, 'stream' => true];
+            if ($model !== null && $model !== '') {
+                $payload['model'] = $model;
+            }
+
+            return new SseProxyResponse(
+                $this->synaplanClient->getBaseUrl() . '/v1/chat/completions',
+                $this->synaplanClient->getApiKey(),
+                (string) json_encode($payload),
+                $this->logger,
+            );
         } catch (NotFoundException $e) {
             return new JSONResponse(
                 ['success' => false, 'error' => 'File not found'],
@@ -183,6 +213,33 @@ class ChatController extends Controller
                 Http::STATUS_INTERNAL_SERVER_ERROR,
             );
         }
+    }
+
+    /**
+     * Build the system prompt that pins the answer language (admin default or
+     * the user's interface language) and, optionally, injects the user's
+     * long-term memories so the assistant can personalise its reply.
+     */
+    private function buildSystemPrompt(string $memoryContext = ''): string
+    {
+        $languageName = $this->languageService->getLanguageName(
+            $this->languageService->resolveLanguage()
+        );
+
+        $parts = [
+            'You are Synaplan AI, a helpful assistant integrated into Nextcloud.',
+            sprintf(
+                'Unless the user explicitly asks for a different language, always answer in %s.',
+                $languageName,
+            ),
+        ];
+
+        if (trim($memoryContext) !== '') {
+            $parts[] = "Here is what you remember about the user. Use it when relevant, "
+                . "but do not mention that you are reading from memory:\n" . $memoryContext;
+        }
+
+        return implode("\n\n", $parts);
     }
 
     /**

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ApiController;
+use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
@@ -22,6 +24,8 @@ class ApiControllerTest extends TestCase
     private SynaplanClient&MockObject $synaplanClient;
     private IRootFolder&MockObject $rootFolder;
     private IUserSession&MockObject $userSession;
+    private LanguageService&MockObject $languageService;
+    private IConfig&MockObject $config;
     private LoggerInterface&MockObject $logger;
     private ApiController $controller;
 
@@ -31,13 +35,22 @@ class ApiControllerTest extends TestCase
         $this->synaplanClient = $this->createMock(SynaplanClient::class);
         $this->rootFolder = $this->createMock(IRootFolder::class);
         $this->userSession = $this->createMock(IUserSession::class);
+        $this->languageService = $this->createMock(LanguageService::class);
+        $this->config = $this->createMock(IConfig::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+
+        // Default: resolve to English so summarize/translate without an explicit
+        // language behave as before.
+        $this->languageService->method('resolveLanguage')->willReturn('en');
+        $this->languageService->method('getLanguageName')->willReturn('English');
 
         $this->controller = new ApiController(
             $this->request,
             $this->synaplanClient,
             $this->rootFolder,
             $this->userSession,
+            $this->languageService,
+            $this->config,
             $this->logger,
         );
     }
@@ -359,5 +372,42 @@ class ApiControllerTest extends TestCase
 
         $this->assertSame(500, $response->getStatus());
         $this->assertFalse($response->getData()['success']);
+    }
+
+    // ── Client config ───────────────────────────────────────────
+
+    public function testClientConfigReportsLanguageAndMemory(): void
+    {
+        // enable_memories = '1' (allowed)
+        $this->config->method('getAppValue')->willReturn('1');
+
+        $this->synaplanClient->expects($this->once())
+            ->method('checkMemoryService')
+            ->willReturn(['available' => true, 'configured' => true]);
+
+        $response = $this->controller->clientConfig();
+        $data = $response->getData();
+
+        $this->assertTrue($data['success']);
+        $this->assertSame('en', $data['language']);
+        $this->assertSame('English', $data['languageName']);
+        $this->assertTrue($data['memory']['allowed']);
+        $this->assertTrue($data['memory']['available']);
+    }
+
+    public function testClientConfigSkipsMemoryCheckWhenDisabled(): void
+    {
+        // enable_memories = '0' (not allowed) — must not hit the API.
+        $this->config->method('getAppValue')->willReturn('0');
+
+        $this->synaplanClient->expects($this->never())
+            ->method('checkMemoryService');
+
+        $response = $this->controller->clientConfig();
+        $data = $response->getData();
+
+        $this->assertTrue($data['success']);
+        $this->assertFalse($data['memory']['allowed']);
+        $this->assertFalse($data['memory']['available']);
     }
 }

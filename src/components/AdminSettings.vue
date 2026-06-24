@@ -152,6 +152,97 @@
 				</NcNoteCard>
 			</NcSettingsSection>
 
+			<NcSettingsSection
+				:name="t('synaplan_integration', 'Language & AI behaviour')"
+				:description="
+					t(
+						'synaplan_integration',
+						'Choose which language the AI answers in, and whether personal memories may be used in chat.',
+					)
+				">
+				<div class="sp-field">
+					<strong>{{
+						t('synaplan_integration', 'Default answer language')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'The AI answers in this language unless the user asks for another one.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcSelect
+							v-model="defaultLanguage"
+							:options="languageOptions"
+							label="label"
+							:clearable="false"
+							:disabled="saving"
+							class="sp-lang-select" />
+					</div>
+				</div>
+
+				<div :style="{ height: '12px' }" />
+
+				<NcCheckboxRadioSwitch
+					v-model="useInterfaceLanguage"
+					type="switch"
+					:disabled="saving">
+					{{
+						t(
+							'synaplan_integration',
+							'Use each user\u2019s Nextcloud interface language when supported',
+						)
+					}}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When enabled, a user whose Nextcloud is set to German automatically gets German answers; the default language above is the fallback.',
+						)
+					}}
+				</p>
+
+				<div :style="{ height: '16px' }" />
+
+				<NcCheckboxRadioSwitch
+					v-model="enableMemories"
+					type="switch"
+					:disabled="saving">
+					{{
+						t('synaplan_integration', 'Allow personal memories in chat')
+					}}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'Lets users enrich answers with their Synaplan memories. Requires the memory service (Qdrant) to be available in Synaplan.',
+						)
+					}}
+				</p>
+
+				<div :style="{ height: '20px' }" />
+
+				<div :style="{ display: 'flex', gap: '16px' }">
+					<span
+						role="button"
+						tabindex="0"
+						:style="primaryBtnStyle"
+						@click="!saving && save()"
+						@keydown.enter="!saving && save()"
+						@keydown.space.prevent="!saving && save()">
+						{{
+							saving
+								? t('synaplan_integration', 'Saving...')
+								: t('synaplan_integration', 'Save')
+						}}
+					</span>
+				</div>
+			</NcSettingsSection>
+
 			<NcSettingsSection :name="t('synaplan_integration', 'Quick Links')">
 				<ul class="sp-links">
 					<li v-if="synaplanUrl">
@@ -192,9 +283,16 @@ import { ref, computed, onMounted } from 'vue'
 import axios from '@nextcloud/axios'
 import { generateUrl, imagePath } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
+import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+
+interface LanguageOption {
+	id: string
+	label: string
+}
 
 const birdUrl = imagePath('synaplan_integration', 'synaplan-bird.svg')
 
@@ -206,6 +304,22 @@ const saving = ref(false)
 const testing = ref(false)
 const message = ref('')
 const messageType = ref<'success' | 'error' | 'warning'>('success')
+
+// Language & AI behaviour
+const languageOptions: LanguageOption[] = [
+	{ id: 'en', label: 'English' },
+	{ id: 'de', label: 'Deutsch' },
+	{ id: 'fr', label: 'Français' },
+	{ id: 'es', label: 'Español' },
+	{ id: 'it', label: 'Italiano' },
+	{ id: 'pt', label: 'Português' },
+	{ id: 'nl', label: 'Nederlands' },
+	{ id: 'pl', label: 'Polski' },
+	{ id: 'tr', label: 'Türkçe' },
+]
+const defaultLanguage = ref<LanguageOption>(languageOptions[0])
+const useInterfaceLanguage = ref(true)
+const enableMemories = ref(true)
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
@@ -273,6 +387,11 @@ async function loadSettings() {
 		synaplanUrl.value = data.synaplan_url || ''
 		apiKeySet.value = data.api_key_set || false
 		apiKeyMasked.value = data.api_key_masked || ''
+		defaultLanguage.value =
+			languageOptions.find((o) => o.id === data.default_language)
+			?? languageOptions[0]
+		useInterfaceLanguage.value = data.use_interface_language !== false
+		enableMemories.value = data.enable_memories !== false
 	} catch {
 		showMessage('Failed to load settings.', 'error')
 	}
@@ -288,6 +407,9 @@ async function save() {
 		await axios.put(`${baseUrl}/api/v1/settings`, {
 			synaplan_url: synaplanUrl.value,
 			api_key: apiKey.value,
+			default_language: defaultLanguage.value.id,
+			use_interface_language: useInterfaceLanguage.value,
+			enable_memories: enableMemories.value,
 		})
 		if (apiKey.value) {
 			apiKeySet.value = true
@@ -394,6 +516,15 @@ onMounted(() => {
 	font-size: 0.85em;
 	color: var(--color-text-maxcontrast, #767676);
 	margin: 0;
+}
+
+.sp-switch-hint {
+	margin: 4px 0 0 44px;
+	max-width: 560px;
+}
+
+.sp-lang-select {
+	width: 100%;
 }
 
 /* Quick links */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ChatController;
+use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -22,6 +23,7 @@ class ChatControllerTest extends TestCase
     private SynaplanClient&MockObject $synaplanClient;
     private IRootFolder&MockObject $rootFolder;
     private IUserSession&MockObject $userSession;
+    private LanguageService&MockObject $languageService;
     private LoggerInterface&MockObject $logger;
     private ChatController $controller;
 
@@ -31,13 +33,19 @@ class ChatControllerTest extends TestCase
         $this->synaplanClient = $this->createMock(SynaplanClient::class);
         $this->rootFolder = $this->createMock(IRootFolder::class);
         $this->userSession = $this->createMock(IUserSession::class);
+        $this->languageService = $this->createMock(LanguageService::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+
+        // Default: resolve to English so the existing assertions stay stable.
+        $this->languageService->method('resolveLanguage')->willReturn('en');
+        $this->languageService->method('getLanguageName')->willReturn('English');
 
         $this->controller = new ChatController(
             $this->request,
             $this->synaplanClient,
             $this->rootFolder,
             $this->userSession,
+            $this->languageService,
             $this->logger,
         );
     }
@@ -159,6 +167,49 @@ class ChatControllerTest extends TestCase
 
         $this->assertTrue($data['success']);
         $this->assertSame('Summary of DEFAULT group.', $data['response']);
+    }
+
+    public function testChatWithMemoriesInjectsContext(): void
+    {
+        $this->synaplanClient->expects($this->once())
+            ->method('searchMemoryContext')
+            ->with('What do I prefer?')
+            ->willReturn('- diet: vegetarian');
+
+        $this->synaplanClient->expects($this->once())
+            ->method('ask')
+            ->with(
+                'What do I prefer?',
+                "What you remember about the user:\n- diet: vegetarian",
+                'en',
+                null,
+                null,
+            )
+            ->willReturn(['summary' => 'You prefer vegetarian food.']);
+
+        $this->synaplanClient->method('getBaseUrl')
+            ->willReturn('http://localhost:8000');
+
+        $response = $this->controller->chat('What do I prefer?', null, null, null, true);
+        $data = $response->getData();
+
+        $this->assertTrue($data['success']);
+        $this->assertSame('You prefer vegetarian food.', $data['response']);
+    }
+
+    public function testChatWithoutMemoriesSkipsMemorySearch(): void
+    {
+        $this->synaplanClient->expects($this->never())
+            ->method('searchMemoryContext');
+
+        $this->synaplanClient->method('ask')
+            ->willReturn(['summary' => 'ok']);
+        $this->synaplanClient->method('getBaseUrl')
+            ->willReturn('http://localhost:8000');
+
+        $response = $this->controller->chat('Hi');
+
+        $this->assertTrue($response->getData()['success']);
     }
 
     public function testChatEmptyMessage(): void
