@@ -9,7 +9,7 @@ AI-powered document summarization, translation, knowledge base, and research cha
 - **Summarize** — Generate document summaries from the file context menu (bullet points, paragraph, or abstractive; adjustable length and output language). Results are rendered as formatted Markdown.
 - **Translate** — Translate files to multiple languages via the file context menu, with the result rendered as Markdown.
 - **Add to Knowledge** — Upload files to the Synaplan AI knowledge base for RAG-powered search and chat, with group management and a staged upload progress view.
-- **Research Chat** — AI assistant (full-page view **and** a floating in-page launcher) with knowledge-group selection, model picker, streaming answers, and Markdown rendering. The `/pic` and `/vid` commands generate images and videos when the corresponding models are configured.
+- **Research Chat** — AI assistant (full-page view **and** a floating in-page launcher) with knowledge-group selection, model picker, streaming answers, and Markdown rendering. The `/pic` and `/vid` commands generate images and videos when the corresponding models are configured. Requests run through Synaplan's **multi-task (DAG) routing** on the connected instance, so a single complex prompt can be decomposed server-side into several steps (e.g. *search knowledge → summarize → generate*) instead of one flat answer.
 
 ### Language handling
 
@@ -20,7 +20,7 @@ AI-powered document summarization, translation, knowledge base, and research cha
 ### Personalisation & live feedback
 
 - **Personal memories** — when Synaplan's memory service (Qdrant) is available and enabled by the admin, the chat can enrich answers with the user's memories (toggle in the chat).
-- **Live status** — the chat shows the active model, answer language, image/video availability, the selected knowledge base, and memory state, and reports staged progress (*sorting → searching → generating*) while the answer is prepared.
+- **Live status** — the chat shows the active model, answer language, image/video availability, the selected knowledge base, and memory state, and mirrors Synaplan's routing pipeline as staged progress (*sorting → searching → generating*) while the answer is prepared.
 - **Real streaming** — answers stream token-by-token rather than appearing all at once.
 
 ### Supported File Types
