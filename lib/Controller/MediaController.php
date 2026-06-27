@@ -10,6 +10,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -21,6 +22,29 @@ use Psr\Log\LoggerInterface;
 class MediaController extends Controller
 {
     private const SYNAPLAN_FOLDER = 'Synaplan';
+
+    /**
+     * Map a file extension to a kind sub-folder under {@see self::SYNAPLAN_FOLDER}
+     * so saved artifacts are organised (Documents/Audio/Calendar/Images/Video).
+     * Unknown extensions land directly in the Synaplan root folder.
+     */
+    private const KIND_FOLDERS = [
+        // Documents
+        'docx' => 'Documents', 'doc' => 'Documents', 'pptx' => 'Documents',
+        'ppt' => 'Documents', 'xlsx' => 'Documents', 'xls' => 'Documents',
+        'csv' => 'Documents', 'pdf' => 'Documents', 'txt' => 'Documents',
+        'md' => 'Documents', 'odt' => 'Documents', 'rtf' => 'Documents',
+        // Audio
+        'mp3' => 'Audio', 'wav' => 'Audio', 'ogg' => 'Audio',
+        'm4a' => 'Audio', 'flac' => 'Audio', 'aac' => 'Audio',
+        // Calendar
+        'ics' => 'Calendar',
+        // Images
+        'png' => 'Images', 'jpg' => 'Images', 'jpeg' => 'Images',
+        'gif' => 'Images', 'webp' => 'Images', 'svg' => 'Images',
+        // Video
+        'mp4' => 'Video', 'webm' => 'Video', 'mov' => 'Video', 'mkv' => 'Video',
+    ];
 
     public function __construct(
         IRequest $request,
@@ -125,30 +149,34 @@ class MediaController extends Controller
 
             $userFolder = $this->rootFolder->getUserFolder($user->getUID());
 
-            if (!$userFolder->nodeExists(self::SYNAPLAN_FOLDER)) {
-                $userFolder->newFolder(self::SYNAPLAN_FOLDER);
-            }
+            // Organise saved artifacts into Synaplan/<Kind> sub-folders by type
+            // (Documents/Audio/Calendar/Images/Video); unknown types go to the
+            // Synaplan root folder.
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $kindFolder = self::KIND_FOLDERS[$ext] ?? null;
+            $targetFolderPath = self::SYNAPLAN_FOLDER
+                . ($kindFolder !== null ? '/' . $kindFolder : '');
 
-            $synaplanFolder = $userFolder->get(self::SYNAPLAN_FOLDER);
+            $targetFolder = $this->ensureFolder($userFolder, $targetFolderPath);
 
-            $targetName = $filename;
             $counter = 1;
-            $ext = pathinfo($filename, PATHINFO_EXTENSION);
             $base = pathinfo($filename, PATHINFO_FILENAME);
+            $targetName = $filename;
 
-            while ($synaplanFolder->nodeExists($targetName)) {
+            while ($targetFolder->nodeExists($targetName)) {
                 $targetName = $base . ' (' . $counter . ')' . ($ext !== '' ? '.' . $ext : '');
                 $counter++;
             }
 
-            $file = $synaplanFolder->newFile($targetName);
+            $file = $targetFolder->newFile($targetName);
             $file->putContent($content);
 
-            $savedPath = self::SYNAPLAN_FOLDER . '/' . $targetName;
+            $savedPath = $targetFolderPath . '/' . $targetName;
 
             return new JSONResponse([
                 'success' => true,
                 'path' => $savedPath,
+                'folder' => $targetFolderPath,
             ]);
         } catch (\Exception $e) {
             $this->logger->error('Media save failed: {message}', [
@@ -206,5 +234,33 @@ class MediaController extends Controller
                 Http::STATUS_INTERNAL_SERVER_ERROR,
             );
         }
+    }
+
+    /**
+     * Ensure a (possibly nested, slash-separated) folder path exists under the
+     * given user folder, creating each missing segment, and return the leaf
+     * folder node.
+     */
+    private function ensureFolder(Folder $userFolder, string $path): Folder
+    {
+        $current = $userFolder;
+
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+
+            if ($current->nodeExists($segment)) {
+                $node = $current->get($segment);
+                if (!($node instanceof Folder)) {
+                    throw new \RuntimeException('Path segment is not a folder: ' . $segment);
+                }
+                $current = $node;
+            } else {
+                $current = $current->newFolder($segment);
+            }
+        }
+
+        return $current;
     }
 }

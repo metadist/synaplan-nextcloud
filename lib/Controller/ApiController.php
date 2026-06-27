@@ -256,8 +256,11 @@ class ApiController extends Controller
 
             $content = $node->getContent();
             $filename = $node->getName();
+            // Preserve the user-relative source path as provenance (falls back
+            // to the basename) so Synaplan can show where this file came from.
+            $originalName = $userFolder->getRelativePath($node->getPath()) ?? $filename;
 
-            $result = $this->synaplanClient->uploadFile($filename, $content, $groupKey);
+            $result = $this->synaplanClient->uploadFile($filename, $content, $groupKey, 'vectorize', $originalName);
 
             $fileInfo = $result['files'][0] ?? null;
 
@@ -425,6 +428,7 @@ class ApiController extends Controller
                 $node->getContent(),
                 '_nextcloud_temp',
                 'extract',
+                $userFolder->getRelativePath($node->getPath()) ?? $node->getName(),
             );
 
             $fileInfo = $uploadResult['files'][0] ?? null;

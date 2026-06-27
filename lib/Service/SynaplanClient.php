@@ -265,37 +265,57 @@ class SynaplanClient
     /**
      * Upload a file to the Synaplan knowledge base.
      *
-     * @param string $filename Original filename
-     * @param string $content  File binary content
-     * @param string $groupKey Target group key for vectorization
+     * @param string      $filename     Original filename
+     * @param string      $content      File binary content
+     * @param string      $groupKey     Target group key for vectorization
+     * @param string      $processLevel store|extract|vectorize|full
+     * @param string|null $originalName Source-side name (e.g. Nextcloud path/basename),
+     *                                  preserved as provenance. Defaults to $filename.
      * @return array<string, mixed>
      * @throws \Exception on API error
      */
-    public function uploadFile(string $filename, string $content, string $groupKey, string $processLevel = 'vectorize'): array
-    {
+    public function uploadFile(
+        string $filename,
+        string $content,
+        string $groupKey,
+        string $processLevel = 'vectorize',
+        ?string $originalName = null,
+    ): array {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . '/api/v1/files/upload';
+
+        $multipart = [
+            [
+                'name' => 'files[]',
+                'contents' => $content,
+                'filename' => $filename,
+            ],
+            [
+                'name' => 'group_key',
+                'contents' => $groupKey,
+            ],
+            [
+                'name' => 'process_level',
+                'contents' => $processLevel,
+            ],
+            // Provenance: tell Synaplan this file came from Nextcloud so it is
+            // labelled by source in the file world (03_file-management.md §3.1).
+            [
+                'name' => 'source',
+                'contents' => 'nextcloud',
+            ],
+            [
+                'name' => 'original_name',
+                'contents' => $originalName ?? $filename,
+            ],
+        ];
 
         $options = [
             'headers' => [
                 'X-API-Key' => $this->getApiKey(),
                 'Accept' => 'application/json',
             ],
-            'multipart' => [
-                [
-                    'name' => 'files[]',
-                    'contents' => $content,
-                    'filename' => $filename,
-                ],
-                [
-                    'name' => 'group_key',
-                    'contents' => $groupKey,
-                ],
-                [
-                    'name' => 'process_level',
-                    'contents' => $processLevel,
-                ],
-            ],
+            'multipart' => $multipart,
             'timeout' => 180,
         ];
 

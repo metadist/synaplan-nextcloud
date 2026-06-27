@@ -6,6 +6,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.3.0 – 2026-06-27
+
+File delivery + provenance sprint — the first half of the cross-repo "Send to…"
+work (Synaplan Release 4.0 Feature 7), coordinated with Synaplan's file-world
+provenance model (`source` / original name).
+
+### Added
+- **Save any generated file into organised folders** — saving a Synaplan
+  artifact to Nextcloud now sorts it into a typed sub-folder
+  (`Synaplan/Documents`, `Synaplan/Audio`, `Synaplan/Calendar`,
+  `Synaplan/Images`, `Synaplan/Video`); unknown types fall back to `Synaplan/`.
+  The save endpoint is no longer limited to images/videos — it accepts any file
+  type, ready for documents/audio/calendar as the chat surfaces them.
+- **File provenance on knowledge uploads** — every file the app pushes to
+  Synaplan (Add to Knowledge, and the Tika extraction step used for chat
+  context) is now tagged `source=nextcloud` and carries its **original
+  Nextcloud path** as the source name, so Synaplan can label where the file came
+  from in its file manager / "Incoming" view.
+
+### Notes
+- Surfacing generated **documents/audio/calendar** inside the in-app chat (so
+  they get a "Save to Nextcloud" button like images/videos) is a follow-up: the
+  research chat currently generates only images/videos, and its text stream uses
+  Synaplan's OpenAI-compatible endpoint, which does not emit generated-file
+  events. The save + folder infrastructure added here is already type-agnostic
+  and ready for that step.
+
 ## 1.2.1 – 2026-06-24
 
 Major upgrade focused on language handling, personalisation, real streaming, and a clearer, better-formatted chat experience.
