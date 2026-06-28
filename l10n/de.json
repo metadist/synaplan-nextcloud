@@ -21,6 +21,7 @@
 		"Generated image": "Generiertes Bild",
 		"Your browser does not support video playback.": "Ihr Browser unterstützt keine Videowiedergabe.",
 		"Save to Nextcloud": "In Nextcloud speichern",
+		"The generated file could not be loaded, so it cannot be saved.": "Die generierte Datei konnte nicht geladen werden und kann daher nicht gespeichert werden.",
 		"Saving...": "Speichern...",
 		"Saved to {path}": "Gespeichert unter {path}",
 		"Save failed": "Speichern fehlgeschlagen",

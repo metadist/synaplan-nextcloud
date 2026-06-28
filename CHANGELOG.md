@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.3.1 – 2026-06-28
+
+Bug-fix release for the generated-media save flow.
+
+### Fixed
+- **Generated images/videos now display and can be saved.** A generated media
+  card could show a broken image with a "Save to Nextcloud" button that saved a
+  non-image (the backend served the file only after it had a database record).
+  Paired with a Synaplan backend fix that registers generated media as a file,
+  the image now loads and saving works.
+- **No "Save" button for media that failed to load.** The "Save to Nextcloud"
+  button now appears only once the image/video has actually loaded; if a
+  generated file can't be loaded, a clear message is shown instead of an
+  actionable save button.
+
 ## 1.3.0 – 2026-06-27
 
 File delivery + provenance sprint — the first half of the cross-repo "Send to…"

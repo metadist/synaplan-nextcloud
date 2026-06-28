@@ -184,14 +184,20 @@
 					<div v-if="msg.media" class="media-content">
 						<img
 							v-if="msg.media.type === 'image'"
+							v-show="!msg.media.failed"
 							:src="msg.media.url"
 							:alt="t('synaplan_integration', 'Generated image')"
-							class="generated-image" />
+							class="generated-image"
+							@load="msg.media.loaded = true"
+							@error="msg.media.failed = true" />
 						<video
 							v-else-if="msg.media.type === 'video'"
+							v-show="!msg.media.failed"
 							:src="msg.media.url"
 							controls
-							class="generated-video">
+							class="generated-video"
+							@loadeddata="msg.media.loaded = true"
+							@error="msg.media.failed = true">
 							{{
 								t(
 									'synaplan_integration',
@@ -199,13 +205,25 @@
 								)
 							}}
 						</video>
+						<div v-if="msg.media.failed" class="media-failed">
+							{{
+								t(
+									'synaplan_integration',
+									'The generated file could not be loaded, so it cannot be saved.',
+								)
+							}}
+						</div>
 						<div class="media-meta">
 							<span class="media-provider"
 								>{{ msg.media.provider }} /
 								{{ msg.media.model }}</span
 							>
 							<NcButton
-								v-if="!msg.media.saved"
+								v-if="
+									!msg.media.saved
+									&& msg.media.loaded
+									&& !msg.media.failed
+								"
 								type="secondary"
 								:disabled="msg.media.saving"
 								@click="saveMedia(idx)">
@@ -218,7 +236,7 @@
 											)
 								}}
 							</NcButton>
-							<span v-else class="save-success">
+							<span v-else-if="msg.media.saved" class="save-success">
 								{{
 									t('synaplan_integration', 'Saved to {path}', {
 										path: msg.media.savedPath ?? '',
@@ -316,6 +334,8 @@ interface MediaInfo {
 	model: string
 	sourceUrl: string
 	filename: string
+	loaded?: boolean
+	failed?: boolean
 	saved?: boolean
 	savedPath?: string
 	saving?: boolean
@@ -617,6 +637,8 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 					model: (data.model as string) ?? 'unknown',
 					sourceUrl: fileUrl,
 					filename,
+					loaded: false,
+					failed: false,
 					saved: false,
 					saving: false,
 				},
@@ -1127,6 +1149,12 @@ onMounted(() => {
 	max-height: 400px;
 	border-radius: 8px;
 	display: block;
+}
+
+.media-failed {
+	margin-top: 8px;
+	font-size: 0.85em;
+	color: var(--color-error, #c0392b);
 }
 
 .media-meta {
