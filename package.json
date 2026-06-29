@@ -12,6 +12,10 @@
     "format:check": "prettier --check src/"
   },
   "prettier": "@nextcloud/prettier-config",
+  "overrides": {
+    "esbuild": "^0.28.1",
+    "fast-xml-parser": "^5.7.0"
+  },
   "dependencies": {
     "@mdi/svg": "^7.4.47",
     "@nextcloud/axios": "^2.5.1",
