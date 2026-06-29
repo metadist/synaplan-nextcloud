@@ -425,8 +425,26 @@ class SynaplanClient
         }
     }
 
+    /**
+     * Active backend environment: 'live' (production) or 'local' (development).
+     * Lets developers flip the whole app between backends with one switch.
+     */
+    public function getActiveEnv(): string
+    {
+        return $this->config->getAppValue(Application::APP_ID, 'active_env', 'live') === 'local'
+            ? 'local'
+            : 'live';
+    }
+
     public function getBaseUrl(): string
     {
+        if ($this->getActiveEnv() === 'local') {
+            return rtrim(
+                $this->config->getAppValue(Application::APP_ID, 'synaplan_url_local', 'http://localhost:8000'),
+                '/'
+            );
+        }
+
         return rtrim(
             $this->config->getAppValue(Application::APP_ID, 'synaplan_url', 'http://localhost:8000'),
             '/'
@@ -435,6 +453,10 @@ class SynaplanClient
 
     public function getApiKey(): string
     {
+        if ($this->getActiveEnv() === 'local') {
+            return $this->config->getAppValue(Application::APP_ID, 'api_key_local', '');
+        }
+
         return $this->config->getAppValue(Application::APP_ID, 'api_key', '');
     }
 

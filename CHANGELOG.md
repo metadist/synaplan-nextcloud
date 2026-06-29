@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.4.0 – 2026-06-28
+
+### Added
+- **Backend environment switch (Live / Local).** Admin settings now keep two
+  separate Synaplan profiles — **Live (production)** and **Local
+  (development)** — each with its own URL and API key, plus an **Active
+  environment** toggle that flips the whole app (chat, media, knowledge, proxy)
+  between them in one click. Makes it easy for any developer to point the app at
+  a local Synaplan dev backend (e.g. `http://localhost:8000`) and switch back to
+  live without re-entering credentials.
+
 ## 1.3.1 – 2026-06-28
 
 Bug-fix release for the generated-media save flow.

@@ -37,11 +37,18 @@ class SettingsControllerTest extends TestCase
         $this->config->method('getAppValue')->willReturnMap([
             [Application::APP_ID, 'synaplan_url', 'http://localhost:8000', 'https://synaplan.example.com'],
             [Application::APP_ID, 'api_key', '', 'sk_test_abcdef123456'],
+            [Application::APP_ID, 'synaplan_url_local', 'http://localhost:8000', 'http://localhost:8000'],
+            [Application::APP_ID, 'api_key_local', '', 'sk_local_zzz999'],
         ]);
+        $this->synaplanClient->method('getActiveEnv')->willReturn('local');
 
         $response = $this->controller->getSettings();
         $data = $response->getData();
 
+        $this->assertSame('local', $data['active_env']);
+        $this->assertSame('http://localhost:8000', $data['synaplan_url_local']);
+        $this->assertTrue($data['api_key_local_set']);
+        $this->assertStringStartsWith('sk_loc', $data['api_key_local_masked']);
         $this->assertSame('https://synaplan.example.com', $data['synaplan_url']);
         $this->assertTrue($data['api_key_set']);
         // Key should be masked: first 6 + dots + last 4

@@ -61,6 +61,55 @@
 						'Configure the connection to your Synaplan instance.',
 					)
 				">
+				<!-- Active environment switch (dev convenience) -->
+				<div class="sp-field">
+					<strong>{{
+						t('synaplan_integration', 'Active environment')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Flip the whole app between your live and local Synaplan backend. Each environment keeps its own URL and API key.',
+							)
+						}}
+					</p>
+					<div class="sp-env-switch">
+						<NcCheckboxRadioSwitch
+							v-model="activeEnv"
+							value="live"
+							name="sp-active-env"
+							type="radio"
+							:disabled="saving">
+							{{ t('synaplan_integration', 'Live (production)') }}
+						</NcCheckboxRadioSwitch>
+						<NcCheckboxRadioSwitch
+							v-model="activeEnv"
+							value="local"
+							name="sp-active-env"
+							type="radio"
+							:disabled="saving">
+							{{ t('synaplan_integration', 'Local (development)') }}
+						</NcCheckboxRadioSwitch>
+					</div>
+					<p class="sp-status">
+						{{
+							activeEnv === 'local'
+								? t(
+										'synaplan_integration',
+										'The app is using the local backend.',
+									)
+								: t(
+										'synaplan_integration',
+										'The app is using the live backend.',
+									)
+						}}
+					</p>
+				</div>
+
+				<h3 class="sp-subhead">
+					{{ t('synaplan_integration', 'Live (production)') }}
+				</h3>
 				<div class="sp-field">
 					<strong>{{ t('synaplan_integration', 'Synaplan URL') }}</strong>
 					<p class="sp-hint">
@@ -104,6 +153,65 @@
 					</div>
 					<div v-if="apiKeySet && !apiKey" :style="{ height: '16px' }" />
 					<p v-if="apiKeySet && !apiKey" class="sp-status">
+						{{
+							t(
+								'synaplan_integration',
+								'API key is configured. Enter a new value to replace it.',
+							)
+						}}
+					</p>
+				</div>
+
+				<h3 class="sp-subhead">
+					{{ t('synaplan_integration', 'Local (development)') }}
+				</h3>
+				<div class="sp-field">
+					<strong>{{
+						t('synaplan_integration', 'Local Synaplan URL')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Your local Synaplan dev backend, e.g. http://localhost:8000.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-url-local"
+							v-model="synaplanUrlLocal"
+							placeholder="http://localhost:8000"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
+				<div class="sp-field">
+					<strong>{{ t('synaplan_integration', 'Local API Key') }}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'API key for your local Synaplan dev backend.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-api-key-local"
+							v-model="apiKeyLocal"
+							:placeholder="apiKeyLocalMasked || 'sk_...'"
+							type="password"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+					<div
+						v-if="apiKeyLocalSet && !apiKeyLocal"
+						:style="{ height: '16px' }" />
+					<p v-if="apiKeyLocalSet && !apiKeyLocal" class="sp-status">
 						{{
 							t(
 								'synaplan_integration',
@@ -296,10 +404,15 @@ interface LanguageOption {
 
 const birdUrl = imagePath('synaplan_integration', 'synaplan-bird.svg')
 
+const activeEnv = ref<'live' | 'local'>('live')
 const synaplanUrl = ref('')
 const apiKey = ref('')
 const apiKeySet = ref(false)
 const apiKeyMasked = ref('')
+const synaplanUrlLocal = ref('')
+const apiKeyLocal = ref('')
+const apiKeyLocalSet = ref(false)
+const apiKeyLocalMasked = ref('')
 const saving = ref(false)
 const testing = ref(false)
 const message = ref('')
@@ -384,9 +497,13 @@ function showMessage(
 async function loadSettings() {
 	try {
 		const { data } = await axios.get(`${baseUrl}/api/v1/settings`)
+		activeEnv.value = data.active_env === 'local' ? 'local' : 'live'
 		synaplanUrl.value = data.synaplan_url || ''
 		apiKeySet.value = data.api_key_set || false
 		apiKeyMasked.value = data.api_key_masked || ''
+		synaplanUrlLocal.value = data.synaplan_url_local || ''
+		apiKeyLocalSet.value = data.api_key_local_set || false
+		apiKeyLocalMasked.value = data.api_key_local_masked || ''
 		defaultLanguage.value =
 			languageOptions.find((o) => o.id === data.default_language)
 			?? languageOptions[0]
@@ -405,8 +522,11 @@ async function save() {
 	message.value = ''
 	try {
 		await axios.put(`${baseUrl}/api/v1/settings`, {
+			active_env: activeEnv.value,
 			synaplan_url: synaplanUrl.value,
 			api_key: apiKey.value,
+			synaplan_url_local: synaplanUrlLocal.value,
+			api_key_local: apiKeyLocal.value,
 			default_language: defaultLanguage.value.id,
 			use_interface_language: useInterfaceLanguage.value,
 			enable_memories: enableMemories.value,
@@ -414,6 +534,10 @@ async function save() {
 		if (apiKey.value) {
 			apiKeySet.value = true
 			apiKey.value = ''
+		}
+		if (apiKeyLocal.value) {
+			apiKeyLocalSet.value = true
+			apiKeyLocal.value = ''
 		}
 		showMessage('Settings saved successfully.')
 		await loadSettings()
@@ -499,6 +623,22 @@ onMounted(() => {
 /* Fields */
 .sp-field {
 	margin-bottom: 24px;
+}
+
+.sp-subhead {
+	font-size: 0.8em;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--color-text-maxcontrast, #767676);
+	margin: 8px 0 12px;
+}
+
+.sp-env-switch {
+	display: flex;
+	gap: 24px;
+	flex-wrap: wrap;
+	margin: 4px 0 8px;
 }
 
 .sp-field strong {

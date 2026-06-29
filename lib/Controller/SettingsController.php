@@ -32,9 +32,12 @@ class SettingsController extends Controller
      */
     public function getSettings(): JSONResponse
     {
-        $apiKey = $this->config->getAppValue(Application::APP_ID, 'api_key', '');
+        $apiKey = (string) $this->config->getAppValue(Application::APP_ID, 'api_key', '');
+        $apiKeyLocal = (string) $this->config->getAppValue(Application::APP_ID, 'api_key_local', '');
 
         return new JSONResponse([
+            // Active backend environment: 'live' (production) or 'local' (dev).
+            'active_env' => $this->synaplanClient->getActiveEnv(),
             'synaplan_url' => $this->config->getAppValue(
                 Application::APP_ID,
                 'synaplan_url',
@@ -42,6 +45,14 @@ class SettingsController extends Controller
             ),
             'api_key_set' => $apiKey !== '',
             'api_key_masked' => $apiKey !== '' ? $this->maskApiKey($apiKey) : '',
+            // Local (development) backend profile — flip to it with active_env.
+            'synaplan_url_local' => $this->config->getAppValue(
+                Application::APP_ID,
+                'synaplan_url_local',
+                'http://localhost:8000'
+            ),
+            'api_key_local_set' => $apiKeyLocal !== '',
+            'api_key_local_masked' => $apiKeyLocal !== '' ? $this->maskApiKey($apiKeyLocal) : '',
             'default_language' => $this->config->getAppValue(
                 Application::APP_ID,
                 'default_language',
@@ -71,6 +82,9 @@ class SettingsController extends Controller
     public function saveSettings(
         string $synaplan_url = '',
         string $api_key = '',
+        string $synaplan_url_local = '',
+        string $api_key_local = '',
+        ?string $active_env = null,
         ?string $default_language = null,
         ?bool $use_interface_language = null,
         ?bool $enable_memories = null,
@@ -87,6 +101,15 @@ class SettingsController extends Controller
                 }
                 if ($api_key === '' && isset($decoded['api_key'])) {
                     $api_key = trim((string) $decoded['api_key']);
+                }
+                if ($synaplan_url_local === '' && isset($decoded['synaplan_url_local'])) {
+                    $synaplan_url_local = trim((string) $decoded['synaplan_url_local']);
+                }
+                if ($api_key_local === '' && isset($decoded['api_key_local'])) {
+                    $api_key_local = trim((string) $decoded['api_key_local']);
+                }
+                if ($active_env === null && isset($decoded['active_env'])) {
+                    $active_env = trim((string) $decoded['active_env']);
                 }
                 if ($default_language === null && isset($decoded['default_language'])) {
                     $default_language = trim((string) $decoded['default_language']);
@@ -110,6 +133,22 @@ class SettingsController extends Controller
 
         if ($api_key !== '') {
             $this->config->setAppValue(Application::APP_ID, 'api_key', $api_key);
+        }
+
+        if ($synaplan_url_local !== '') {
+            $this->config->setAppValue(
+                Application::APP_ID,
+                'synaplan_url_local',
+                rtrim($synaplan_url_local, '/')
+            );
+        }
+
+        if ($api_key_local !== '') {
+            $this->config->setAppValue(Application::APP_ID, 'api_key_local', $api_key_local);
+        }
+
+        if ($active_env !== null && in_array($active_env, ['live', 'local'], true)) {
+            $this->config->setAppValue(Application::APP_ID, 'active_env', $active_env);
         }
 
         if ($default_language !== null && $default_language !== '') {

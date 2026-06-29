@@ -186,6 +186,53 @@ class SynaplanClientTest extends TestCase
         $this->assertSame('sk_test_key_123', $this->synaplanClient->getApiKey());
     }
 
+    public function testLocalEnvUsesLocalUrlAndKey(): void
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnMap([
+            [Application::APP_ID, 'active_env', 'live', 'local'],
+            [Application::APP_ID, 'synaplan_url_local', 'http://localhost:8000', 'http://localhost:8000/'],
+            [Application::APP_ID, 'api_key_local', '', 'sk_local_abc'],
+        ]);
+
+        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+
+        $this->assertSame('local', $client->getActiveEnv());
+        $this->assertSame('http://localhost:8000', $client->getBaseUrl());
+        $this->assertSame('sk_local_abc', $client->getApiKey());
+    }
+
+    public function testLiveEnvUsesLiveUrlAndKey(): void
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnMap([
+            [Application::APP_ID, 'active_env', 'live', 'live'],
+            [Application::APP_ID, 'synaplan_url', 'http://localhost:8000', 'https://web.synaplan.com'],
+            [Application::APP_ID, 'api_key', '', 'sk_live_xyz'],
+        ]);
+
+        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+
+        $this->assertSame('live', $client->getActiveEnv());
+        $this->assertSame('https://web.synaplan.com', $client->getBaseUrl());
+        $this->assertSame('sk_live_xyz', $client->getApiKey());
+    }
+
+    public function testUnknownActiveEnvFallsBackToLive(): void
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnMap([
+            [Application::APP_ID, 'active_env', 'live', 'bogus'],
+            [Application::APP_ID, 'synaplan_url', 'http://localhost:8000', 'https://web.synaplan.com'],
+            [Application::APP_ID, 'api_key', '', 'sk_live_xyz'],
+        ]);
+
+        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+
+        $this->assertSame('live', $client->getActiveEnv());
+        $this->assertSame('https://web.synaplan.com', $client->getBaseUrl());
+    }
+
     public function testGetModelsCallsCorrectEndpoint(): void
     {
         $response = $this->createMock(IResponse::class);
