@@ -7,7 +7,6 @@ namespace OCA\SynaplanIntegration\Service;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
-use OCP\IConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -23,8 +22,9 @@ class SynaplanClient
 
     public function __construct(
         private IClientService $clientService,
-        private IConfig $config,
         private LoggerInterface $logger,
+        private SynaplanConfig $synaplanConfig,
+        private UserAccountService $userAccounts,
     ) {
     }
 
@@ -431,33 +431,30 @@ class SynaplanClient
      */
     public function getActiveEnv(): string
     {
-        return $this->config->getAppValue(Application::APP_ID, 'active_env', 'live') === 'local'
-            ? 'local'
-            : 'live';
+        return $this->synaplanConfig->getActiveEnv();
     }
 
     public function getBaseUrl(): string
     {
-        if ($this->getActiveEnv() === 'local') {
-            return rtrim(
-                $this->config->getAppValue(Application::APP_ID, 'synaplan_url_local', 'http://localhost:8000'),
-                '/'
-            );
-        }
-
-        return rtrim(
-            $this->config->getAppValue(Application::APP_ID, 'synaplan_url', 'http://localhost:8000'),
-            '/'
-        );
+        return $this->synaplanConfig->getBaseUrl();
     }
 
+    /**
+     * The API key to use for the CURRENT request.
+     *
+     * In per-user mode this is the logged-in Nextcloud user's own Synaplan key
+     * (provisioned + minted on first use), so each user acts only on their own
+     * account. Falls back to the install-wide admin key when per-user mode is
+     * off or a user key cannot be resolved.
+     */
     public function getApiKey(): string
     {
-        if ($this->getActiveEnv() === 'local') {
-            return $this->config->getAppValue(Application::APP_ID, 'api_key_local', '');
+        $userKey = $this->userAccounts->getCurrentUserApiKey();
+        if ($userKey !== null && $userKey !== '') {
+            return $userKey;
         }
 
-        return $this->config->getAppValue(Application::APP_ID, 'api_key', '');
+        return $this->synaplanConfig->getAdminApiKey();
     }
 
     /**
@@ -492,6 +489,23 @@ class SynaplanClient
 
             return $decoded;
         } catch (\Exception $e) {
+            // Self-heal a stale/revoked per-user key: drop it and retry once so
+            // the next getApiKey() re-provisions + re-mints. Only meaningful in
+            // per-user mode; the install-wide key path never re-mints.
+            if ($this->isUnauthorized($e) && $this->synaplanConfig->isPerUserAccountsEnabled()) {
+                $this->userAccounts->clearCurrentUserApiKey();
+                $options['headers']['X-API-Key'] = $this->getApiKey();
+                try {
+                    $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
+                    $decoded = json_decode($response->getBody(), true);
+                    if (is_array($decoded)) {
+                        return $decoded;
+                    }
+                } catch (\Exception $retry) {
+                    $e = $retry;
+                }
+            }
+
             $this->logger->error('Synaplan API request failed: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
@@ -501,6 +515,21 @@ class SynaplanClient
 
             throw $e;
         }
+    }
+
+    /**
+     * Best-effort detection of an HTTP 401 from the Nextcloud HTTP client
+     * exception (the underlying Guzzle exception message carries the status).
+     */
+    private function isUnauthorized(\Exception $e): bool
+    {
+        if (method_exists($e, 'getCode') && $e->getCode() === 401) {
+            return true;
+        }
+
+        $message = $e->getMessage();
+
+        return str_contains($message, '401') || stripos($message, 'Unauthorized') !== false;
     }
 
     private function doRequest(IClient $client, string $method, string $url, array $options): \OCP\Http\Client\IResponse

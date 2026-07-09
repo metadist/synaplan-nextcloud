@@ -332,6 +332,25 @@
 					}}
 				</p>
 
+				<div :style="{ height: '16px' }" />
+
+				<NcCheckboxRadioSwitch
+					v-model="perUserAccounts"
+					type="switch"
+					:disabled="saving">
+					{{
+						t('synaplan_integration', 'Give each user their own Synaplan account')
+					}}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When enabled, the key above is treated as an ADMIN key: every Nextcloud user gets their own Synaplan account and personal API key, so their knowledge base, memories and usage stay private to them. When off, all users share the single configured key.',
+						)
+					}}
+				</p>
+
 				<div :style="{ height: '20px' }" />
 
 				<div :style="{ display: 'flex', gap: '16px' }">
@@ -433,6 +452,7 @@ const languageOptions: LanguageOption[] = [
 const defaultLanguage = ref<LanguageOption>(languageOptions[0])
 const useInterfaceLanguage = ref(true)
 const enableMemories = ref(true)
+const perUserAccounts = ref(false)
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
@@ -509,6 +529,7 @@ async function loadSettings() {
 			?? languageOptions[0]
 		useInterfaceLanguage.value = data.use_interface_language !== false
 		enableMemories.value = data.enable_memories !== false
+		perUserAccounts.value = data.per_user_accounts === true
 	} catch {
 		showMessage('Failed to load settings.', 'error')
 	}
@@ -530,6 +551,7 @@ async function save() {
 			default_language: defaultLanguage.value.id,
 			use_interface_language: useInterfaceLanguage.value,
 			enable_memories: enableMemories.value,
+			per_user_accounts: perUserAccounts.value,
 		})
 		if (apiKey.value) {
 			apiKeySet.value = true
