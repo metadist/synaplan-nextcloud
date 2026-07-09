@@ -115,6 +115,8 @@ class UserAccountServiceTest extends TestCase
 
     public function testProvisionsAndMintsOnFirstUse(): void
     {
+        // Consent already granted — provisioning is allowed to proceed.
+        $this->userConfig['alice|ai_consent'] = '1';
         $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'alice@example.com', 'Alice'));
 
         $provisionResp = $this->createMock(IResponse::class);
@@ -154,6 +156,7 @@ class UserAccountServiceTest extends TestCase
 
     public function testSynthesizesEmailWhenUserHasNone(): void
     {
+        $this->userConfig['bob|ai_consent'] = '1';
         $this->userSession->method('getUser')->willReturn($this->mockUser('bob', null, 'Bob'));
 
         $provisionResp = $this->createMock(IResponse::class);
@@ -182,6 +185,58 @@ class UserAccountServiceTest extends TestCase
 
         $this->service()->clearCurrentUserApiKey();
 
+        $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
+    }
+
+    public function testDoesNotProvisionWithoutConsent(): void
+    {
+        // Per-user mode on, user present, no stored key, but NO consent.
+        $this->userSession->method('getUser')->willReturn($this->mockUser('carol', 'carol@example.com', 'Carol'));
+
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->getCurrentUserApiKey());
+        $this->assertArrayNotHasKey('carol|synaplan_user_api_key', $this->userConfig);
+    }
+
+    public function testConsentRequiredOnlyInPerUserMode(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+        $this->assertTrue($this->service()->consentRequired());
+
+        $this->appConfig['per_user_accounts'] = '0';
+        $this->assertFalse($this->service()->consentRequired());
+    }
+
+    public function testGrantConsentThenProvisions(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->mockUser('dave', 'dave@example.com', 'Dave'));
+
+        $this->assertFalse($this->service()->hasConsentForCurrentUser());
+        $this->service()->grantConsent();
+        $this->assertTrue($this->service()->hasConsentForCurrentUser());
+        $this->assertSame('1', $this->userConfig['dave|ai_consent']);
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 88]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['key' => 'sk_dave']]));
+        $this->httpClient->method('post')->willReturnCallback(
+            fn (string $url): IResponse => str_contains($url, '/api-keys') ? $mintResp : $provisionResp
+        );
+
+        $this->assertSame('sk_dave', $this->service()->getCurrentUserApiKey());
+    }
+
+    public function testRevokeConsentClearsConsentAndKey(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_alice';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $this->service()->revokeConsent();
+
+        $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
         $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
     }
 }

@@ -32,6 +32,8 @@ class UserAccountService
 {
     private const USER_KEY_PREF = 'synaplan_user_api_key';
     private const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
+    private const CONSENT_PREF = 'ai_consent';
+    private const CONSENT_AT_PREF = 'ai_consent_at';
 
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
     private const USER_KEY_SCOPES = ['chat', 'files', 'rag'];
@@ -68,6 +70,14 @@ class UserAccountService
             return $stored;
         }
 
+        // Consent gate: never provision a Synaplan account for a user who has
+        // not explicitly activated AI. Without a key the caller does NOT fall
+        // back to the shared admin key (see SynaplanClient::getApiKey), so the
+        // request simply fails until the user consents.
+        if (!$this->hasConsent($user)) {
+            return null;
+        }
+
         try {
             return $this->provisionAndMint($user);
         } catch (\Throwable $e) {
@@ -91,6 +101,75 @@ class UserAccountService
         if ($user instanceof IUser) {
             $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
         }
+    }
+
+    /**
+     * Whether the current user must give consent before AI is used.
+     *
+     * Consent is only meaningful in per-user mode (where using AI creates a
+     * personal account on the Synaplan server). In shared-key mode there is no
+     * per-user external account, so no per-user consent is required here.
+     */
+    public function consentRequired(): bool
+    {
+        return $this->synaplanConfig->isPerUserAccountsEnabled()
+            && $this->userSession->getUser() instanceof IUser;
+    }
+
+    /**
+     * Has the current user activated AI (granted consent)?
+     */
+    public function hasConsentForCurrentUser(): bool
+    {
+        $user = $this->userSession->getUser();
+
+        return $user instanceof IUser && $this->hasConsent($user);
+    }
+
+    /**
+     * Record the current user's consent to activate AI. Provisioning happens
+     * lazily on the next Synaplan call (or callers may warm it immediately).
+     */
+    public function grantConsent(): void
+    {
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser) {
+            return;
+        }
+
+        $this->config->setUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF, '1');
+        $this->config->setUserValue(
+            $user->getUID(),
+            Application::APP_ID,
+            self::CONSENT_AT_PREF,
+            (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM)
+        );
+
+        $this->logger->info('User activated AI (consent granted): {uid}', [
+            'app' => Application::APP_ID,
+            'uid' => $user->getUID(),
+        ]);
+    }
+
+    /**
+     * Withdraw consent and forget the cached per-user key. The Synaplan account
+     * itself is not deleted here (an admin can remove it server-side).
+     */
+    public function revokeConsent(): void
+    {
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser) {
+            return;
+        }
+
+        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF);
+        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_AT_PREF);
+        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
+    }
+
+    private function hasConsent(IUser $user): bool
+    {
+        return $this->config->getUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF, '') === '1';
     }
 
     private function provisionAndMint(IUser $user): ?string

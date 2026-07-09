@@ -443,15 +443,20 @@ class SynaplanClient
      * The API key to use for the CURRENT request.
      *
      * In per-user mode this is the logged-in Nextcloud user's own Synaplan key
-     * (provisioned + minted on first use), so each user acts only on their own
-     * account. Falls back to the install-wide admin key when per-user mode is
-     * off or a user key cannot be resolved.
+     * (provisioned + minted on first use, AFTER the user activates AI). If the
+     * user has no key yet — because they have not consented, or provisioning
+     * failed — an EMPTY key is returned on purpose: the request then fails
+     * (401) rather than silently falling back to the shared admin key, which
+     * would break both isolation and the consent gate. The admin key is used
+     * only internally for provisioning (see UserAccountService).
+     *
+     * In shared-key mode (per-user off) the single install-wide key is used,
+     * preserving the original behaviour.
      */
     public function getApiKey(): string
     {
-        $userKey = $this->userAccounts->getCurrentUserApiKey();
-        if ($userKey !== null && $userKey !== '') {
-            return $userKey;
+        if ($this->synaplanConfig->isPerUserAccountsEnabled()) {
+            return $this->userAccounts->getCurrentUserApiKey() ?? '';
         }
 
         return $this->synaplanConfig->getAdminApiKey();

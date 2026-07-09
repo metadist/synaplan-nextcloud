@@ -24,6 +24,10 @@ return [
 		// Client runtime config (language + memory availability) for the chat UI
 		['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],
 
+		// Per-user "Activate AI" consent (per-user mode only)
+		['name' => 'consent#getConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'GET'],
+		['name' => 'consent#setConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'POST'],
+
 		// Chat API
 		['name' => 'chat#chat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
 		['name' => 'chat#chatStream', 'url' => '/api/v1/chat/stream', 'verb' => 'POST'],
