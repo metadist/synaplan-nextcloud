@@ -172,6 +172,82 @@ class UserAccountService
         return $this->config->getUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF, '') === '1';
     }
 
+    // ---- Admin operations on arbitrary users (used by the admin panel) ----
+
+    /**
+     * The Synaplan account id provisioned for a given Nextcloud user, if any.
+     */
+    public function getSynaplanUserId(string $uid): ?int
+    {
+        $id = $this->config->getUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, '');
+
+        return $id !== '' ? (int) $id : null;
+    }
+
+    /**
+     * Admin action: deactivate AI for a specific user — withdraw their consent
+     * and forget their cached key. The Synaplan account itself is left intact
+     * (an admin can delete it server-side); the next time the user activates AI
+     * a fresh key is minted.
+     */
+    public function deactivateUser(string $uid): void
+    {
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+
+        $this->logger->info('Admin deactivated AI for user {uid}', [
+            'app' => Application::APP_ID,
+            'uid' => $uid,
+        ]);
+    }
+
+    /**
+     * Delete a user's Synaplan account (and its data) via the admin API.
+     *
+     * Called when the Nextcloud user is removed so the external account does
+     * not linger orphaned. Best-effort: failures are logged, never thrown, so
+     * they can't block Nextcloud's own user deletion.
+     */
+    public function deleteRemoteAccount(string $uid): void
+    {
+        $synaplanUserId = $this->getSynaplanUserId($uid);
+        $adminKey = $this->synaplanConfig->getAdminApiKey();
+        if ($synaplanUserId === null || $adminKey === '') {
+            return;
+        }
+
+        try {
+            $this->adminRequest('DELETE', '/api/v1/admin/users/' . $synaplanUserId, null, $adminKey);
+            $this->logger->info('Deleted Synaplan account for removed Nextcloud user {uid} (synaplan id {sid})', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'sid' => $synaplanUserId,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to delete Synaplan account for removed Nextcloud user {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Fetch per-user usage from Synaplan (admin API) for a provisioned account.
+     *
+     * @return array<string, mixed>
+     */
+    public function fetchUsage(int $synaplanUserId): array
+    {
+        $adminKey = $this->synaplanConfig->getAdminApiKey();
+        if ($adminKey === '') {
+            return [];
+        }
+
+        return $this->adminRequest('GET', '/api/v1/admin/users/' . $synaplanUserId . '/usage', null, $adminKey);
+    }
+
     private function provisionAndMint(IUser $user): ?string
     {
         $adminKey = $this->synaplanConfig->getAdminApiKey();
@@ -226,25 +302,30 @@ class UserAccountService
     }
 
     /**
-     * @param array<string, mixed> $body
+     * @param array<string, mixed>|null $body Request body for POST; null for GET.
      * @return array<string, mixed>
      */
-    private function adminRequest(string $method, string $path, array $body, string $adminKey): array
+    private function adminRequest(string $method, string $path, ?array $body, string $adminKey): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
 
-        $options = [
-            'headers' => [
-                'X-API-Key' => $adminKey,
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-            ],
-            'body' => json_encode($body),
-            'timeout' => 30,
+        $headers = [
+            'X-API-Key' => $adminKey,
+            'Accept' => 'application/json',
         ];
+        $options = ['headers' => $headers, 'timeout' => 30];
 
-        $response = $method === 'POST' ? $client->post($url, $options) : $client->get($url, $options);
+        if ($body !== null) {
+            $options['headers']['Content-Type'] = 'application/json';
+            $options['body'] = json_encode($body);
+        }
+
+        $response = match ($method) {
+            'POST' => $client->post($url, $options),
+            'DELETE' => $client->delete($url, $options),
+            default => $client->get($url, $options),
+        };
         $decoded = json_decode($response->getBody(), true);
 
         if (!is_array($decoded)) {

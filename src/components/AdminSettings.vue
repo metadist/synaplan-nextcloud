@@ -370,6 +370,175 @@
 				</div>
 			</NcSettingsSection>
 
+			<NcSettingsSection
+				v-if="perUserAccounts"
+				:name="t('synaplan_integration', 'AI Users')">
+				<p class="sp-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'Nextcloud users who have activated AI. Each has their own Synaplan account, knowledge base and usage.',
+						)
+					}}
+				</p>
+
+				<div class="sp-aiusers-toolbar">
+					<NcTextField
+						:value="aiUserSearch"
+						:label="t('synaplan_integration', 'Search name or email')"
+						:label-visible="false"
+						:placeholder="t('synaplan_integration', 'Search name or email')"
+						class="sp-aiusers-search"
+						@update:value="aiUserSearch = $event" />
+					<span
+						role="button"
+						tabindex="0"
+						:style="secondaryBtnStyle"
+						@click="!aiUsersLoading && loadAiUsers()"
+						@keydown.enter="!aiUsersLoading && loadAiUsers()">
+						{{
+							aiUsersLoading
+								? t('synaplan_integration', 'Loading...')
+								: t('synaplan_integration', 'Refresh')
+						}}
+					</span>
+					<span class="sp-hint">{{
+						t('synaplan_integration', '{count} activated', {
+							count: aiUsers.length,
+						})
+					}}</span>
+				</div>
+
+				<p
+					v-if="aiUsers.length === 0 && !aiUsersLoading"
+					class="sp-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'No users have activated AI yet.',
+						)
+					}}
+				</p>
+
+				<p
+					v-else-if="filteredAiUsers.length === 0"
+					class="sp-hint">
+					{{
+						t('synaplan_integration', 'No users match your search.')
+					}}
+				</p>
+
+				<div v-else class="sp-aiusers-list">
+					<div
+						v-for="u in paginatedAiUsers"
+						:key="u.uid"
+						class="sp-aiuser">
+						<div class="sp-aiuser-row">
+							<div class="sp-aiuser-main">
+								<span class="sp-aiuser-name">{{ u.displayName }}</span>
+								<span class="sp-uid">({{ u.uid }})</span>
+							</div>
+							<div class="sp-aiuser-meta">
+								<span v-if="u.email">{{ u.email }}</span>
+								<span>{{ t('synaplan_integration', 'Synaplan ID') }}: {{ u.synaplanUserId ?? '—' }}</span>
+								<span>{{
+									u.hasKey
+										? t('synaplan_integration', 'Key ✓')
+										: t('synaplan_integration', 'No key')
+								}}</span>
+								<span>{{ formatConsentDate(u.consentAt) }}</span>
+							</div>
+							<div class="sp-aiusers-actions">
+								<span
+									role="button"
+									tabindex="0"
+									class="sp-aiusers-link"
+									@click="openDetails(u)"
+									@keydown.enter="openDetails(u)">
+									{{ t('synaplan_integration', 'Details') }}
+								</span>
+								<span
+									role="button"
+									tabindex="0"
+									class="sp-aiusers-link sp-aiusers-danger"
+									@click="deactivateUser(u)"
+									@keydown.enter="deactivateUser(u)">
+									{{ t('synaplan_integration', 'Deactivate') }}
+								</span>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div
+					v-if="aiUsersTotalPages > 1"
+					class="sp-aiusers-pagination">
+					<span
+						role="button"
+						tabindex="0"
+						class="sp-page-btn"
+						:class="{ 'sp-page-disabled': aiUserPage <= 1 }"
+						@click="aiUserPage > 1 && aiUserPage--"
+						@keydown.enter="aiUserPage > 1 && aiUserPage--">
+						‹ {{ t('synaplan_integration', 'Previous') }}
+					</span>
+					<span class="sp-hint">{{ aiUserPage }} / {{ aiUsersTotalPages }}</span>
+					<span
+						role="button"
+						tabindex="0"
+						class="sp-page-btn"
+						:class="{ 'sp-page-disabled': aiUserPage >= aiUsersTotalPages }"
+						@click="aiUserPage < aiUsersTotalPages && aiUserPage++"
+						@keydown.enter="aiUserPage < aiUsersTotalPages && aiUserPage++">
+						{{ t('synaplan_integration', 'Next') }} ›
+					</span>
+				</div>
+			</NcSettingsSection>
+
+			<NcDialog
+				:open="detailUser !== null"
+				:name="detailModalTitle"
+				size="normal"
+				@update:open="onDetailOpenChange">
+				<div v-if="detailUser" class="sp-user-detail">
+					<dl class="sp-detail-grid">
+						<dt>{{ t('synaplan_integration', 'Name') }}</dt>
+						<dd>{{ detailUser.displayName }}</dd>
+						<dt>{{ t('synaplan_integration', 'Username') }}</dt>
+						<dd>{{ detailUser.uid }}</dd>
+						<dt>{{ t('synaplan_integration', 'Email') }}</dt>
+						<dd>{{ detailUser.email || '—' }}</dd>
+						<dt>{{ t('synaplan_integration', 'Synaplan account ID') }}</dt>
+						<dd>{{ detailUser.synaplanUserId ?? '—' }}</dd>
+						<dt>{{ t('synaplan_integration', 'API key') }}</dt>
+						<dd>{{
+							detailUser.hasKey
+								? t('synaplan_integration', 'Issued')
+								: t('synaplan_integration', 'None')
+						}}</dd>
+						<dt>{{ t('synaplan_integration', 'Activated') }}</dt>
+						<dd>{{ formatConsentDate(detailUser.consentAt) }}</dd>
+					</dl>
+
+					<h4 class="sp-detail-heading">
+						{{ t('synaplan_integration', 'Usage') }}
+					</h4>
+					<span v-if="usageLoading[detailUser.uid]" class="sp-hint">{{
+						t('synaplan_integration', 'Loading usage...')
+					}}</span>
+					<ul v-else-if="detailUsageEntries.length" class="sp-usage-list">
+						<li
+							v-for="entry in detailUsageEntries"
+							:key="entry.key">
+							<strong>{{ entry.key }}:</strong> {{ entry.value }}
+						</li>
+					</ul>
+					<span v-else class="sp-hint">{{
+						t('synaplan_integration', 'No usage data available.')
+					}}</span>
+				</div>
+			</NcDialog>
+
 			<NcSettingsSection :name="t('synaplan_integration', 'Quick Links')">
 				<ul class="sp-links">
 					<li v-if="synaplanUrl">
@@ -406,7 +575,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import axios from '@nextcloud/axios'
 import { generateUrl, imagePath } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
@@ -415,6 +584,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+import NcDialog from '@nextcloud/vue/components/NcDialog'
 
 interface LanguageOption {
 	id: string
@@ -453,6 +623,52 @@ const defaultLanguage = ref<LanguageOption>(languageOptions[0])
 const useInterfaceLanguage = ref(true)
 const enableMemories = ref(true)
 const perUserAccounts = ref(false)
+
+interface AiUser {
+	uid: string
+	displayName: string
+	email: string
+	synaplanUserId: number | null
+	hasKey: boolean
+	consentAt: string
+}
+
+const AI_USERS_PER_PAGE = 20
+
+const aiUsers = ref<AiUser[]>([])
+const aiUsersLoading = ref(false)
+const aiUserSearch = ref('')
+const aiUserPage = ref(1)
+const usageLoading = ref<Record<string, boolean>>({})
+const usageData = ref<Record<string, unknown>>({})
+const detailUser = ref<AiUser | null>(null)
+
+const filteredAiUsers = computed(() => {
+	const q = aiUserSearch.value.trim().toLowerCase()
+	if (!q) {
+		return aiUsers.value
+	}
+	return aiUsers.value.filter(
+		(u) =>
+			u.displayName.toLowerCase().includes(q)
+			|| u.email.toLowerCase().includes(q)
+			|| u.uid.toLowerCase().includes(q),
+	)
+})
+
+const aiUsersTotalPages = computed(() =>
+	Math.max(1, Math.ceil(filteredAiUsers.value.length / AI_USERS_PER_PAGE)),
+)
+
+const paginatedAiUsers = computed(() => {
+	const start = (aiUserPage.value - 1) * AI_USERS_PER_PAGE
+	return filteredAiUsers.value.slice(start, start + AI_USERS_PER_PAGE)
+})
+
+// Reset to the first page whenever the search term changes.
+watch(aiUserSearch, () => {
+	aiUserPage.value = 1
+})
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
@@ -598,8 +814,119 @@ async function testConnection() {
 	}
 }
 
-onMounted(() => {
-	loadSettings()
+/**
+ * Load the list of Nextcloud users who have activated AI (per-user mode).
+ */
+async function loadAiUsers() {
+	aiUsersLoading.value = true
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/admin/ai-users`)
+		if (data.success) {
+			aiUsers.value = data.users || []
+		}
+	} catch {
+		showMessage('Failed to load AI users.', 'error')
+	} finally {
+		aiUsersLoading.value = false
+	}
+}
+
+/**
+ * Open the per-user details modal, lazily fetching usage on first open.
+ * @param {AiUser} u The user row
+ */
+async function openDetails(u: AiUser) {
+	detailUser.value = u
+	if (usageData.value[u.uid] === undefined) {
+		usageLoading.value = { ...usageLoading.value, [u.uid]: true }
+		try {
+			const { data } = await axios.get(
+				`${baseUrl}/api/v1/admin/ai-users/${encodeURIComponent(u.uid)}/usage`,
+			)
+			usageData.value = { ...usageData.value, [u.uid]: data }
+		} catch {
+			usageData.value = { ...usageData.value, [u.uid]: {} }
+		} finally {
+			usageLoading.value = { ...usageLoading.value, [u.uid]: false }
+		}
+	}
+}
+
+const detailModalTitle = computed(() =>
+	detailUser.value
+		? t('synaplan_integration', 'AI user: {name}', {
+			name: detailUser.value.displayName,
+		})
+		: '',
+)
+
+const detailUsageEntries = computed(() =>
+	detailUser.value ? usageEntries(detailUser.value.uid) : [],
+)
+
+/**
+ * NcDialog open-state handler — closes the modal when dismissed.
+ * @param {boolean} open New open state
+ */
+function onDetailOpenChange(open: boolean) {
+	if (!open) {
+		detailUser.value = null
+	}
+}
+
+/**
+ * Flatten a user's usage payload into scalar key/value rows for display.
+ * @param {string} uid Nextcloud user id
+ */
+function usageEntries(uid: string): { key: string, value: string }[] {
+	const data = usageData.value[uid] as Record<string, unknown> | undefined
+	const usage = (data?.usage ?? data) as Record<string, unknown> | undefined
+	if (!usage || typeof usage !== 'object') {
+		return []
+	}
+	const out: { key: string, value: string }[] = []
+	for (const [key, value] of Object.entries(usage)) {
+		if (value === null || typeof value === 'object') {
+			continue
+		}
+		out.push({ key, value: String(value) })
+	}
+	return out
+}
+
+/**
+ * Deactivate AI for a user (clears their consent + key on the server).
+ * @param {AiUser} u The user row
+ */
+async function deactivateUser(u: AiUser) {
+	try {
+		await axios.post(
+			`${baseUrl}/api/v1/admin/ai-users/${encodeURIComponent(u.uid)}/deactivate`,
+		)
+		showMessage(`Deactivated AI for ${u.displayName}.`)
+		await loadAiUsers()
+	} catch {
+		showMessage('Failed to deactivate user.', 'error')
+	}
+}
+
+/**
+ * Human-readable activation date.
+ * @param {string} iso ISO timestamp
+ */
+function formatConsentDate(iso: string): string {
+	if (!iso) {
+		return '—'
+	}
+	const d = new Date(iso)
+	return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
+onMounted(async () => {
+	await loadSettings()
+	if (perUserAccounts.value) {
+		loadAiUsers()
+	}
 })
 </script>
 
@@ -724,5 +1051,129 @@ onMounted(() => {
 	background: var(--color-background-hover, rgba(255, 255, 255, 0.1));
 	border-color: var(--color-primary-element, #0082c9);
 	text-decoration: none;
+}
+
+/* AI Users control panel */
+.sp-aiusers-toolbar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin: 8px 0 12px;
+}
+
+.sp-aiusers-search {
+	flex: 1 1 240px;
+	max-width: 360px;
+}
+
+.sp-aiusers-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	margin-top: 12px;
+}
+
+.sp-page-btn {
+	cursor: pointer;
+	color: var(--color-primary-element, #0082c9);
+	font-weight: 500;
+}
+
+.sp-page-disabled {
+	color: var(--color-text-maxcontrast, #8a8a8a);
+	cursor: default;
+	opacity: 0.5;
+}
+
+.sp-aiusers-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 0.9em;
+}
+
+.sp-aiuser {
+	border: 1px solid var(--color-border, rgba(127, 127, 127, 0.2));
+	border-radius: var(--border-radius-large, 8px);
+	padding: 8px 12px;
+}
+
+.sp-aiuser-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 20px;
+}
+
+.sp-aiuser-main {
+	flex: 1 1 180px;
+}
+
+.sp-aiuser-name {
+	font-weight: 600;
+	color: var(--color-main-text, #222);
+}
+
+.sp-aiuser-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 16px;
+	color: var(--color-text-maxcontrast, #6b6b6b);
+}
+
+.sp-uid {
+	color: var(--color-text-maxcontrast, #6b6b6b);
+	font-size: 0.85em;
+}
+
+.sp-aiusers-actions {
+	display: flex;
+	gap: 12px;
+	margin-left: auto;
+}
+
+.sp-aiusers-link {
+	cursor: pointer;
+	color: var(--color-primary-element, #0082c9);
+	font-weight: 500;
+}
+
+.sp-aiusers-danger {
+	color: var(--color-error, #e9322d);
+}
+
+.sp-user-detail {
+	padding: 8px 4px;
+}
+
+.sp-detail-grid {
+	display: grid;
+	grid-template-columns: minmax(120px, auto) 1fr;
+	gap: 6px 16px;
+	margin: 0 0 16px;
+}
+
+.sp-detail-grid dt {
+	color: var(--color-text-maxcontrast, #6b6b6b);
+	font-weight: 600;
+}
+
+.sp-detail-grid dd {
+	margin: 0;
+	color: var(--color-main-text, #222);
+	word-break: break-word;
+}
+
+.sp-detail-heading {
+	margin: 8px 0;
+	font-weight: 600;
+}
+
+.sp-usage-list {
+	margin: 0;
+	padding: 0 0 0 16px;
+	columns: 2;
 }
 </style>

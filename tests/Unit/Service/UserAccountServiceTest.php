@@ -239,4 +239,74 @@ class UserAccountServiceTest extends TestCase
         $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
         $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
     }
+
+    public function testGetSynaplanUserIdForArbitraryUser(): void
+    {
+        $this->userConfig['erin|synaplan_user_id'] = '77';
+
+        $this->assertSame(77, $this->service()->getSynaplanUserId('erin'));
+        $this->assertNull($this->service()->getSynaplanUserId('nobody'));
+    }
+
+    public function testDeactivateUserClearsAllPrefsForThatUser(): void
+    {
+        $this->userConfig['frank|ai_consent'] = '1';
+        $this->userConfig['frank|ai_consent_at'] = '2026-07-09T20:00:00+00:00';
+        $this->userConfig['frank|synaplan_user_api_key'] = 'sk_frank';
+
+        $this->service()->deactivateUser('frank');
+
+        $this->assertArrayNotHasKey('frank|ai_consent', $this->userConfig);
+        $this->assertArrayNotHasKey('frank|ai_consent_at', $this->userConfig);
+        $this->assertArrayNotHasKey('frank|synaplan_user_api_key', $this->userConfig);
+    }
+
+    public function testDeleteRemoteAccountCallsAdminDelete(): void
+    {
+        $this->userConfig['gwen|synaplan_user_id'] = '55';
+
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getBody')->willReturn(json_encode(['success' => true]));
+
+        $captured = '';
+        $this->httpClient->expects($this->once())
+            ->method('delete')
+            ->willReturnCallback(function (string $url, array $options) use (&$captured, $resp): IResponse {
+                $captured = $url . '|' . ($options['headers']['X-API-Key'] ?? '');
+
+                return $resp;
+            });
+
+        $this->service()->deleteRemoteAccount('gwen');
+
+        $this->assertStringEndsWith('/api/v1/admin/users/55|sk_admin_key', $captured);
+    }
+
+    public function testDeleteRemoteAccountNoopWhenNoAccount(): void
+    {
+        $this->httpClient->expects($this->never())->method('delete');
+
+        // No stored synaplan_user_id for this uid.
+        $this->service()->deleteRemoteAccount('nobody');
+    }
+
+    public function testFetchUsageCallsAdminApi(): void
+    {
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getBody')->willReturn(json_encode(['success' => true, 'usage' => ['messages' => 9]]));
+
+        $captured = '';
+        $this->httpClient->method('get')->willReturnCallback(
+            function (string $url, array $options) use (&$captured, $resp): IResponse {
+                $captured = $url . '|' . ($options['headers']['X-API-Key'] ?? '');
+
+                return $resp;
+            }
+        );
+
+        $result = $this->service()->fetchUsage(501);
+
+        $this->assertTrue($result['success']);
+        $this->assertStringEndsWith('/api/v1/admin/users/501/usage|sk_admin_key', $captured);
+    }
 }
