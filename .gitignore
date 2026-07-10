@@ -22,6 +22,7 @@ docker-compose.dev.yml
 *.swo
 .DS_Store
 Thumbs.db
+.local/
 
 # PHP tools
 .php-cs-fixer.cache
