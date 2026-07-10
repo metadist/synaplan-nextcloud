@@ -24,6 +24,15 @@ return [
 		// Client runtime config (language + memory availability) for the chat UI
 		['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],
 
+		// Per-user "Activate AI" consent (per-user mode only)
+		['name' => 'consent#getConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'GET'],
+		['name' => 'consent#setConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'POST'],
+
+		// Admin control panel: activated AI users (admin-only)
+		['name' => 'adminAiUsers#list', 'url' => '/api/v1/admin/ai-users', 'verb' => 'GET'],
+		['name' => 'adminAiUsers#usage', 'url' => '/api/v1/admin/ai-users/{uid}/usage', 'verb' => 'GET'],
+		['name' => 'adminAiUsers#deactivate', 'url' => '/api/v1/admin/ai-users/{uid}/deactivate', 'verb' => 'POST'],
+
 		// Chat API
 		['name' => 'chat#chat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
 		['name' => 'chat#chatStream', 'url' => '/api/v1/chat/stream', 'verb' => 'POST'],

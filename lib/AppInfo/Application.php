@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\AppInfo;
 
+use OCA\SynaplanIntegration\Listener\UserDeletedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
+use OCP\User\Events\BeforeUserDeletedEvent;
 use OCP\Util;
 
 class Application extends App implements IBootstrap
@@ -23,7 +25,9 @@ class Application extends App implements IBootstrap
 
     public function register(IRegistrationContext $context): void
     {
-        // Services and listeners will be registered here as features are added
+        // When a Nextcloud user is deleted, cascade-delete their Synaplan
+        // account (per-user mode) so no orphaned external data remains.
+        $context->registerEventListener(BeforeUserDeletedEvent::class, UserDeletedListener::class);
     }
 
     public function boot(IBootContext $context): void

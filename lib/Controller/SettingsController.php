@@ -68,6 +68,14 @@ class SettingsController extends Controller
                 'enable_memories',
                 '1'
             ) === '1',
+            // Per-user accounts: when on, the configured key is treated as an
+            // ADMIN key and each NC user gets their own provisioned Synaplan
+            // account + per-user key (isolated knowledge base & memories).
+            'per_user_accounts' => $this->config->getAppValue(
+                Application::APP_ID,
+                'per_user_accounts',
+                '0'
+            ) === '1',
         ]);
     }
 
@@ -88,6 +96,7 @@ class SettingsController extends Controller
         ?string $default_language = null,
         ?bool $use_interface_language = null,
         ?bool $enable_memories = null,
+        ?bool $per_user_accounts = null,
     ): JSONResponse {
         // Nextcloud may not extract JSON body params for PUT requests; always
         // re-read the raw body so we can also pick up the language/memory flags
@@ -119,6 +128,9 @@ class SettingsController extends Controller
                 }
                 if ($enable_memories === null && array_key_exists('enable_memories', $decoded)) {
                     $enable_memories = (bool) $decoded['enable_memories'];
+                }
+                if ($per_user_accounts === null && array_key_exists('per_user_accounts', $decoded)) {
+                    $per_user_accounts = (bool) $decoded['per_user_accounts'];
                 }
             }
         }
@@ -172,6 +184,14 @@ class SettingsController extends Controller
                 Application::APP_ID,
                 'enable_memories',
                 $enable_memories ? '1' : '0'
+            );
+        }
+
+        if ($per_user_accounts !== null) {
+            $this->config->setAppValue(
+                Application::APP_ID,
+                'per_user_accounts',
+                $per_user_accounts ? '1' : '0'
             );
         }
 

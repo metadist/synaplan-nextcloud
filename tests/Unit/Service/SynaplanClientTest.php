@@ -6,6 +6,8 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\SynaplanConfig;
+use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -20,6 +22,7 @@ class SynaplanClientTest extends TestCase
     private IClient&MockObject $httpClient;
     private IConfig&MockObject $config;
     private LoggerInterface&MockObject $logger;
+    private UserAccountService&MockObject $userAccounts;
     private SynaplanClient $synaplanClient;
 
     protected function setUp(): void
@@ -29,16 +32,27 @@ class SynaplanClientTest extends TestCase
         $this->config = $this->createMock(IConfig::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
+        // Per-user resolution off by default: returns null so the client falls
+        // back to the install-wide admin key (backward-compatible behaviour).
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+
         $this->clientService->method('newClient')->willReturn($this->httpClient);
         $this->config->method('getAppValue')->willReturnMap([
             [Application::APP_ID, 'synaplan_url', 'http://localhost:8000', 'http://localhost:8000'],
             [Application::APP_ID, 'api_key', '', 'sk_test_key_123'],
         ]);
 
-        $this->synaplanClient = new SynaplanClient(
+        $this->synaplanClient = $this->makeClient($this->config);
+    }
+
+    private function makeClient(IConfig $config): SynaplanClient
+    {
+        return new SynaplanClient(
             $this->clientService,
-            $this->config,
             $this->logger,
+            new SynaplanConfig($config),
+            $this->userAccounts,
         );
     }
 
@@ -172,11 +186,7 @@ class SynaplanClientTest extends TestCase
             [Application::APP_ID, 'api_key', '', 'key'],
         ]);
 
-        $client = new SynaplanClient(
-            $this->clientService,
-            $config,
-            $this->logger,
-        );
+        $client = $this->makeClient($config);
 
         $this->assertSame('http://example.com', $client->getBaseUrl());
     }
@@ -195,7 +205,7 @@ class SynaplanClientTest extends TestCase
             [Application::APP_ID, 'api_key_local', '', 'sk_local_abc'],
         ]);
 
-        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+        $client = $this->makeClient($config);
 
         $this->assertSame('local', $client->getActiveEnv());
         $this->assertSame('http://localhost:8000', $client->getBaseUrl());
@@ -211,7 +221,7 @@ class SynaplanClientTest extends TestCase
             [Application::APP_ID, 'api_key', '', 'sk_live_xyz'],
         ]);
 
-        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+        $client = $this->makeClient($config);
 
         $this->assertSame('live', $client->getActiveEnv());
         $this->assertSame('https://web.synaplan.com', $client->getBaseUrl());
@@ -227,7 +237,7 @@ class SynaplanClientTest extends TestCase
             [Application::APP_ID, 'api_key', '', 'sk_live_xyz'],
         ]);
 
-        $client = new SynaplanClient($this->clientService, $config, $this->logger);
+        $client = $this->makeClient($config);
 
         $this->assertSame('live', $client->getActiveEnv());
         $this->assertSame('https://web.synaplan.com', $client->getBaseUrl());

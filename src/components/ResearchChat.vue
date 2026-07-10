@@ -8,6 +8,12 @@
 				</p>
 			</div>
 
+			<!-- One-time "Activate AI" consent (per-user mode only). Until the
+			     user activates AI, no account is created and sending is blocked. -->
+			<AiConsentGate
+				@blocked-change="onAiBlockedChange"
+				@granted="onConsentGranted" />
+
 			<!-- Controls bar -->
 			<div class="controls-bar">
 				<div class="control-group">
@@ -302,11 +308,11 @@
 				<NcTextField
 					v-model="inputMessage"
 					:placeholder="inputPlaceholder"
-					:disabled="loading"
+					:disabled="loading || aiConsentBlocked"
 					@keydown.enter="sendMessage" />
 				<NcButton
 					type="primary"
-					:disabled="loading || !inputMessage.trim()"
+					:disabled="loading || aiConsentBlocked || !inputMessage.trim()"
 					@click="sendMessage">
 					{{ t('synaplan_integration', 'Send') }}
 				</NcButton>
@@ -326,6 +332,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import AiConsentGate from './AiConsentGate.vue'
 
 interface MediaInfo {
 	url: string
@@ -384,6 +391,10 @@ const languageName = ref('')
 const memoryAvailable = ref(false)
 const useMemories = ref(false)
 const appVersion = ref('')
+
+// True while the user still needs to activate AI (per-user mode). Sending is
+// blocked until then; the AiConsentGate renders the activation prompt.
+const aiConsentBlocked = ref(false)
 
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
@@ -563,6 +574,8 @@ async function scrollToBottom() {
 async function sendMessage() {
 	const text = inputMessage.value.trim()
 	if (!text || loading.value) return
+	// AI not activated yet — the consent gate is showing the activation prompt.
+	if (aiConsentBlocked.value) return
 
 	const { command, prompt } = parseCommand(text)
 
@@ -840,6 +853,20 @@ async function saveMedia(messageIdx: number) {
 	} finally {
 		msg.media.saving = false
 	}
+}
+
+function onAiBlockedChange(value: boolean) {
+	aiConsentBlocked.value = value
+}
+
+/**
+ * The user just activated AI — (re)load the data that needs their now-minted
+ * per-user key so the UI is ready to chat immediately.
+ */
+function onConsentGranted() {
+	loadGroups()
+	loadModels()
+	loadClientConfig()
 }
 
 onMounted(() => {
