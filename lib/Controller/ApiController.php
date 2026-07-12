@@ -260,7 +260,19 @@ class ApiController extends Controller
             // to the basename) so Synaplan can show where this file came from.
             $originalName = $userFolder->getRelativePath($node->getPath()) ?? $filename;
 
-            $result = $this->synaplanClient->uploadFile($filename, $content, $groupKey, 'vectorize', $originalName);
+            // CORE-4: key the knowledge entry on the Nextcloud file id + etag and
+            // always overwrite, so re-adding (or adding a changed) file updates
+            // its entry in place instead of creating a duplicate.
+            $result = $this->synaplanClient->uploadFile(
+                $filename,
+                $content,
+                $groupKey,
+                'vectorize',
+                $originalName,
+                (string) $fileId,
+                $node->getEtag(),
+                true,
+            );
 
             $fileInfo = $result['files'][0] ?? null;
 
@@ -271,6 +283,7 @@ class ApiController extends Controller
                 'chunksCreated' => $fileInfo['chunks_created'] ?? 0,
                 'vectorized' => $fileInfo['vectorized'] ?? false,
                 'extractedTextLength' => $fileInfo['extracted_text_length'] ?? 0,
+                'overwritten' => $fileInfo['overwritten'] ?? false,
             ]);
         } catch (NotFoundException $e) {
             return new JSONResponse(
@@ -279,6 +292,105 @@ class ApiController extends Controller
             );
         } catch (\Exception $e) {
             $this->logger->error('Knowledge upload failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return new JSONResponse(
+                ['success' => false, 'error' => $e->getMessage()],
+                Http::STATUS_INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * Knowledge-base status for a Nextcloud file (CORE-4).
+     *
+     * Reports whether the file is already vectorized, whether it drifted since
+     * (the Nextcloud etag no longer matches what was ingested), and the Synaplan
+     * file id — so the UI can offer Add vs. Update vs. Remove and a "changed"
+     * badge.
+     *
+     * @NoAdminRequired
+     *
+     * @param int $fileId Nextcloud file ID
+     */
+    public function knowledgeStatus(int $fileId): JSONResponse
+    {
+        try {
+            $user = $this->userSession->getUser();
+            if ($user === null) {
+                throw new NotFoundException('Not authenticated');
+            }
+
+            $userFolder = $this->rootFolder->getUserFolder($user->getUID());
+            $node = $userFolder->getFirstNodeById($fileId);
+
+            if ($node === null || !($node instanceof File)) {
+                throw new NotFoundException('File not found');
+            }
+
+            $status = $this->synaplanClient->knowledgeStatus($fileId, $node->getEtag());
+
+            return new JSONResponse([
+                'success' => true,
+                'inKnowledge' => $status['in_knowledge'],
+                'stale' => $status['stale'],
+            ]);
+        } catch (NotFoundException $e) {
+            return new JSONResponse(
+                ['success' => false, 'error' => 'File not found'],
+                Http::STATUS_NOT_FOUND,
+            );
+        } catch (\Exception $e) {
+            // Status is best-effort — the modal still works if it fails, it just
+            // can't pre-detect an existing entry. Never block the user on it.
+            $this->logger->info('Knowledge status check failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return new JSONResponse([
+                'success' => true,
+                'inKnowledge' => false,
+                'stale' => false,
+                'unavailable' => true,
+            ]);
+        }
+    }
+
+    /**
+     * Remove a Nextcloud file from the Synaplan knowledge base (CORE-4).
+     *
+     * @NoAdminRequired
+     *
+     * @param int $fileId Nextcloud file ID
+     */
+    public function removeFromKnowledge(int $fileId): JSONResponse
+    {
+        try {
+            $user = $this->userSession->getUser();
+            if ($user === null) {
+                throw new NotFoundException('Not authenticated');
+            }
+
+            $userFolder = $this->rootFolder->getUserFolder($user->getUID());
+            $node = $userFolder->getFirstNodeById($fileId);
+
+            $etag = ($node instanceof File) ? $node->getEtag() : null;
+            $status = $this->synaplanClient->knowledgeStatus($fileId, $etag);
+            $synaplanFileId = $status['synaplan_file_id'];
+
+            // Already absent — treat as success so the UI settles on "removed".
+            if (!$status['in_knowledge'] || $synaplanFileId === null) {
+                return new JSONResponse(['success' => true, 'removed' => false]);
+            }
+
+            $this->synaplanClient->deleteKnowledgeFile((int) $synaplanFileId);
+
+            return new JSONResponse(['success' => true, 'removed' => true]);
+        } catch (\Exception $e) {
+            $this->logger->error('Remove from knowledge failed: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
             ]);

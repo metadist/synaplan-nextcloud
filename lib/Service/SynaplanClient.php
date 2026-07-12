@@ -263,6 +263,57 @@ class SynaplanClient
     }
 
     /**
+     * Bulk-check which Nextcloud-sourced files drifted (CORE-4).
+     *
+     * @param array<int, array{source_id: string, source_etag?: string|null}> $items
+     * @return array{success?: bool, results?: array<int, array{source_id: string, status: string, file_id: int|null, stored_etag: string|null}>, counts?: array<string, int>}
+     * @throws \Exception on API error
+     */
+    public function checkStale(array $items, string $source = 'nextcloud'): array
+    {
+        return $this->request('POST', '/api/v1/files/check-stale', [
+            'source' => $source,
+            'items' => array_values($items),
+        ]);
+    }
+
+    /**
+     * Knowledge-base status for a single Nextcloud file, derived from CORE-4's
+     * check-stale: whether it is already vectorized, whether it drifted since,
+     * and the Synaplan file id (needed to remove it).
+     *
+     * @return array{in_knowledge: bool, stale: bool, synaplan_file_id: int|null}
+     */
+    public function knowledgeStatus(int $ncFileId, ?string $etag): array
+    {
+        $result = $this->checkStale([[
+            'source_id' => (string) $ncFileId,
+            'source_etag' => $etag,
+        ]]);
+
+        $row = $result['results'][0] ?? null;
+        $status = is_array($row) ? (string) ($row['status'] ?? 'missing') : 'missing';
+
+        return [
+            'in_knowledge' => $status !== 'missing',
+            'stale' => $status === 'stale',
+            'synaplan_file_id' => is_array($row) ? ($row['file_id'] ?? null) : null,
+        ];
+    }
+
+    /**
+     * Delete a knowledge file (and its vectors) by Synaplan file id (CORE-4
+     * "remove from knowledge").
+     *
+     * @return array<string, mixed>
+     * @throws \Exception on API error
+     */
+    public function deleteKnowledgeFile(int $synaplanFileId): array
+    {
+        return $this->request('DELETE', '/api/v1/files/' . $synaplanFileId);
+    }
+
+    /**
      * Upload a file to the Synaplan knowledge base.
      *
      * @param string      $filename     Original filename
@@ -271,6 +322,13 @@ class SynaplanClient
      * @param string      $processLevel store|extract|vectorize|full
      * @param string|null $originalName Source-side name (e.g. Nextcloud path/basename),
      *                                  preserved as provenance. Defaults to $filename.
+     * @param string|null $sourceId     Stable external id (the Nextcloud file id) so the
+     *                                  same file can be overwritten in place and tracked
+     *                                  for staleness (CORE-4). Null for one-off uploads.
+     * @param string|null $sourceEtag   Nextcloud etag captured at upload; a later change
+     *                                  marks the knowledge copy stale (CORE-4).
+     * @param bool        $overwrite    Replace the existing knowledge file for this
+     *                                  (source, source_id) instead of creating a duplicate.
      * @return array<string, mixed>
      * @throws \Exception on API error
      */
@@ -280,6 +338,9 @@ class SynaplanClient
         string $groupKey,
         string $processLevel = 'vectorize',
         ?string $originalName = null,
+        ?string $sourceId = null,
+        ?string $sourceEtag = null,
+        bool $overwrite = false,
     ): array {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . '/api/v1/files/upload';
@@ -309,6 +370,19 @@ class SynaplanClient
                 'contents' => $originalName ?? $filename,
             ],
         ];
+
+        // Knowledge-file lifecycle (CORE-4): external identity + overwrite so a
+        // re-added or changed Nextcloud file updates its knowledge entry in place
+        // instead of piling up duplicates.
+        if ($sourceId !== null && $sourceId !== '') {
+            $multipart[] = ['name' => 'source_id', 'contents' => $sourceId];
+        }
+        if ($sourceEtag !== null && $sourceEtag !== '') {
+            $multipart[] = ['name' => 'source_etag', 'contents' => $sourceEtag];
+        }
+        if ($overwrite) {
+            $multipart[] = ['name' => 'overwrite', 'contents' => '1'];
+        }
 
         $options = [
             'headers' => [

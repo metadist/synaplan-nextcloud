@@ -16,8 +16,10 @@ return [
 		['name' => 'api#summarize', 'url' => '/api/v1/summarize/{fileId}', 'verb' => 'POST'],
 		['name' => 'api#translate', 'url' => '/api/v1/translate/{fileId}', 'verb' => 'POST'],
 
-		// Knowledge (file upload + vectorization)
+		// Knowledge (file upload + vectorization + lifecycle)
 		['name' => 'api#uploadToKnowledge', 'url' => '/api/v1/knowledge/upload/{fileId}', 'verb' => 'POST'],
+		['name' => 'api#knowledgeStatus', 'url' => '/api/v1/knowledge/status/{fileId}', 'verb' => 'GET'],
+		['name' => 'api#removeFromKnowledge', 'url' => '/api/v1/knowledge/{fileId}', 'verb' => 'DELETE'],
 		['name' => 'api#getGroups', 'url' => '/api/v1/knowledge/groups', 'verb' => 'GET'],
 		['name' => 'api#getModels', 'url' => '/api/v1/knowledge/models', 'verb' => 'GET'],
 

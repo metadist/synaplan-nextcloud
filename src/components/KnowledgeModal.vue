@@ -88,7 +88,15 @@
 				</div>
 				<p class="success-text">
 					{{
-						t('synaplan_integration', 'File added to AI Knowledge Base')
+						wasUpdate
+							? t(
+								'synaplan_integration',
+								'File updated in AI Knowledge Base',
+							)
+							: t(
+								'synaplan_integration',
+								'File added to AI Knowledge Base',
+							)
 					}}
 				</p>
 				<div class="success-details">
@@ -116,16 +124,66 @@
 				</div>
 			</div>
 
+			<!-- Status: Removed -->
+			<div v-else-if="removed" class="success-state">
+				<div class="success-icon-wrapper">
+					<svg
+						class="success-checkmark"
+						width="56"
+						height="56"
+						viewBox="0 0 52 52"
+						xmlns="http://www.w3.org/2000/svg">
+						<circle
+							cx="26"
+							cy="26"
+							r="25"
+							fill="none"
+							stroke="#22cc55"
+							stroke-width="2" />
+						<path
+							fill="none"
+							stroke="#22cc55"
+							stroke-width="3"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+					</svg>
+				</div>
+				<p class="success-text">
+					{{
+						t(
+							'synaplan_integration',
+							'File removed from AI Knowledge Base',
+						)
+					}}
+				</p>
+			</div>
+
 			<!-- Status: Form -->
 			<div v-else>
 				<p class="description">
 					{{
-						t(
-							'synaplan_integration',
-							'Upload this file to the Synaplan knowledge base for AI-powered search and chat.',
-						)
+						inKnowledge
+							? t(
+								'synaplan_integration',
+								'This file is already in your AI knowledge base. Updating re-indexes the latest version.',
+							)
+							: t(
+								'synaplan_integration',
+								'Upload this file to the Synaplan knowledge base for AI-powered search and chat.',
+							)
 					}}
 				</p>
+
+				<!-- Stale: the Nextcloud file changed since it was indexed -->
+				<NcNoteCard v-if="isStale" type="warning">
+					{{
+						t(
+							'synaplan_integration',
+							'This file changed in Nextcloud since it was indexed. Update to refresh the AI knowledge.',
+						)
+					}}
+				</NcNoteCard>
 
 				<!-- Group selection -->
 				<div class="field">
@@ -161,18 +219,35 @@
 		</div>
 
 		<template #actions>
-			<NcButton v-if="uploadSuccess" type="primary" @click="onClose">
+			<NcButton
+				v-if="uploadSuccess || removed"
+				type="primary"
+				@click="onClose">
 				{{ t('synaplan_integration', 'Done') }}
 			</NcButton>
 			<template v-else>
-				<NcButton type="tertiary" :disabled="loading" @click="onClose">
+				<NcButton
+					type="tertiary"
+					:disabled="loading || removing"
+					@click="onClose">
 					{{ t('synaplan_integration', 'Cancel') }}
 				</NcButton>
 				<NcButton
+					v-if="inKnowledge"
+					type="error"
+					:disabled="loading || removing"
+					@click="removeFromKnowledge">
+					{{ t('synaplan_integration', 'Remove from Knowledge') }}
+				</NcButton>
+				<NcButton
 					type="primary"
-					:disabled="loading || !selectedGroup"
+					:disabled="loading || removing || !selectedGroup"
 					@click="uploadFile">
-					{{ t('synaplan_integration', 'Add to Knowledge') }}
+					{{
+						inKnowledge
+							? t('synaplan_integration', 'Update in Knowledge')
+							: t('synaplan_integration', 'Add to Knowledge')
+					}}
 				</NcButton>
 			</template>
 		</template>
@@ -209,6 +284,12 @@ const uploadSuccess = ref(false)
 const chunksCreated = ref(0)
 const extractedLength = ref(0)
 const elapsedSeconds = ref(0)
+// CORE-4 lifecycle state
+const inKnowledge = ref(false)
+const isStale = ref(false)
+const wasUpdate = ref(false)
+const removing = ref(false)
+const removed = ref(false)
 let timerInterval: ReturnType<typeof setInterval> | null = null
 
 const formattedElapsed = computed(() => {
@@ -287,6 +368,54 @@ async function loadGroups() {
 }
 
 /**
+ * Load whether this file is already in the knowledge base and, if so, whether
+ * it changed in Nextcloud since (CORE-4). Best-effort — failures leave the
+ * modal in plain "Add" mode.
+ */
+async function loadStatus() {
+	try {
+		const { data } = await axios.get(
+			`${baseUrl}/api/v1/knowledge/status/${props.fileId}`,
+		)
+		if (data.success) {
+			inKnowledge.value = Boolean(data.inKnowledge)
+			isStale.value = Boolean(data.stale)
+		}
+	} catch {
+		// Status is optional — fall back to plain Add mode.
+	}
+}
+
+/**
+ * Remove this file from the knowledge base (CORE-4).
+ */
+async function removeFromKnowledge() {
+	if (removing.value || loading.value) return
+
+	removing.value = true
+	error.value = ''
+	try {
+		const { data } = await axios.delete(
+			`${baseUrl}/api/v1/knowledge/${props.fileId}`,
+		)
+		if (data.success) {
+			removed.value = true
+			inKnowledge.value = false
+			isStale.value = false
+		} else {
+			error.value =
+				data.error || t('synaplan_integration', 'Remove failed')
+		}
+	} catch (err: unknown) {
+		error.value = isAxiosError(err)
+			? err.response?.data?.error || err.message
+			: t('synaplan_integration', 'Unknown error')
+	} finally {
+		removing.value = false
+	}
+}
+
+/**
  * Handle new tag creation in NcSelect.
  *
  * @param {string} tag The new tag string entered by the user
@@ -318,6 +447,7 @@ async function uploadFile() {
 		const created = data.chunksCreated || 0
 		if (data.success && created > 0) {
 			uploadSuccess.value = true
+			wasUpdate.value = Boolean(data.overwritten)
 			chunksCreated.value = created
 			extractedLength.value = data.extractedTextLength || 0
 		} else if (data.success) {
@@ -345,13 +475,14 @@ async function uploadFile() {
  */
 function onClose() {
 	opened.value = false
-	emit('close', uploadSuccess.value ? true : null)
+	emit('close', uploadSuccess.value || removed.value ? true : null)
 }
 
 const dialogTitle = t('synaplan_integration', 'Add to AI Knowledge')
 
 onMounted(() => {
 	loadGroups()
+	loadStatus()
 })
 </script>
 
