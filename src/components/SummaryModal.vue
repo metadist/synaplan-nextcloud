@@ -85,6 +85,7 @@ import { ref, computed, onMounted } from 'vue'
 import axios, { isAxiosError } from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { showError } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
@@ -185,11 +186,13 @@ async function doSummarize() {
 		} else {
 			error.value =
 				data.error || t('synaplan_integration', 'Summarization failed')
+			showError(error.value)
 		}
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
 			? err.response?.data?.error || err.message
-			: 'Unknown error'
+			: t('synaplan_integration', 'Unknown error')
+		showError(error.value)
 	} finally {
 		loading.value = false
 	}

@@ -284,6 +284,9 @@ class ApiController extends Controller
                 'vectorized' => $fileInfo['vectorized'] ?? false,
                 'extractedTextLength' => $fileInfo['extracted_text_length'] ?? 0,
                 'overwritten' => $fileInfo['overwritten'] ?? false,
+                // Pass the server's reason through (e.g. storage quota, rate
+                // limit) so the dialog shows why an upload produced no file.
+                'error' => $result['errors'][0]['error'] ?? ($result['error'] ?? null),
             ]);
         } catch (NotFoundException $e) {
             return new JSONResponse(
@@ -545,8 +548,14 @@ class ApiController extends Controller
 
             $fileInfo = $uploadResult['files'][0] ?? null;
             if ($fileInfo === null) {
+                // Surface the server's actual reason (storage quota, rate limit,
+                // unsupported type, …) instead of a generic failure, so the user
+                // can act on it (e.g. free space / upgrade the Synaplan plan).
+                $detail = $uploadResult['errors'][0]['error']
+                    ?? ($uploadResult['error'] ?? '');
                 throw new \RuntimeException(
-                    'Upload to Synaplan failed for ' . $node->getName(),
+                    'Upload to Synaplan failed for ' . $node->getName()
+                    . ('' !== $detail ? ': ' . $detail : ''),
                 );
             }
 

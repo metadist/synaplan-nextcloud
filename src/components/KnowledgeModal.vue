@@ -259,6 +259,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios, { isAxiosError } from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { showError } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
@@ -404,11 +405,13 @@ async function removeFromKnowledge() {
 			isStale.value = false
 		} else {
 			error.value = data.error || t('synaplan_integration', 'Remove failed')
+			showError(error.value)
 		}
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
 			? err.response?.data?.error || err.message
 			: t('synaplan_integration', 'Unknown error')
+		showError(error.value)
 	} finally {
 		removing.value = false
 	}
@@ -456,13 +459,16 @@ async function uploadFile() {
 				'synaplan_integration',
 				'No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.',
 			)
+			showError(error.value)
 		} else {
 			error.value = data.error || t('synaplan_integration', 'Upload failed')
+			showError(error.value)
 		}
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
 			? err.response?.data?.error || err.message
 			: t('synaplan_integration', 'Unknown error')
+		showError(error.value)
 	} finally {
 		stopTimer()
 		loading.value = false
