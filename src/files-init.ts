@@ -3,6 +3,7 @@ import type { IFileAction } from '@nextcloud/files'
 import { summarizeAction } from './files_actions/summarizeAction'
 import { translateAction } from './files_actions/translateAction'
 import { chatAction } from './files_actions/chatAction'
+import { chatFileAction } from './files_actions/chatFileAction'
 import { injectModalStyles } from './styles/modal-fix'
 
 /**
@@ -31,6 +32,7 @@ injectFormStyles()
 registerAction(summarizeAction)
 registerAction(translateAction)
 registerAction(chatAction)
+registerAction(chatFileAction)
 
 /**
  *
