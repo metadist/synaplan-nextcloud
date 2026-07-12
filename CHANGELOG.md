@@ -6,6 +6,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.5.0 – 2026-07-12
+
+Knowledge-file lifecycle + per-file chat, built on Synaplan's file-lifecycle
+API (CORE-4).
+
+### Added
+- **Chat about this file** — a new Files action opens a focused AI chat about a
+  single file (text / JSON / XML), wiring up the previously unused per-file chat
+  modal.
+- **Update / Remove in Knowledge** — the "Add to AI Knowledge" dialog now
+  detects when a file is already indexed and switches to **Update in Knowledge**
+  (re-index in place, no duplicates) and offers **Remove from Knowledge**.
+- **"Changed since indexed" indicator** — the dialog shows a warning when the
+  Nextcloud file was modified after it was last indexed, with one-click update.
+
+### Changed
+- Knowledge uploads now send the Nextcloud **file id** (`source_id`) and
+  **etag** (`source_etag`) and use overwrite-by-source, so re-adding a file (or
+  adding a changed one) updates its knowledge entry in place instead of creating
+  a duplicate.
+
+### Requires
+- For the update/stale/remove features: a Synaplan backend with the
+  knowledge-file lifecycle API (`source_id` / `source_etag` / `overwrite`,
+  `check-stale`, `mark-stale`). Against older backends the dialog degrades to
+  plain "Add to Knowledge".
+
 ## 1.4.0 – 2026-06-28
 
 ### Added

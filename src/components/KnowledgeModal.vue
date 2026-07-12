@@ -90,13 +90,13 @@
 					{{
 						wasUpdate
 							? t(
-								'synaplan_integration',
-								'File updated in AI Knowledge Base',
-							)
+									'synaplan_integration',
+									'File updated in AI Knowledge Base',
+								)
 							: t(
-								'synaplan_integration',
-								'File added to AI Knowledge Base',
-							)
+									'synaplan_integration',
+									'File added to AI Knowledge Base',
+								)
 					}}
 				</p>
 				<div class="success-details">
@@ -165,13 +165,13 @@
 					{{
 						inKnowledge
 							? t(
-								'synaplan_integration',
-								'This file is already in your AI knowledge base. Updating re-indexes the latest version.',
-							)
+									'synaplan_integration',
+									'This file is already in your AI knowledge base. Updating re-indexes the latest version.',
+								)
 							: t(
-								'synaplan_integration',
-								'Upload this file to the Synaplan knowledge base for AI-powered search and chat.',
-							)
+									'synaplan_integration',
+									'Upload this file to the Synaplan knowledge base for AI-powered search and chat.',
+								)
 					}}
 				</p>
 
@@ -403,8 +403,7 @@ async function removeFromKnowledge() {
 			inKnowledge.value = false
 			isStale.value = false
 		} else {
-			error.value =
-				data.error || t('synaplan_integration', 'Remove failed')
+			error.value = data.error || t('synaplan_integration', 'Remove failed')
 		}
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
