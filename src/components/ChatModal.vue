@@ -140,7 +140,7 @@ async function sendMessage() {
 	} catch (err: unknown) {
 		error.value = isAxiosError(err)
 			? err.response?.data?.error || err.message
-			: 'Unknown error'
+			: t('synaplan_integration', 'Unknown error')
 	} finally {
 		loading.value = false
 		await scrollToBottom()

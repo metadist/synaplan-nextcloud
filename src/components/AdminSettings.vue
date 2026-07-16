@@ -747,7 +747,7 @@ async function loadSettings() {
 		enableMemories.value = data.enable_memories !== false
 		perUserAccounts.value = data.per_user_accounts === true
 	} catch {
-		showMessage('Failed to load settings.', 'error')
+		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
 }
 
@@ -777,10 +777,10 @@ async function save() {
 			apiKeyLocalSet.value = true
 			apiKeyLocal.value = ''
 		}
-		showMessage('Settings saved successfully.')
+		showMessage(t('synaplan_integration', 'Settings saved successfully.'))
 		await loadSettings()
 	} catch {
-		showMessage('Failed to save settings.', 'error')
+		showMessage(t('synaplan_integration', 'Failed to save settings.'), 'error')
 	} finally {
 		saving.value = false
 	}
@@ -799,16 +799,38 @@ async function testConnection() {
 				.filter(([, v]) => v)
 				.map(([k]) => k)
 				.join(', ')
-			showMessage(
-				`Connection successful! Status: ${data.status}.`
-					+ (providers ? ` Active providers: ${providers}.` : ''),
+			let msg = t(
+				'synaplan_integration',
+				'Connection successful! Status: {status}.',
+				{ status: data.status },
 			)
+			if (providers) {
+				msg = t(
+					'synaplan_integration',
+					'Connection successful! Status: {status}. Active providers: {providers}.',
+					{ status: data.status, providers },
+				)
+			}
+			showMessage(msg)
 		} else {
-			showMessage(`Connection failed: ${data.error}`, 'error')
+			showMessage(
+				t('synaplan_integration', 'Connection failed: {error}', {
+					error: data.error,
+				}),
+				'error',
+			)
 		}
 	} catch (err: unknown) {
-		const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-		showMessage(`Connection test failed: ${errorMsg}`, 'error')
+		let errorMsg = t('synaplan_integration', 'Unknown error')
+		if (err instanceof Error) {
+			errorMsg = err.message
+		}
+		showMessage(
+			t('synaplan_integration', 'Connection test failed: {error}', {
+				error: errorMsg,
+			}),
+			'error',
+		)
 	} finally {
 		testing.value = false
 	}
@@ -825,7 +847,7 @@ async function loadAiUsers() {
 			aiUsers.value = data.users || []
 		}
 	} catch {
-		showMessage('Failed to load AI users.', 'error')
+		showMessage(t('synaplan_integration', 'Failed to load AI users.'), 'error')
 	} finally {
 		aiUsersLoading.value = false
 	}
@@ -903,10 +925,14 @@ async function deactivateUser(u: AiUser) {
 		await axios.post(
 			`${baseUrl}/api/v1/admin/ai-users/${encodeURIComponent(u.uid)}/deactivate`,
 		)
-		showMessage(`Deactivated AI for ${u.displayName}.`)
+		showMessage(
+			t('synaplan_integration', 'Deactivated AI for {name}.', {
+				name: u.displayName,
+			}),
+		)
 		await loadAiUsers()
 	} catch {
-		showMessage('Failed to deactivate user.', 'error')
+		showMessage(t('synaplan_integration', 'Failed to deactivate user.'), 'error')
 	}
 }
 
