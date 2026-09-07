@@ -1,0 +1,51 @@
+# Local Nextcloud for Synaplan Integration development (WSL).
+#
+# Prerequisites: the Synaplan stack is already up in /wwwroot/synaplan
+# (`docker compose up -d`) so the external network synaplan_synaplan-network exists.
+#
+#   cp docker-compose.dev.yml.example docker-compose.dev.yml
+#   make dev-up
+#
+# UI: http://localhost:8081  —  admin / admin
+# From this container, Synaplan is http://backend (mapped as localhost:8000 on the host).
+#
+# The app is mounted at /mnt/synaplan_integration and symlinked into custom_apps
+# after first-run install. Do not bind-mount onto custom_apps/ directly — that
+# makes /var/www/html look non-empty and the official image skips copying files.
+
+services:
+  nextcloud:
+    image: nextcloud:31-apache
+    container_name: synaplan-nextcloud-dev
+    hostname: nextcloud
+    ports:
+      - "8081:80"
+    environment:
+      SQLITE_DATABASE: nextcloud
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: admin
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost nextcloud 127.0.0.1
+      OVERWRITEHOST: localhost:8081
+      OVERWRITEPROTOCOL: http
+      OVERWRITECLIURL: http://localhost:8081
+    volumes:
+      - nextcloud_data:/var/www/html
+      - ./:/mnt/synaplan_integration
+      - ./docker/dev-hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    restart: unless-stopped
+    networks:
+      - synaplan-network
+
+networks:
+  synaplan-network:
+    external: true
+    name: synaplan_synaplan-network
+
+volumes:
+  nextcloud_data:

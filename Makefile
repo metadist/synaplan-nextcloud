@@ -1,4 +1,4 @@
-.PHONY: lint lint-php lint-js format format-check lint-fix test test-php build dev clean package sign appstore help
+.PHONY: lint lint-php lint-js format format-check lint-fix test test-php build dev clean package sign appstore dev-up dev-down help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
@@ -82,6 +82,28 @@ appstore: sign ## Build, sign, and prepare for App Store upload
 	@echo "2. Go to https://apps.nextcloud.com/developer/apps/releases/new"
 	@echo "3. Paste the download URL and signature above"
 	@echo ""
+
+## Local Synaplan stack (WSL)
+
+COMPOSE_DEV := docker compose -f docker-compose.dev.yml
+
+dev-up: ## Start local Nextcloud on :8081 (joins the Synaplan Docker network)
+	@test -f docker-compose.dev.yml || cp docker-compose.dev.yml.example docker-compose.dev.yml
+	$(COMPOSE_DEV) up -d
+	@echo "Waiting for Nextcloud to finish first-run install…"
+	@for i in $$(seq 1 90); do \
+		if $(COMPOSE_DEV) exec -T -u www-data nextcloud php occ status >/dev/null 2>&1; then \
+			break; \
+		fi; \
+		sleep 2; \
+	done
+	$(COMPOSE_DEV) exec -T -u www-data nextcloud php occ app:enable synaplan_integration
+	@echo ""
+	@echo "Nextcloud:  http://localhost:8081  (admin / admin)"
+	@echo "Synaplan:   http://localhost:8000  (from the NC container: http://backend)"
+
+dev-down: ## Stop local Nextcloud (keeps the data volume)
+	$(COMPOSE_DEV) down
 
 ## Help
 

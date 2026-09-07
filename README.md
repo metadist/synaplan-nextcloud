@@ -104,6 +104,24 @@ make help                 # Show all available commands
 npm run dev               # Watch mode (auto-rebuild on changes)
 ```
 
+### Local Nextcloud next to Synaplan (WSL)
+
+`docker-compose.dev.yml` is gitignored. Copy the example and start it while
+the Synaplan stack is already up (`docker compose up -d` in `/wwwroot/synaplan`):
+
+```bash
+cp docker-compose.dev.yml.example docker-compose.dev.yml
+make dev-up
+```
+
+- Nextcloud: http://localhost:8081 — admin / admin
+- The container hostname is `nextcloud` on `synaplan_synaplan-network`
+- The Synaplan Integration app is mounted from this repo and enabled on first ready
+- From the Nextcloud container, Synaplan is `http://backend` (host browser: http://localhost:8000)
+- S2 `link` mode is not in this app yet; shared / provision modes work today
+
+`make dev-down` stops the container. Data lives in the `nextcloud_data` volume.
+
 ## Release
 
 ```bash
