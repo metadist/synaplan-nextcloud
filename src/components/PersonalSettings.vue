@@ -17,27 +17,17 @@
 			</p>
 
 			<template v-else>
-				<p v-if="connectedLabel" class="sp-status-line">
-					{{ connectedLabel }}
-				</p>
-				<p v-else-if="modeHint" class="sp-status-line">
-					{{ modeHint }}
-				</p>
-				<p v-else class="sp-status-line">
-					{{ t('synaplan_integration', 'Not connected') }}
-				</p>
-
-				<div v-if="canConnect || linked" class="sp-actions">
-					<a v-if="canConnect" class="sp-btn-primary" :href="startUrl">
-						{{ t('synaplan_integration', 'Connect Synaplan') }}
-					</a>
+				<div v-if="isLinked" class="sp-connected-row">
+					<p class="sp-status-line">
+						{{ connectedLabel }}
+					</p>
 					<span
-						v-else-if="linked"
 						role="button"
 						tabindex="0"
 						class="sp-btn-danger"
 						@click="!busy && disconnect()"
-						@keydown.enter="!busy && disconnect()">
+						@keydown.enter="!busy && disconnect()"
+						@keydown.space.prevent="!busy && disconnect()">
 						{{
 							busy
 								? t('synaplan_integration', 'Disconnecting…')
@@ -45,6 +35,19 @@
 						}}
 					</span>
 				</div>
+				<template v-else>
+					<p v-if="modeHint" class="sp-status-line">
+						{{ modeHint }}
+					</p>
+					<p v-else class="sp-status-line">
+						{{ t('synaplan_integration', 'Not connected') }}
+					</p>
+					<div v-if="canConnect" class="sp-actions">
+						<a class="sp-btn-primary" :href="startUrl">
+							{{ t('synaplan_integration', 'Connect Synaplan') }}
+						</a>
+					</div>
+				</template>
 			</template>
 		</NcSettingsSection>
 	</div>
@@ -74,22 +77,17 @@ const status = ref<LinkStatus>({})
 const banner = ref('')
 const bannerType = ref<'success' | 'error' | 'warning'>('success')
 
-const linked = computed(
-	() =>
-		!!status.value.linked
-		|| status.value.kind === 'linked'
-		|| status.value.kind === 'provisioned',
-)
+const isLinked = computed(() => status.value.kind === 'linked')
 
 const canConnect = computed(
 	() =>
 		status.value.mode === 'link'
-		&& !linked.value
+		&& !isLinked.value
 		&& !!status.value.link_available,
 )
 
 const modeHint = computed(() => {
-	if (linked.value) {
+	if (isLinked.value) {
 		return ''
 	}
 	if (status.value.mode === 'shared') {
@@ -115,7 +113,7 @@ const modeHint = computed(() => {
 
 const connectedLabel = computed(() => {
 	const row = status.value.linked
-	if (!row && !linked.value) {
+	if (!isLinked.value) {
 		return ''
 	}
 	const email = row?.email || ''
@@ -236,6 +234,18 @@ onMounted(async () => {
 
 .sp-hint {
 	color: var(--color-text-maxcontrast, #767676);
+}
+
+.sp-connected-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.sp-connected-row .sp-status-line {
+	margin: 0;
 }
 
 .sp-actions {

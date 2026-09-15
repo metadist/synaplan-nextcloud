@@ -54,11 +54,10 @@ class ConsentController extends Controller
      *
      * @NoAdminRequired
      */
-    public function setConsent(bool $granted = false): JSONResponse
+    public function setConsent(bool $granted = false, bool $createAccount = false): JSONResponse
     {
         // Nextcloud does not always bind a JSON body to typed params; re-read
         // the raw body as a fallback so a `{ "granted": true }` payload works.
-        $createAccount = false;
         $body = file_get_contents('php://input');
         if ($body !== false && $body !== '') {
             $decoded = json_decode($body, true);
@@ -71,7 +70,6 @@ class ConsentController extends Controller
         }
 
         if ($granted) {
-            $this->userAccounts->grantConsent();
             if ($createAccount && $this->synaplanConfig?->isAutoProvisionEnabled()) {
                 $user = $this->userSession?->getUser();
                 if ($user instanceof IUser) {
@@ -92,9 +90,15 @@ class ConsentController extends Controller
                             'success' => false,
                             'error' => $e->getMessage(),
                         ]);
+                    } catch (\Throwable $e) {
+                        return new JSONResponse([
+                            'success' => false,
+                            'error' => $e->getMessage(),
+                        ], 500);
                     }
                 }
             }
+            $this->userAccounts->grantConsent();
         } else {
             $this->userAccounts->revokeConsent();
         }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -143,5 +144,28 @@ class PlatformLinkServiceTest extends TestCase
         $this->userAccounts->expects($this->once())->method('deactivateUser')->with('jdoe');
 
         $this->service()->disconnect($user);
+    }
+
+    public function testDisconnectKeepsUserWhenRevokeFails(): void
+    {
+        $user = $this->createMock(IUser::class);
+        $user->method('getUID')->willReturn('jdoe');
+        $this->userAccounts->method('getStoredApiKeyId')->with('jdoe')->willReturn('44');
+        $this->userAccounts->method('getStoredApiKey')->with('jdoe')->willReturn('sk_user');
+        $this->httpClient->method('delete')->willThrowException(new \RuntimeException('HTTP 500'));
+        $this->userAccounts->expects($this->never())->method('deactivateUser');
+
+        $this->expectException(PlatformLinkException::class);
+        $this->service()->disconnect($user);
+    }
+
+    public function testDisconnectUidClearsEvenWhenRevokeFails(): void
+    {
+        $this->userAccounts->method('getStoredApiKeyId')->with('jdoe')->willReturn('44');
+        $this->userAccounts->method('getStoredApiKey')->with('jdoe')->willReturn('sk_user');
+        $this->httpClient->method('delete')->willThrowException(new \RuntimeException('HTTP 500'));
+        $this->userAccounts->expects($this->once())->method('deactivateUser')->with('jdoe');
+
+        $this->service()->disconnectUid('jdoe');
     }
 }

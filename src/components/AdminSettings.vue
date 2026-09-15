@@ -469,7 +469,8 @@
 						tabindex="0"
 						:style="primaryBtnStyle"
 						@click="!registering && registerInstance()"
-						@keydown.enter="!registering && registerInstance()">
+						@keydown.enter="!registering && registerInstance()"
+						@keydown.space.prevent="!registering && registerInstance()">
 						{{
 							registering
 								? t('synaplan_integration', 'Registering…')
@@ -482,7 +483,8 @@
 						tabindex="0"
 						:style="secondaryBtnStyle"
 						@click="!registering && forgetInstance()"
-						@keydown.enter="!registering && forgetInstance()">
+						@keydown.enter="!registering && forgetInstance()"
+						@keydown.space.prevent="!registering && forgetInstance()">
 						{{ t('synaplan_integration', 'Forget registration') }}
 					</span>
 				</div>

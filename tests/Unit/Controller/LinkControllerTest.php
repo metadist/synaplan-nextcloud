@@ -80,10 +80,11 @@ class LinkControllerTest extends TestCase
         return $user;
     }
 
-    private function primeState(string $state, int $ageSeconds = 0): void
+    private function primeState(string $state, int $ageSeconds = 0, string $uid = 'jdoe'): void
     {
         $this->sessionStore['synaplan_link_state'] = $state;
         $this->sessionStore['synaplan_link_state_at'] = time() - $ageSeconds;
+        $this->sessionStore['synaplan_link_uid'] = $uid;
     }
 
     public function testCallbackNeverCallsAdminUsersApi(): void
@@ -143,6 +144,24 @@ class LinkControllerTest extends TestCase
         $this->assertArrayNotHasKey('synaplan_link_state', $this->sessionStore);
     }
 
+    public function testCallbackRejectsUidMismatch(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user('bob'));
+        $this->primeState('abc123', 0, 'alice');
+        $this->request->method('getParam')->willReturnMap([
+            ['code', '', 'c'],
+            ['state', '', 'abc123'],
+        ]);
+        $this->platformLinks->expects($this->never())->method('exchange');
+        $this->userAccounts->expects($this->never())->method('storeLinkedAccount');
+
+        $response = $this->controller()->callback();
+
+        $this->assertStringContainsString('link_error=state', $response->getRedirectURL());
+        $this->assertArrayNotHasKey('synaplan_link_state', $this->sessionStore);
+        $this->assertArrayNotHasKey('synaplan_link_uid', $this->sessionStore);
+    }
+
     public function testCallbackRejectsStaleState(): void
     {
         $this->userSession->method('getUser')->willReturn($this->user());
@@ -185,6 +204,20 @@ class LinkControllerTest extends TestCase
         $response = $this->controller()->disconnect();
 
         $this->assertTrue($response->getData()['success']);
+    }
+
+    public function testDisconnectKeepsLinkWhenRevokeFails(): void
+    {
+        $user = $this->user();
+        $this->userSession->method('getUser')->willReturn($user);
+        $this->platformLinks->expects($this->once())
+            ->method('disconnect')
+            ->willThrowException(new PlatformLinkException('fail', PlatformLinkException::CODE_EXCHANGE));
+
+        $response = $this->controller()->disconnect();
+
+        $this->assertFalse($response->getData()['success']);
+        $this->assertSame(502, $response->getStatus());
     }
 
     public function testStartRedirectsWhenInstanceMissing(): void

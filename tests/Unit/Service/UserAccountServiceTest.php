@@ -253,12 +253,60 @@ class UserAccountServiceTest extends TestCase
         $this->userConfig['frank|ai_consent'] = '1';
         $this->userConfig['frank|ai_consent_at'] = '2026-07-09T20:00:00+00:00';
         $this->userConfig['frank|synaplan_user_api_key'] = 'sk_frank';
+        $this->userConfig['frank|synaplan_link_origin'] = 'linked';
 
         $this->service()->deactivateUser('frank');
 
         $this->assertArrayNotHasKey('frank|ai_consent', $this->userConfig);
         $this->assertArrayNotHasKey('frank|ai_consent_at', $this->userConfig);
         $this->assertArrayNotHasKey('frank|synaplan_user_api_key', $this->userConfig);
+        $this->assertSame('linked', $this->userConfig['frank|synaplan_link_origin']);
+    }
+
+    public function testStoreLinkedAccountSetsOriginAndConsent(): void
+    {
+        $user = $this->mockUser('alice', 'a@b.test', 'Alice');
+
+        $this->service()->storeLinkedAccount($user, [
+            'api_key' => ['id' => 1, 'key' => 'sk_l'],
+            'user' => ['id' => 9, 'email' => 'a@b.test'],
+            'link_id' => 3,
+        ]);
+
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_kind']);
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_origin']);
+        $this->assertSame('1', $this->userConfig['alice|ai_consent']);
+        $this->assertTrue($this->service()->wasLinked('alice'));
+    }
+
+    public function testGetLinkStatusOnlyReportsActiveLinkedKind(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_link_kind'] = 'provisioned';
+        $this->userConfig['alice|synaplan_link_email'] = 'a@b.test';
+        $this->userConfig['alice|synaplan_linked_at'] = '2026-01-01T00:00:00+00:00';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $status = $this->service()->getLinkStatus();
+
+        $this->assertSame('provisioned', $status['kind']);
+        $this->assertNull($status['linked']);
+    }
+
+    public function testClearLinkPrefsKeepsOriginAndClearsConsent(): void
+    {
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|synaplan_link_origin'] = 'linked';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|ai_consent_at'] = '2026-01-01T00:00:00+00:00';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $this->service()->clearLinkPrefs();
+
+        $this->assertArrayNotHasKey('alice|synaplan_link_kind', $this->userConfig);
+        $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_origin']);
+        $this->assertTrue($this->service()->wasLinked('alice'));
     }
 
     public function testDeleteRemoteAccountCallsAdminDelete(): void

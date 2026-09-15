@@ -23,7 +23,8 @@ unset `mode` still follows the old “Give each user their own account” flag.
   badges on activated users.
 - Upgrade note: switching a `provision` install to `link` keeps provisioned
   keys until someone chooses **Connect my Synaplan account**; new users see
-  the two-option gate.
+  the two-option gate. Personal settings keep Connect available for
+  provisioned users (they are not treated as already linked).
 
 ## 1.5.0 – 2026-07-12
 

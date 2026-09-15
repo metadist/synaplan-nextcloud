@@ -72,6 +72,11 @@ as that user.
   shows **Connect Synaplan** again and does not create a new account.
 - Deleting a **provisioned** Nextcloud user also deletes their Synaplan
   account. A **linked** account is only disconnected — the Synaplan user stays.
+  That cleanup still runs if you later switch **How users connect** back to
+  shared: a once-linked user is never treated as provisioned.
+- After a `provision` → `link` switch, people who already have a provisioned
+  key can still choose **Connect Synaplan** in personal settings. They are
+  not locked on Disconnect-only.
 
 ### Backward compatibility
 

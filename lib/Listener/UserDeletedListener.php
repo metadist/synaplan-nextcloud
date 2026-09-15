@@ -35,16 +35,20 @@ class UserDeletedListener implements IEventListener
             return;
         }
 
-        if (!$this->synaplanConfig->isPerUserAccountsEnabled()) {
+        $uid = $event->getUser()->getUID();
+        // Linking never deletes a Synaplan user (decision 9). Disconnect
+        // revokes only the minted key. Check this before the mode guard:
+        // an admin who switched back to shared mode must still revoke the
+        // linked key, and a disconnected-but-once-linked user must not
+        // fall through to deleteRemoteAccount.
+        if ($this->userAccounts->wasLinked($uid)
+            || $this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED) {
+            $this->platformLinks?->disconnectUid($uid);
+
             return;
         }
 
-        $uid = $event->getUser()->getUID();
-        // Linking never deletes a Synaplan user (decision 9). Disconnect
-        // revokes only the minted key.
-        if ($this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED) {
-            $this->platformLinks?->disconnectUid($uid);
-
+        if (!$this->synaplanConfig->isPerUserAccountsEnabled()) {
             return;
         }
 

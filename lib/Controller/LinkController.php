@@ -28,6 +28,7 @@ class LinkController extends Controller
 {
     private const SESSION_STATE = 'synaplan_link_state';
     private const SESSION_STATE_AT = 'synaplan_link_state_at';
+    private const SESSION_UID = 'synaplan_link_uid';
     private const STATE_TTL_SECONDS = 600;
 
     public function __construct(
@@ -67,6 +68,7 @@ class LinkController extends Controller
         $state = bin2hex(random_bytes(16));
         $this->session->set(self::SESSION_STATE, $state);
         $this->session->set(self::SESSION_STATE_AT, time());
+        $this->session->set(self::SESSION_UID, $user->getUID());
 
         return new RedirectResponse($this->platformLinks->connectUrl(
             $this->synaplanConfig->getLinkInstanceId(),
@@ -87,15 +89,16 @@ class LinkController extends Controller
     {
         $code = trim((string) $this->request->getParam('code', ''));
         $state = trim((string) $this->request->getParam('state', ''));
+        $user = $this->userSession->getUser();
+        $uid = $user instanceof IUser ? $user->getUID() : '';
 
-        $error = $this->consumeState($state);
+        $error = $this->consumeState($state, $uid);
         if ($error !== null) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => $error,
             ]));
         }
 
-        $user = $this->userSession->getUser();
         if (!$user instanceof IUser || $code === '') {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_EXCHANGE,
@@ -133,7 +136,11 @@ class LinkController extends Controller
             return new JSONResponse(['success' => false], 401);
         }
 
-        $this->platformLinks->disconnect($user);
+        try {
+            $this->platformLinks->disconnect($user);
+        } catch (PlatformLinkException) {
+            return new JSONResponse(['success' => false], 502);
+        }
 
         return new JSONResponse(['success' => true]);
     }
@@ -149,18 +156,22 @@ class LinkController extends Controller
 
     /**
      * Validate, then delete, the session state. Always single-use.
+     * The initiating UID is bound to the state so a later login cannot
+     * complete the first person's handshake.
      */
-    private function consumeState(string $state): ?string
+    private function consumeState(string $state, string $uid): ?string
     {
         $expected = (string) $this->session->get(self::SESSION_STATE);
         $storedAt = (int) $this->session->get(self::SESSION_STATE_AT);
+        $expectedUid = (string) $this->session->get(self::SESSION_UID);
         $this->session->remove(self::SESSION_STATE);
         $this->session->remove(self::SESSION_STATE_AT);
+        $this->session->remove(self::SESSION_UID);
 
-        if ($state === '' || $expected === '') {
+        if ($state === '' || $expected === '' || $uid === '' || $expectedUid === '') {
             return PlatformLinkException::CODE_STATE;
         }
-        if (!hash_equals($expected, $state)) {
+        if (!hash_equals($expected, $state) || !hash_equals($expectedUid, $uid)) {
             return PlatformLinkException::CODE_STATE;
         }
         if ($storedAt <= 0 || (time() - $storedAt) > self::STATE_TTL_SECONDS) {

@@ -204,29 +204,47 @@ class PlatformLinkService
 
     public function disconnect(IUser $user): void
     {
-        $this->disconnectUid($user->getUID());
+        $uid = $user->getUID();
+        $this->revokeRemoteKey($uid);
+        $this->userAccounts->deactivateUser($uid);
     }
 
+    /**
+     * Best-effort cleanup for user deletion / admin deactivate.
+     * Interactive disconnect must use {@see disconnect()} so a failed
+     * revocation keeps the local key for a retry.
+     */
     public function disconnectUid(string $uid): void
     {
-        $keyId = $this->userAccounts->getStoredApiKeyId($uid);
-        $key = $this->userAccounts->getStoredApiKey($uid);
-        if ($keyId !== '' && $key !== '') {
-            try {
-                $this->request('DELETE', '/api/v1/apikeys/' . rawurlencode($keyId), null, [
-                    'Accept' => 'application/json',
-                    'X-API-Key' => $key,
-                ]);
-            } catch (\Throwable $e) {
-                $this->logger->warning('Could not revoke linked Synaplan key for {uid}: {message}', [
-                    'app' => Application::APP_ID,
-                    'uid' => $uid,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+        try {
+            $this->revokeRemoteKey($uid);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not revoke linked Synaplan key for {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
         }
 
         $this->userAccounts->deactivateUser($uid);
+    }
+
+    /**
+     * @throws PlatformLinkException when the remote key is still valid and
+     *                               could not be revoked
+     */
+    private function revokeRemoteKey(string $uid): void
+    {
+        $keyId = $this->userAccounts->getStoredApiKeyId($uid);
+        $key = $this->userAccounts->getStoredApiKey($uid);
+        if ($keyId === '' || $key === '') {
+            return;
+        }
+
+        $this->request('DELETE', '/api/v1/apikeys/' . rawurlencode($keyId), null, [
+            'Accept' => 'application/json',
+            'X-API-Key' => $key,
+        ], true);
     }
 
     private function decryptSecret(): string
@@ -257,7 +275,7 @@ class PlatformLinkService
      * @param array<string, string> $headers
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, ?array $body, array $headers): array
+    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
@@ -293,6 +311,9 @@ class PlatformLinkService
         if (method_exists($response, 'getStatusCode')) {
             $status = (int) $response->getStatusCode();
             if ($status === 404) {
+                if ($notFoundOk) {
+                    return [];
+                }
                 throw new PlatformLinkException(
                     'Synaplan is not accepting platform connections yet.',
                     PlatformLinkException::CODE_INSTANCE_PENDING

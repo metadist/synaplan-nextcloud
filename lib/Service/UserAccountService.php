@@ -40,6 +40,8 @@ class UserAccountService
     public const LINK_EMAIL_PREF = 'synaplan_link_email';
     public const LINKED_AT_PREF = 'synaplan_linked_at';
     public const LINK_ID_PREF = 'synaplan_link_id';
+    /** Durable: survives disconnect / 401 so user-deletion never deletes a linked Synaplan user. */
+    public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
 
     public const KIND_LINKED = 'linked';
     public const KIND_PROVISIONED = 'provisioned';
@@ -148,6 +150,8 @@ class UserAccountService
             self::LINKED_AT_PREF,
             self::LINK_ID_PREF,
             self::USER_KEY_ID_PREF,
+            self::CONSENT_PREF,
+            self::CONSENT_AT_PREF,
         ] as $key) {
             $this->config->deleteUserValue($uid, Application::APP_ID, $key);
         }
@@ -178,6 +182,7 @@ class UserAccountService
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, $synaplanUserId);
         }
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, self::KIND_LINKED);
+        $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_LINKED);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_EMAIL_PREF, $email);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINKED_AT_PREF, $now);
         if ($linkId !== '') {
@@ -203,6 +208,15 @@ class UserAccountService
     }
 
     /**
+     * True when this Nextcloud user ever completed a Synaplan link handshake.
+     * Survives disconnect so user-deletion never calls deleteRemoteAccount.
+     */
+    public function wasLinked(string $uid): bool
+    {
+        return $this->config->getUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, '') === self::KIND_LINKED;
+    }
+
+    /**
      * Status payload for the personal gate and `link#status`.
      *
      * @return array{mode: string, link_available: bool, auto_provision: bool, linked: array{email: string, since: string}|null, kind: 'linked'|'provisioned'|null}
@@ -218,7 +232,7 @@ class UserAccountService
             $since = $this->config->getUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF, '');
         }
         $linked = null;
-        if ($kind !== null && ($email !== '' || $since !== '')) {
+        if ($kind === self::KIND_LINKED) {
             $linked = [
                 'email' => $email !== '' ? $email : ($user instanceof IUser ? (string) $user->getEMailAddress() : ''),
                 'since' => $since,
@@ -247,12 +261,11 @@ class UserAccountService
 
         $key = $this->provisionAndMint($user);
         if ($key !== null) {
-            $this->config->setUserValue(
-                $user->getUID(),
-                Application::APP_ID,
-                self::LINK_KIND_PREF,
-                self::KIND_PROVISIONED
-            );
+            $uid = $user->getUID();
+            $this->config->setUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, self::KIND_PROVISIONED);
+            if (!$this->wasLinked($uid)) {
+                $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_PROVISIONED);
+            }
         }
 
         return $key;
