@@ -5,6 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-knowledge-modal">
+			<AiConsentGate @blocked-change="aiBlocked = $event" />
 			<!-- Status: Uploading -->
 			<div v-if="loading" class="loading-state">
 				<div
@@ -241,7 +242,7 @@
 				</NcButton>
 				<NcButton
 					type="primary"
-					:disabled="loading || removing || !selectedGroup"
+					:disabled="loading || removing || aiBlocked || !selectedGroup"
 					@click="uploadFile">
 					{{
 						inKnowledge
@@ -265,6 +266,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
+import AiConsentGate from './AiConsentGate.vue'
 
 const props = defineProps<{
 	fileId: number
@@ -276,6 +278,7 @@ const emit = defineEmits<{
 }>()
 
 const opened = ref(true)
+const aiBlocked = ref(false)
 const loading = ref(false)
 const loadingGroups = ref(false)
 const error = ref('')

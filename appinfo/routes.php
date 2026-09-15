@@ -11,6 +11,9 @@ return [
 		['name' => 'settings#getSettings', 'url' => '/api/v1/settings', 'verb' => 'GET'],
 		['name' => 'settings#saveSettings', 'url' => '/api/v1/settings', 'verb' => 'PUT'],
 		['name' => 'settings#testConnection', 'url' => '/api/v1/settings/test', 'verb' => 'POST'],
+		['name' => 'settings#registerInstance', 'url' => '/api/v1/settings/register-instance', 'verb' => 'POST'],
+		['name' => 'settings#forgetInstance', 'url' => '/api/v1/settings/forget-instance', 'verb' => 'POST'],
+		['name' => 'settings#instanceStatus', 'url' => '/api/v1/settings/instance-status', 'verb' => 'GET'],
 
 		// Document AI API
 		['name' => 'api#summarize', 'url' => '/api/v1/summarize/{fileId}', 'verb' => 'POST'],
@@ -29,6 +32,12 @@ return [
 		// Per-user "Activate AI" consent (per-user mode only)
 		['name' => 'consent#getConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'GET'],
 		['name' => 'consent#setConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'POST'],
+
+		// Account linking (existing Synaplan account)
+		['name' => 'link#start', 'url' => '/link/start', 'verb' => 'GET'],
+		['name' => 'link#callback', 'url' => '/link/callback', 'verb' => 'GET'],
+		['name' => 'link#disconnect', 'url' => '/link/disconnect', 'verb' => 'POST'],
+		['name' => 'link#status', 'url' => '/api/v1/link/status', 'verb' => 'GET'],
 
 		// Admin control panel: activated AI users (admin-only)
 		['name' => 'adminAiUsers#list', 'url' => '/api/v1/admin/ai-users', 'verb' => 'GET'],

@@ -5,6 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-translate-modal">
+			<AiConsentGate @blocked-change="aiBlocked = $event" />
 			<!-- Language selection (shown before result) -->
 			<div v-if="!loading && !result" class="options">
 				<div class="field">
@@ -48,7 +49,10 @@
 						: t('synaplan_integration', 'Copy')
 				}}
 			</NcButton>
-			<NcButton v-if="!loading && !result" type="primary" @click="doTranslate">
+			<NcButton
+				v-if="!loading && !result && !aiBlocked"
+				type="primary"
+				@click="doTranslate">
 				{{ t('synaplan_integration', 'Translate') }}
 			</NcButton>
 			<NcButton v-if="result" type="primary" @click="onClose">
@@ -69,6 +73,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
+import AiConsentGate from './AiConsentGate.vue'
 
 const props = defineProps<{
 	fileId: number
@@ -84,6 +89,7 @@ const loading = ref(false)
 const result = ref('')
 const error = ref('')
 const copied = ref(false)
+const aiBlocked = ref(false)
 
 const targetLanguage = ref({ id: 'en', label: 'English' })
 

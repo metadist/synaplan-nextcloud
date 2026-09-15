@@ -122,6 +122,43 @@ class SettingsControllerTest extends TestCase
         $this->assertTrue($data['providers']['openai']);
     }
 
+    public function testSaveSettingsWritesModeAndLegacyFlag(): void
+    {
+        $written = [];
+        $this->config->method('setAppValue')->willReturnCallback(
+            function (string $app, string $key, string $value) use (&$written): void {
+                $written[$key] = $value;
+            }
+        );
+
+        $this->controller->saveSettings(mode: 'link');
+
+        $this->assertSame('link', $written['mode']);
+        $this->assertSame('1', $written['per_user_accounts']);
+    }
+
+    public function testSaveSettingsSharedClearsLegacyFlag(): void
+    {
+        $written = [];
+        $this->config->method('setAppValue')->willReturnCallback(
+            function (string $app, string $key, string $value) use (&$written): void {
+                $written[$key] = $value;
+            }
+        );
+
+        $this->controller->saveSettings(mode: 'shared');
+
+        $this->assertSame('shared', $written['mode']);
+        $this->assertSame('0', $written['per_user_accounts']);
+    }
+
+    public function testRegisterInstanceWithoutServiceReturnsError(): void
+    {
+        $response = $this->controller->registerInstance();
+
+        $this->assertFalse($response->getData()['success']);
+    }
+
     public function testTestConnectionFailure(): void
     {
         $this->synaplanClient->method('healthCheck')

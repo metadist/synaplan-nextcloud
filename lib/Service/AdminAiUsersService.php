@@ -18,6 +18,7 @@ class AdminAiUsersService
         private IConfig $config,
         private IUserManager $userManager,
         private UserAccountService $userAccounts,
+        private ?PlatformLinkService $platformLinks = null,
     ) {
     }
 
@@ -27,7 +28,7 @@ class AdminAiUsersService
      * Efficient at scale: queries only the users who hold the consent flag
      * (getUsersForUserValue), never the full user base.
      *
-     * @return list<array{uid: string, displayName: string, email: string, synaplanUserId: int|null, hasKey: bool, consentAt: string}>
+     * @return list<array{uid: string, displayName: string, email: string, synaplanUserId: int|null, hasKey: bool, consentAt: string, kind: string|null}>
      */
     public function listActivatedUsers(): array
     {
@@ -45,6 +46,7 @@ class AdminAiUsersService
                 'synaplanUserId' => $this->userAccounts->getSynaplanUserId($uid),
                 'hasKey' => $key !== '',
                 'consentAt' => $this->config->getUserValue($uid, Application::APP_ID, 'ai_consent_at', ''),
+                'kind' => $this->userAccounts->getLinkKind($uid),
             ];
         }
 
@@ -58,6 +60,13 @@ class AdminAiUsersService
      */
     public function deactivate(string $uid): void
     {
+        if ($this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED
+            && $this->platformLinks !== null) {
+            $this->platformLinks->disconnectUid($uid);
+
+            return;
+        }
+
         $this->userAccounts->deactivateUser($uid);
     }
 

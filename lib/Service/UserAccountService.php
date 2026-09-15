@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\EmailConflictException;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IUser;
@@ -30,10 +31,21 @@ use Psr\Log\LoggerInterface;
  */
 class UserAccountService
 {
-    private const USER_KEY_PREF = 'synaplan_user_api_key';
-    private const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
-    private const CONSENT_PREF = 'ai_consent';
-    private const CONSENT_AT_PREF = 'ai_consent_at';
+    public const USER_KEY_PREF = 'synaplan_user_api_key';
+    public const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
+    public const USER_KEY_ID_PREF = 'synaplan_user_key_id';
+    public const CONSENT_PREF = 'ai_consent';
+    public const CONSENT_AT_PREF = 'ai_consent_at';
+    public const LINK_KIND_PREF = 'synaplan_link_kind';
+    public const LINK_EMAIL_PREF = 'synaplan_link_email';
+    public const LINKED_AT_PREF = 'synaplan_linked_at';
+    public const LINK_ID_PREF = 'synaplan_link_id';
+    /** Durable: survives disconnect / 401 so user-deletion never deletes a linked Synaplan user. */
+    public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
+
+    public const KIND_LINKED = 'linked';
+    public const KIND_PROVISIONED = 'provisioned';
+    public const SOURCE = 'nextcloud';
 
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
     private const USER_KEY_SCOPES = ['chat', 'files', 'rag'];
@@ -56,18 +68,34 @@ class UserAccountService
      */
     public function getCurrentUserApiKey(): ?string
     {
-        if (!$this->synaplanConfig->isPerUserAccountsEnabled()) {
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser) {
             return null;
         }
 
-        $user = $this->userSession->getUser();
-        if (!$user instanceof IUser) {
+        return $this->resolveKeyForUser($user);
+    }
+
+    /**
+     * Resolve the Synaplan API key for a Nextcloud user.
+     *
+     * shared → null (caller uses the install-wide key).
+     * provision → stored key, or provision+mint after consent.
+     * link → stored key or null — never provisions implicitly.
+     */
+    public function resolveKeyForUser(IUser $user): ?string
+    {
+        if ($this->synaplanConfig->getMode() === SynaplanConfig::MODE_SHARED) {
             return null;
         }
 
         $stored = $this->config->getUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF, '');
         if ($stored !== '') {
             return $stored;
+        }
+
+        if ($this->synaplanConfig->isLinkMode()) {
+            return null;
         }
 
         // Consent gate: never provision a Synaplan account for a user who has
@@ -101,6 +129,166 @@ class UserAccountService
         if ($user instanceof IUser) {
             $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
         }
+    }
+
+    /**
+     * Forget link-mode prefs for the current user (401 on a revoked linked key).
+     */
+    public function clearLinkPrefs(): void
+    {
+        $user = $this->userSession->getUser();
+        if ($user instanceof IUser) {
+            $this->clearLinkPrefsForUid($user->getUID());
+        }
+    }
+
+    public function clearLinkPrefsForUid(string $uid): void
+    {
+        foreach ([
+            self::LINK_KIND_PREF,
+            self::LINK_EMAIL_PREF,
+            self::LINKED_AT_PREF,
+            self::LINK_ID_PREF,
+            self::USER_KEY_ID_PREF,
+            self::CONSENT_PREF,
+            self::CONSENT_AT_PREF,
+        ] as $key) {
+            $this->config->deleteUserValue($uid, Application::APP_ID, $key);
+        }
+    }
+
+    /**
+     * Persist a successful handshake. A link is consent.
+     *
+     * @param array{api_key: array{id?: int|string, key?: string}, user: array{id?: int|string, email?: string}, link_id?: int|string} $exchange
+     */
+    public function storeLinkedAccount(IUser $user, array $exchange): void
+    {
+        $uid = $user->getUID();
+        $key = (string) ($exchange['api_key']['key'] ?? '');
+        $keyId = (string) ($exchange['api_key']['id'] ?? '');
+        $synaplanUserId = (string) ($exchange['user']['id'] ?? '');
+        $email = (string) ($exchange['user']['email'] ?? '');
+        $linkId = (string) ($exchange['link_id'] ?? '');
+        $now = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
+
+        if ($key !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, $key);
+        }
+        if ($keyId !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, $keyId);
+        }
+        if ($synaplanUserId !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, $synaplanUserId);
+        }
+        $this->config->setUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, self::KIND_LINKED);
+        $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_LINKED);
+        $this->config->setUserValue($uid, Application::APP_ID, self::LINK_EMAIL_PREF, $email);
+        $this->config->setUserValue($uid, Application::APP_ID, self::LINKED_AT_PREF, $now);
+        if ($linkId !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ID_PREF, $linkId);
+        }
+        $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_PREF, '1');
+        $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF, $now);
+    }
+
+    /**
+     * @return 'linked'|'provisioned'|null
+     */
+    public function getLinkKind(string $uid): ?string
+    {
+        $kind = $this->config->getUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, '');
+        if ($kind === self::KIND_LINKED || $kind === self::KIND_PROVISIONED) {
+            return $kind;
+        }
+
+        $key = $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, '');
+
+        return $key !== '' ? self::KIND_PROVISIONED : null;
+    }
+
+    /**
+     * True when this Nextcloud user ever completed a Synaplan link handshake.
+     * Survives disconnect so user-deletion never calls deleteRemoteAccount.
+     */
+    public function wasLinked(string $uid): bool
+    {
+        return $this->config->getUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, '') === self::KIND_LINKED;
+    }
+
+    /**
+     * Status payload for the personal gate and `link#status`.
+     *
+     * @return array{mode: string, link_available: bool, auto_provision: bool, linked: array{email: string, since: string}|null, kind: 'linked'|'provisioned'|null}
+     */
+    public function getLinkStatus(): array
+    {
+        $user = $this->userSession->getUser();
+        $uid = $user instanceof IUser ? $user->getUID() : '';
+        $kind = $uid !== '' ? $this->getLinkKind($uid) : null;
+        $email = $uid !== '' ? $this->config->getUserValue($uid, Application::APP_ID, self::LINK_EMAIL_PREF, '') : '';
+        $since = $uid !== '' ? $this->config->getUserValue($uid, Application::APP_ID, self::LINKED_AT_PREF, '') : '';
+        if ($since === '' && $uid !== '') {
+            $since = $this->config->getUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF, '');
+        }
+        $linked = null;
+        if ($kind === self::KIND_LINKED) {
+            $linked = [
+                'email' => $email !== '' ? $email : ($user instanceof IUser ? (string) $user->getEMailAddress() : ''),
+                'since' => $since,
+            ];
+        }
+
+        return [
+            'mode' => $this->synaplanConfig->getMode(),
+            'link_available' => $this->synaplanConfig->isLinkAvailable(),
+            'auto_provision' => $this->synaplanConfig->isAutoProvisionEnabled(),
+            'linked' => $linked,
+            'kind' => $kind,
+        ];
+    }
+
+    /**
+     * Create a Synaplan account from the two-option gate ("Create one for me").
+     *
+     * @throws EmailConflictException
+     */
+    public function provisionForLinkMode(IUser $user): ?string
+    {
+        if (!$this->synaplanConfig->isAutoProvisionEnabled()) {
+            return null;
+        }
+
+        $key = $this->provisionAndMint($user);
+        if ($key !== null) {
+            $uid = $user->getUID();
+            $this->config->setUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, self::KIND_PROVISIONED);
+            if (!$this->wasLinked($uid)) {
+                $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_PROVISIONED);
+            }
+        }
+
+        return $key;
+    }
+
+    /**
+     * Provision + mint without the auto-provision gate (tests / consent path).
+     *
+     * @throws EmailConflictException
+     */
+    public function provisionAccount(IUser $user): ?string
+    {
+        return $this->provisionAndMint($user);
+    }
+
+    public function getStoredApiKey(string $uid): string
+    {
+        return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, '');
+    }
+
+    public function getStoredApiKeyId(string $uid): string
+    {
+        return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, '');
     }
 
     /**
@@ -165,6 +353,7 @@ class UserAccountService
         $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF);
         $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
+        $this->clearLinkPrefsForUid($user->getUID());
     }
 
     private function hasConsent(IUser $user): bool
@@ -195,6 +384,7 @@ class UserAccountService
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->clearLinkPrefsForUid($uid);
 
         $this->logger->info('Admin deactivated AI for user {uid}', [
             'app' => Application::APP_ID,
@@ -267,12 +457,19 @@ class UserAccountService
             $email = $user->getUID() . '@' . $this->synaplanConfig->getInstanceId() . '.nextcloud.local';
         }
 
-        $account = $this->adminRequest('POST', '/api/v1/admin/users', [
-            'source' => 'nextcloud',
-            'external_id' => $externalId,
-            'email' => $email,
-            'display_name' => $user->getDisplayName(),
-        ], $adminKey);
+        try {
+            $account = $this->adminRequest('POST', '/api/v1/admin/users', [
+                'source' => self::SOURCE,
+                'external_id' => $externalId,
+                'email' => $email,
+                'display_name' => $user->getDisplayName(),
+            ], $adminKey);
+        } catch (\Throwable $e) {
+            if ($this->isConflict($e)) {
+                throw new EmailConflictException();
+            }
+            throw $e;
+        }
 
         $synaplanUserId = (int) ($account['user']['id'] ?? 0);
         if ($synaplanUserId <= 0) {
@@ -291,6 +488,10 @@ class UserAccountService
 
         $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF, $userKey);
         $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_ACCOUNT_ID_PREF, (string) $synaplanUserId);
+        $mintedKeyId = (string) ($minted['api_key']['id'] ?? '');
+        if ($mintedKeyId !== '') {
+            $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_ID_PREF, $mintedKeyId);
+        }
 
         $this->logger->info('Provisioned per-user Synaplan account for {uid} (synaplan id {sid})', [
             'app' => Application::APP_ID,
@@ -314,7 +515,13 @@ class UserAccountService
             'X-API-Key' => $adminKey,
             'Accept' => 'application/json',
         ];
-        $options = ['headers' => $headers, 'timeout' => 30];
+        $options = [
+            'headers' => $headers,
+            'timeout' => 30,
+            'nextcloud' => [
+                'allow_local_address' => true,
+            ],
+        ];
 
         if ($body !== null) {
             $options['headers']['Content-Type'] = 'application/json';
@@ -326,6 +533,16 @@ class UserAccountService
             'DELETE' => $client->delete($url, $options),
             default => $client->get($url, $options),
         };
+        if (method_exists($response, 'getStatusCode')) {
+            $status = (int) $response->getStatusCode();
+            if ($status === 409) {
+                throw new EmailConflictException();
+            }
+            if ($status >= 400) {
+                throw new \RuntimeException('Synaplan admin API returned HTTP ' . $status);
+            }
+        }
+
         $decoded = json_decode($response->getBody(), true);
 
         if (!is_array($decoded)) {
@@ -333,5 +550,24 @@ class UserAccountService
         }
 
         return $decoded;
+    }
+
+    private function isConflict(\Throwable $e): bool
+    {
+        if ($e instanceof EmailConflictException) {
+            return true;
+        }
+        if ((int) $e->getCode() === 409) {
+            return true;
+        }
+        if (method_exists($e, 'getResponse')) {
+            $response = $e->getResponse();
+            if (is_object($response) && method_exists($response, 'getStatusCode')
+                && (int) $response->getStatusCode() === 409) {
+                return true;
+            }
+        }
+
+        return (bool) preg_match('/\b409\b/', $e->getMessage());
     }
 }

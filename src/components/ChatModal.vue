@@ -5,6 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-chat-modal">
+			<AiConsentGate @blocked-change="aiBlocked = $event" />
 			<!-- Messages -->
 			<div ref="messagesContainer" class="messages">
 				<div
@@ -35,11 +36,11 @@
 							'Ask a question about this file...',
 						)
 					"
-					:disabled="loading"
+					:disabled="loading || aiBlocked"
 					@keydown.enter="sendMessage" />
 				<NcButton
 					type="primary"
-					:disabled="loading || !inputMessage.trim()"
+					:disabled="loading || aiBlocked || !inputMessage.trim()"
 					@click="sendMessage">
 					{{ t('synaplan_integration', 'Send') }}
 				</NcButton>
@@ -70,6 +71,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import AiConsentGate from './AiConsentGate.vue'
 
 interface ChatMessage {
 	role: 'user' | 'assistant'
@@ -86,6 +88,7 @@ const emit = defineEmits<{
 }>()
 
 const opened = ref(true)
+const aiBlocked = ref(false)
 const loading = ref(false)
 const error = ref('')
 const inputMessage = ref('')

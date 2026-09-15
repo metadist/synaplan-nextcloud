@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IConfig;
@@ -23,8 +26,15 @@ class SettingsController extends Controller
         IRequest $request,
         private IConfig $config,
         private SynaplanClient $synaplanClient,
+        private ?SynaplanConfig $synaplanConfig = null,
+        private ?PlatformLinkService $platformLinks = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
+    }
+
+    private function synaplanConfig(): SynaplanConfig
+    {
+        return $this->synaplanConfig ?? new SynaplanConfig($this->config);
     }
 
     /**
@@ -51,6 +61,16 @@ class SettingsController extends Controller
                 'synaplan_url_local',
                 'http://localhost:8000'
             ),
+            'synaplan_public_url' => $this->config->getAppValue(
+                Application::APP_ID,
+                'synaplan_public_url',
+                ''
+            ),
+            'synaplan_public_url_local' => $this->config->getAppValue(
+                Application::APP_ID,
+                'synaplan_public_url_local',
+                ''
+            ),
             'api_key_local_set' => $apiKeyLocal !== '',
             'api_key_local_masked' => $apiKeyLocal !== '' ? $this->maskApiKey($apiKeyLocal) : '',
             'default_language' => $this->config->getAppValue(
@@ -71,11 +91,16 @@ class SettingsController extends Controller
             // Per-user accounts: when on, the configured key is treated as an
             // ADMIN key and each NC user gets their own provisioned Synaplan
             // account + per-user key (isolated knowledge base & memories).
-            'per_user_accounts' => $this->config->getAppValue(
+            'per_user_accounts' => $this->synaplanConfig()->isPerUserAccountsEnabled(),
+            'mode' => $this->synaplanConfig()->getMode(),
+            'link_auto_provision' => $this->config->getAppValue(
                 Application::APP_ID,
-                'per_user_accounts',
+                'link_auto_provision',
                 '0'
             ) === '1',
+            'link_registered' => $this->synaplanConfig()->getLinkInstanceId() !== '',
+            'link_instance_id' => $this->synaplanConfig()->getLinkInstanceId(),
+            'link_instance' => $this->platformLinks?->instanceStatus(),
         ]);
     }
 
@@ -97,6 +122,10 @@ class SettingsController extends Controller
         ?bool $use_interface_language = null,
         ?bool $enable_memories = null,
         ?bool $per_user_accounts = null,
+        ?string $mode = null,
+        ?bool $link_auto_provision = null,
+        ?string $synaplan_public_url = null,
+        ?string $synaplan_public_url_local = null,
     ): JSONResponse {
         // Nextcloud may not extract JSON body params for PUT requests; always
         // re-read the raw body so we can also pick up the language/memory flags
@@ -132,6 +161,18 @@ class SettingsController extends Controller
                 if ($per_user_accounts === null && array_key_exists('per_user_accounts', $decoded)) {
                     $per_user_accounts = (bool) $decoded['per_user_accounts'];
                 }
+                if ($mode === null && isset($decoded['mode'])) {
+                    $mode = trim((string) $decoded['mode']);
+                }
+                if ($link_auto_provision === null && array_key_exists('link_auto_provision', $decoded)) {
+                    $link_auto_provision = (bool) $decoded['link_auto_provision'];
+                }
+                if ($synaplan_public_url === null && array_key_exists('synaplan_public_url', $decoded)) {
+                    $synaplan_public_url = trim((string) $decoded['synaplan_public_url']);
+                }
+                if ($synaplan_public_url_local === null && array_key_exists('synaplan_public_url_local', $decoded)) {
+                    $synaplan_public_url_local = trim((string) $decoded['synaplan_public_url_local']);
+                }
             }
         }
 
@@ -157,6 +198,22 @@ class SettingsController extends Controller
 
         if ($api_key_local !== '') {
             $this->config->setAppValue(Application::APP_ID, 'api_key_local', $api_key_local);
+        }
+
+        if ($synaplan_public_url !== null) {
+            $this->config->setAppValue(
+                Application::APP_ID,
+                'synaplan_public_url',
+                $synaplan_public_url === '' ? '' : rtrim($synaplan_public_url, '/')
+            );
+        }
+
+        if ($synaplan_public_url_local !== null) {
+            $this->config->setAppValue(
+                Application::APP_ID,
+                'synaplan_public_url_local',
+                $synaplan_public_url_local === '' ? '' : rtrim($synaplan_public_url_local, '/')
+            );
         }
 
         if ($active_env !== null && in_array($active_env, ['live', 'local'], true)) {
@@ -187,15 +244,89 @@ class SettingsController extends Controller
             );
         }
 
-        if ($per_user_accounts !== null) {
+        if ($mode !== null && $mode !== '') {
+            $this->persistMode($mode);
+        } elseif ($per_user_accounts !== null) {
+            $this->persistMode(
+                $per_user_accounts ? SynaplanConfig::MODE_PROVISION : SynaplanConfig::MODE_SHARED
+            );
+        }
+
+        if ($link_auto_provision !== null) {
             $this->config->setAppValue(
                 Application::APP_ID,
-                'per_user_accounts',
-                $per_user_accounts ? '1' : '0'
+                'link_auto_provision',
+                $link_auto_provision ? '1' : '0'
             );
         }
 
         return new JSONResponse(['success' => true]);
+    }
+
+    /**
+     * Register this Nextcloud with Synaplan (admin only).
+     */
+    public function registerInstance(): JSONResponse
+    {
+        if ($this->platformLinks === null) {
+            return new JSONResponse([
+                'success' => false,
+                'error' => 'Linking is not available.',
+            ]);
+        }
+
+        try {
+            $result = $this->platformLinks->registerInstance();
+
+            return new JSONResponse(['success' => true, ...$result]);
+        } catch (PlatformLinkException $e) {
+            return new JSONResponse([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'code' => $e->getErrorCode(),
+            ]);
+        } catch (\Throwable $e) {
+            return new JSONResponse([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Forget the stored instance id and secret. Does not revoke on Synaplan.
+     */
+    public function forgetInstance(): JSONResponse
+    {
+        $this->platformLinks?->forgetRegistration();
+
+        return new JSONResponse(['success' => true]);
+    }
+
+    public function instanceStatus(): JSONResponse
+    {
+        return new JSONResponse([
+            'success' => true,
+            'instance' => $this->platformLinks?->instanceStatus(),
+        ]);
+    }
+
+    private function persistMode(string $mode): void
+    {
+        if (!in_array($mode, [
+            SynaplanConfig::MODE_SHARED,
+            SynaplanConfig::MODE_PROVISION,
+            SynaplanConfig::MODE_LINK,
+        ], true)) {
+            return;
+        }
+
+        $this->config->setAppValue(Application::APP_ID, 'mode', $mode);
+        $this->config->setAppValue(
+            Application::APP_ID,
+            'per_user_accounts',
+            $mode === SynaplanConfig::MODE_SHARED ? '0' : '1'
+        );
     }
 
     /**

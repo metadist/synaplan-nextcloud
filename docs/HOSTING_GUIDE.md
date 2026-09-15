@@ -4,11 +4,10 @@ Audience: operators who host Nextcloud (or ownCloud / ownCloud.online) for their
 customers and want to offer Synaplan AI features **with per-user isolation** and
 **their own AI backbone**.
 
-This guide covers the two features shipped for the hosting scenario:
+This guide covers the features shipped for the hosting scenario:
 
-1. **Per-user Synaplan accounts** — every Nextcloud user gets their own Synaplan
-   account, API key, knowledge base, memories and usage. Nothing is shared
-   across your customers.
+1. **How users connect** — shared key, create-an-account-per-user (`provision`),
+   or **connect an existing Synaplan account** (`link`).
 2. **Bring-your-own OpenAI-compatible AI** — point Synaplan at your own LocalAI /
    vLLM / LiteLLM (or any OpenAI-compatible) endpoint and expose those models to
    users, including chat, embeddings and vision.
@@ -32,14 +31,18 @@ This guide covers the two features shipped for the hosting scenario:
 
 ## 2. Enable per-user accounts
 
-1. In Nextcloud, go to **Administration settings → Synaplan Integration**.
+1. In Nextcloud, go to **Administration settings → Synaplan**.
 2. Set the **Synaplan URL** and paste the **admin API key**.
-3. Turn on **“Give each user their own Synaplan account.”**
-4. Click **Save**, then **Test connection**.
+3. Under **How users connect**, pick **Create an account for each user**
+   (`provision`) or **Connect existing accounts** (`link`).
+4. In `link` mode click **Register this instance** (once). People then open
+   **Personal settings → Synaplan → Connect Synaplan**, sign in, and confirm.
+5. Click **Save**, then **Test connection**.
 
-That is all. From now on, the first time any Nextcloud user triggers a Synaplan
-feature (summarize, translate, add-to-knowledge, chat), the app will, using your
-admin key:
+In **link** mode people open **Personal settings → Synaplan → Connect Synaplan**
+first; nothing is created until they confirm (or choose **Create one for me**,
+if you turned that on). In **provision** mode the first Files action creates
+the account, using your admin key:
 
 - create a Synaplan account for that user (idempotent — one account per user),
   identified by `source = "nextcloud"` and
@@ -63,11 +66,17 @@ as that user.
 
 ### Key rotation / revocation
 
-- If a user’s per-user key is revoked in Synaplan, the next request returns 401;
-  the app automatically forgets the stale key and re-provisions on the following
-  request. No user action required.
-- Deleting the Nextcloud user does **not** yet auto-delete the Synaplan account
-  (see [Roadmap](#roadmap)); revoke it in Synaplan’s admin UI if required.
+- If a **provisioned** user’s key is revoked in Synaplan, the next request
+  returns 401; the app forgets the stale key and re-provisions on the following
+  request. In **link** mode a 401 means the person disconnected — Nextcloud
+  shows **Connect Synaplan** again and does not create a new account.
+- Deleting a **provisioned** Nextcloud user also deletes their Synaplan
+  account. A **linked** account is only disconnected — the Synaplan user stays.
+  That cleanup still runs if you later switch **How users connect** back to
+  shared: a once-linked user is never treated as provisioned.
+- After a `provision` → `link` switch, people who already have a provisioned
+  key can still choose **Connect Synaplan** in personal settings. They are
+  not locked on Disconnect-only.
 
 ### Backward compatibility
 

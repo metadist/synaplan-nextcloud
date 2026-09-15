@@ -319,6 +319,74 @@ class SynaplanClientTest extends TestCase
         $this->assertSame(3, $result['files'][0]['chunks_created']);
     }
 
+    public function testLinkMode401ClearsPrefsAndDoesNotRemint(): void
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnCallback(
+            function (string $app, string $key, string $default = '') {
+                return match ($key) {
+                    'mode' => 'link',
+                    'per_user_accounts' => '1',
+                    'synaplan_url' => 'http://localhost:8000',
+                    'api_key' => 'sk_unused',
+                    default => $default,
+                };
+            }
+        );
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn('sk_linked');
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->once())->method('clearLinkPrefs');
+
+        $this->httpClient->expects($this->once())
+            ->method('get')
+            ->willThrowException(new \Exception('401 Unauthorized'));
+
+        $client = $this->makeClient($config);
+
+        $this->expectException(\Exception::class);
+        $client->healthCheck();
+    }
+
+    public function testProvisionMode401StillRetriesOnce(): void
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnCallback(
+            function (string $app, string $key, string $default = '') {
+                return match ($key) {
+                    'mode' => 'provision',
+                    'per_user_accounts' => '1',
+                    'synaplan_url' => 'http://localhost:8000',
+                    'api_key' => 'sk_unused',
+                    default => $default,
+                };
+            }
+        );
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturnOnConsecutiveCalls('sk_stale', 'sk_fresh');
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->never())->method('clearLinkPrefs');
+
+        $ok = $this->createMock(IResponse::class);
+        $ok->method('getBody')->willReturn(json_encode(['status' => 'ok']));
+        $calls = 0;
+        $this->httpClient->expects($this->exactly(2))
+            ->method('get')
+            ->willReturnCallback(function () use (&$calls, $ok): IResponse {
+                ++$calls;
+                if ($calls === 1) {
+                    throw new \Exception('401 Unauthorized');
+                }
+
+                return $ok;
+            });
+
+        $client = $this->makeClient($config);
+        $result = $client->healthCheck();
+
+        $this->assertSame('ok', $result['status']);
+    }
+
     public function testAskWithGroupKeyCallsRagSearch(): void
     {
         $ragResponse = $this->createMock(IResponse::class);
