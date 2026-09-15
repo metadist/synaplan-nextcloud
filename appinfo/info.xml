@@ -12,10 +12,11 @@ Bring Synaplan's AI capabilities directly into Nextcloud:
 - **Add to Knowledge** — vectorize files into the AI knowledge base
 - **Research Chat** — AI assistant with knowledge group and model selection, optional personal memories, and live status (model, language, image/video capabilities)
 - **Configurable answer language** — set a default language and optionally follow each user's Nextcloud interface language
+- **Connect an existing Synaplan account** — users sign in once and Nextcloud AI actions run as them
 
-Requires a running Synaplan instance and API key.
+Requires a running Synaplan instance. Shared-key, per-user provision, or account-link mode.
 	]]></description>
-	<version>1.5.0</version>
+	<version>1.6.0</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>
@@ -34,5 +35,7 @@ Requires a running Synaplan instance and API key.
 	<settings>
 		<admin>OCA\SynaplanIntegration\Settings\SynaplanAdmin</admin>
 		<admin-section>OCA\SynaplanIntegration\Settings\SynaplanSection</admin-section>
+		<personal>OCA\SynaplanIntegration\Settings\SynaplanPersonal</personal>
+		<personal-section>OCA\SynaplanIntegration\Settings\SynaplanSection</personal-section>
 	</settings>
 </info>

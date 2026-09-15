@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.6.0 – 2026-09-15
+
+Three ways to connect Nextcloud to Synaplan. Existing installs keep working:
+unset `mode` still follows the old “Give each user their own account” flag.
+
+### Added
+- **Connect an existing Synaplan account (`link` mode).** Personal settings →
+  **Connect Synaplan**: sign in once, confirm, and Files actions run as that
+  account. No key is typed or shown.
+- **Two-option AI gate** in `link` mode: connect your account, or (if the
+  admin allows it) create one. If the email is already taken, the gate offers
+  to connect that account.
+- **Admin mode selector** — shared key, create-an-account-per-user, or connect
+  existing accounts — plus **Register this instance** and Linked / Provisioned
+  badges on activated users.
+- Upgrade note: switching a `provision` install to `link` keeps provisioned
+  keys until someone chooses **Connect my Synaplan account**; new users see
+  the two-option gate.
+
 ## 1.5.0 – 2026-07-12
 
 Knowledge-file lifecycle + per-file chat, built on Synaplan's file-lifecycle

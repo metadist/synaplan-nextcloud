@@ -290,6 +290,78 @@ class UserAccountServiceTest extends TestCase
         $this->service()->deleteRemoteAccount('nobody');
     }
 
+    public function testSharedModeResolvesNull(): void
+    {
+        $this->appConfig['mode'] = 'shared';
+        $this->appConfig['per_user_accounts'] = '1';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $this->assertNull($this->service()->resolveKeyForUser($this->mockUser('alice', 'a@b.test', 'Alice')));
+    }
+
+    public function testProvisionModeStillProvisionsAfterConsent(): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+        $this->userSession->method('getUser')->willReturn($user);
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 9]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['key' => 'sk_new']]));
+        $this->httpClient->method('post')->willReturnCallback(
+            fn (string $url): IResponse => str_contains($url, '/api-keys') ? $mintResp : $provisionResp
+        );
+
+        $this->assertSame('sk_new', $this->service()->resolveKeyForUser($user));
+    }
+
+    public function testLinkModeNeverProvisionsImplicitly(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->resolveKeyForUser($user));
+    }
+
+    public function testProvisionModeEmailConflictStillThrows(): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        $user = $this->mockUser('alice', 'taken@example.com', 'Alice');
+        $this->httpClient->method('post')->willThrowException(new \RuntimeException('Client error: 409 Conflict'));
+
+        $this->expectException(\OCA\SynaplanIntegration\Exception\EmailConflictException::class);
+        $this->service()->provisionAccount($user);
+    }
+
+    public function testProvisionForLinkModeWritesKindAndSource(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->appConfig['link_auto_provision'] = '1';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 12]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['id' => 3, 'key' => 'sk_p']]));
+        $captured = [];
+        $this->httpClient->method('post')->willReturnCallback(
+            function (string $url, array $options) use (&$captured, $provisionResp, $mintResp): IResponse {
+                $captured[] = json_decode($options['body'], true);
+
+                return str_contains($url, '/api-keys') ? $mintResp : $provisionResp;
+            }
+        );
+
+        $this->assertSame('sk_p', $this->service()->provisionForLinkMode($user));
+        $this->assertSame('nextcloud', $captured[0]['source']);
+        $this->assertSame('inst42:alice', $captured[0]['external_id']);
+        $this->assertSame('provisioned', $this->userConfig['alice|synaplan_link_kind']);
+    }
+
     public function testFetchUsageCallsAdminApi(): void
     {
         $resp = $this->createMock(IResponse::class);

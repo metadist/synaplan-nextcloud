@@ -79,6 +79,31 @@ class AdminAiUsersServiceTest extends TestCase
         $this->assertFalse($users[1]['hasKey']);
     }
 
+    public function testListReportsKindLinkedOrProvisioned(): void
+    {
+        $this->config->method('getUsersForUserValue')->willReturn(['alice', 'bob']);
+        $this->config->method('getUserValue')->willReturnCallback(
+            function (string $uid, string $app, string $key, string $default = '') {
+                $store = [
+                    'alice|synaplan_user_api_key' => 'sk_a',
+                    'bob|synaplan_user_api_key' => 'sk_b',
+                ];
+
+                return $store[$uid . '|' . $key] ?? $default;
+            }
+        );
+        $this->userManager->method('get')->willReturn(null);
+        $this->userAccounts->method('getSynaplanUserId')->willReturn(1);
+        $this->userAccounts->method('getLinkKind')->willReturnCallback(
+            fn (string $uid): ?string => $uid === 'alice' ? 'linked' : 'provisioned'
+        );
+
+        $users = $this->service->listActivatedUsers();
+
+        $this->assertSame('linked', $users[0]['kind']);
+        $this->assertSame('provisioned', $users[1]['kind']);
+    }
+
     public function testDeactivateDelegates(): void
     {
         $this->userAccounts->expects($this->once())

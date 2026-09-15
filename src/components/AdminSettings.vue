@@ -135,12 +135,7 @@
 				<div class="sp-field">
 					<strong>{{ t('synaplan_integration', 'API Key') }}</strong>
 					<p class="sp-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'Your Synaplan API key for authentication.',
-							)
-						}}
+						{{ apiKeyHint }}
 					</p>
 					<div :style="inputWrapStyle">
 						<NcTextField
@@ -334,22 +329,73 @@
 
 				<div :style="{ height: '16px' }" />
 
-				<NcCheckboxRadioSwitch
-					v-model="perUserAccounts"
-					type="switch"
-					:disabled="saving">
-					{{
-						t('synaplan_integration', 'Give each user their own Synaplan account')
-					}}
-				</NcCheckboxRadioSwitch>
-				<p class="sp-hint sp-switch-hint">
-					{{
-						t(
-							'synaplan_integration',
-							'When enabled, the key above is treated as an ADMIN key: every Nextcloud user gets their own Synaplan account and personal API key, so their knowledge base, memories and usage stay private to them. When off, all users share the single configured key.',
-						)
-					}}
-				</p>
+				<div class="sp-field">
+					<strong>{{
+						t('synaplan_integration', 'How users connect')
+					}}</strong>
+					<p class="sp-hint">
+						{{ modeHint }}
+					</p>
+					<div class="sp-env-switch">
+						<NcCheckboxRadioSwitch
+							v-model="mode"
+							value="shared"
+							name="sp-mode"
+							type="radio"
+							:disabled="saving">
+							{{ t('synaplan_integration', 'Shared key') }}
+						</NcCheckboxRadioSwitch>
+						<NcCheckboxRadioSwitch
+							v-model="mode"
+							value="provision"
+							name="sp-mode"
+							type="radio"
+							:disabled="saving">
+							{{
+								t(
+									'synaplan_integration',
+									'Create an account for each user',
+								)
+							}}
+						</NcCheckboxRadioSwitch>
+						<NcCheckboxRadioSwitch
+							v-model="mode"
+							value="link"
+							name="sp-mode"
+							type="radio"
+							:disabled="saving">
+							{{
+								t(
+									'synaplan_integration',
+									'Connect existing accounts',
+								)
+							}}
+						</NcCheckboxRadioSwitch>
+					</div>
+				</div>
+
+				<template v-if="mode === 'link'">
+					<div :style="{ height: '12px' }" />
+					<NcCheckboxRadioSwitch
+						v-model="linkAutoProvision"
+						type="switch"
+						:disabled="saving || !hasAdminKey">
+						{{
+							t(
+								'synaplan_integration',
+								'Offer to create an account for users who have none',
+							)
+						}}
+					</NcCheckboxRadioSwitch>
+					<p class="sp-hint sp-switch-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Needs the admin API key. Users who already have a Synaplan account still connect it.',
+							)
+						}}
+					</p>
+				</template>
 
 				<div :style="{ height: '20px' }" />
 
@@ -371,7 +417,79 @@
 			</NcSettingsSection>
 
 			<NcSettingsSection
-				v-if="perUserAccounts"
+				v-if="mode === 'link'"
+				:name="t('synaplan_integration', 'This Nextcloud')">
+				<p class="sp-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'Register this Nextcloud so people can connect their Synaplan account. You do this once.',
+						)
+					}}
+				</p>
+				<p v-if="linkRegistered" class="sp-status">
+					{{ instanceStatusLabel }}
+				</p>
+				<p v-else class="sp-status">
+					{{ t('synaplan_integration', 'Not registered yet.') }}
+				</p>
+				<div :style="{ height: '16px' }" />
+				<div class="sp-field">
+					<strong>{{
+						t(
+							'synaplan_integration',
+							'Address people open in the browser',
+						)
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Leave empty when it is the same as the Synaplan URL. In Docker, set this to http://localhost:5173 and the API URL to http://backend.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-public-url"
+							v-model="synaplanPublicUrlActive"
+							:placeholder="
+								activeEnv === 'local'
+									? 'http://localhost:5173'
+									: 'https://synaplan.example.com'
+							"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
+				<div :style="{ display: 'flex', gap: '16px', margin: '12px 0' }">
+					<span
+						v-if="!linkRegistered"
+						role="button"
+						tabindex="0"
+						:style="primaryBtnStyle"
+						@click="!registering && registerInstance()"
+						@keydown.enter="!registering && registerInstance()">
+						{{
+							registering
+								? t('synaplan_integration', 'Registering…')
+								: t('synaplan_integration', 'Register this instance')
+						}}
+					</span>
+					<span
+						v-else
+						role="button"
+						tabindex="0"
+						:style="secondaryBtnStyle"
+						@click="!registering && forgetInstance()"
+						@keydown.enter="!registering && forgetInstance()">
+						{{ t('synaplan_integration', 'Forget registration') }}
+					</span>
+				</div>
+			</NcSettingsSection>
+
+			<NcSettingsSection
+				v-if="mode !== 'shared'"
 				:name="t('synaplan_integration', 'AI Users')">
 				<p class="sp-hint">
 					{{
@@ -387,7 +505,9 @@
 						:value="aiUserSearch"
 						:label="t('synaplan_integration', 'Search name or email')"
 						:label-visible="false"
-						:placeholder="t('synaplan_integration', 'Search name or email')"
+						:placeholder="
+							t('synaplan_integration', 'Search name or email')
+						"
 						class="sp-aiusers-search"
 						@update:value="aiUserSearch = $event" />
 					<span
@@ -409,23 +529,14 @@
 					}}</span>
 				</div>
 
-				<p
-					v-if="aiUsers.length === 0 && !aiUsersLoading"
-					class="sp-hint">
+				<p v-if="aiUsers.length === 0 && !aiUsersLoading" class="sp-hint">
 					{{
-						t(
-							'synaplan_integration',
-							'No users have activated AI yet.',
-						)
+						t('synaplan_integration', 'No users have activated AI yet.')
 					}}
 				</p>
 
-				<p
-					v-else-if="filteredAiUsers.length === 0"
-					class="sp-hint">
-					{{
-						t('synaplan_integration', 'No users match your search.')
-					}}
+				<p v-else-if="filteredAiUsers.length === 0" class="sp-hint">
+					{{ t('synaplan_integration', 'No users match your search.') }}
 				</p>
 
 				<div v-else class="sp-aiusers-list">
@@ -435,12 +546,27 @@
 						class="sp-aiuser">
 						<div class="sp-aiuser-row">
 							<div class="sp-aiuser-main">
-								<span class="sp-aiuser-name">{{ u.displayName }}</span>
+								<span class="sp-aiuser-name">{{
+									u.displayName
+								}}</span>
 								<span class="sp-uid">({{ u.uid }})</span>
 							</div>
 							<div class="sp-aiuser-meta">
+								<span v-if="u.kind" class="sp-kind-badge">
+									{{
+										u.kind === 'linked'
+											? t('synaplan_integration', 'Linked')
+											: t(
+													'synaplan_integration',
+													'Provisioned',
+												)
+									}}
+								</span>
 								<span v-if="u.email">{{ u.email }}</span>
-								<span>{{ t('synaplan_integration', 'Synaplan ID') }}: {{ u.synaplanUserId ?? '—' }}</span>
+								<span
+									>{{ t('synaplan_integration', 'Synaplan ID') }}:
+									{{ u.synaplanUserId ?? '—' }}</span
+								>
 								<span>{{
 									u.hasKey
 										? t('synaplan_integration', 'Key ✓')
@@ -470,9 +596,7 @@
 					</div>
 				</div>
 
-				<div
-					v-if="aiUsersTotalPages > 1"
-					class="sp-aiusers-pagination">
+				<div v-if="aiUsersTotalPages > 1" class="sp-aiusers-pagination">
 					<span
 						role="button"
 						tabindex="0"
@@ -482,14 +606,20 @@
 						@keydown.enter="aiUserPage > 1 && aiUserPage--">
 						‹ {{ t('synaplan_integration', 'Previous') }}
 					</span>
-					<span class="sp-hint">{{ aiUserPage }} / {{ aiUsersTotalPages }}</span>
+					<span class="sp-hint"
+						>{{ aiUserPage }} / {{ aiUsersTotalPages }}</span
+					>
 					<span
 						role="button"
 						tabindex="0"
 						class="sp-page-btn"
-						:class="{ 'sp-page-disabled': aiUserPage >= aiUsersTotalPages }"
+						:class="{
+							'sp-page-disabled': aiUserPage >= aiUsersTotalPages,
+						}"
 						@click="aiUserPage < aiUsersTotalPages && aiUserPage++"
-						@keydown.enter="aiUserPage < aiUsersTotalPages && aiUserPage++">
+						@keydown.enter="
+							aiUserPage < aiUsersTotalPages && aiUserPage++
+						">
 						{{ t('synaplan_integration', 'Next') }} ›
 					</span>
 				</div>
@@ -508,14 +638,18 @@
 						<dd>{{ detailUser.uid }}</dd>
 						<dt>{{ t('synaplan_integration', 'Email') }}</dt>
 						<dd>{{ detailUser.email || '—' }}</dd>
-						<dt>{{ t('synaplan_integration', 'Synaplan account ID') }}</dt>
+						<dt>
+							{{ t('synaplan_integration', 'Synaplan account ID') }}
+						</dt>
 						<dd>{{ detailUser.synaplanUserId ?? '—' }}</dd>
 						<dt>{{ t('synaplan_integration', 'API key') }}</dt>
-						<dd>{{
-							detailUser.hasKey
-								? t('synaplan_integration', 'Issued')
-								: t('synaplan_integration', 'None')
-						}}</dd>
+						<dd>
+							{{
+								detailUser.hasKey
+									? t('synaplan_integration', 'Issued')
+									: t('synaplan_integration', 'None')
+							}}
+						</dd>
 						<dt>{{ t('synaplan_integration', 'Activated') }}</dt>
 						<dd>{{ formatConsentDate(detailUser.consentAt) }}</dd>
 					</dl>
@@ -527,9 +661,7 @@
 						t('synaplan_integration', 'Loading usage...')
 					}}</span>
 					<ul v-else-if="detailUsageEntries.length" class="sp-usage-list">
-						<li
-							v-for="entry in detailUsageEntries"
-							:key="entry.key">
+						<li v-for="entry in detailUsageEntries" :key="entry.key">
 							<strong>{{ entry.key }}:</strong> {{ entry.value }}
 						</li>
 					</ul>
@@ -575,7 +707,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import axios from '@nextcloud/axios'
 import { generateUrl, imagePath } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
@@ -599,6 +731,8 @@ const apiKey = ref('')
 const apiKeySet = ref(false)
 const apiKeyMasked = ref('')
 const synaplanUrlLocal = ref('')
+const synaplanPublicUrl = ref('')
+const synaplanPublicUrlLocal = ref('')
 const apiKeyLocal = ref('')
 const apiKeyLocalSet = ref(false)
 const apiKeyLocalMasked = ref('')
@@ -622,7 +756,83 @@ const languageOptions: LanguageOption[] = [
 const defaultLanguage = ref<LanguageOption>(languageOptions[0])
 const useInterfaceLanguage = ref(true)
 const enableMemories = ref(true)
-const perUserAccounts = ref(false)
+const mode = ref<'shared' | 'provision' | 'link'>('shared')
+const linkAutoProvision = ref(false)
+const linkRegistered = ref(false)
+const linkInstanceId = ref('')
+const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
+	null,
+)
+const registering = ref(false)
+
+const hasAdminKey = computed(() =>
+	activeEnv.value === 'local' ? apiKeyLocalSet.value : apiKeySet.value,
+)
+
+const synaplanPublicUrlActive = computed({
+	get: () =>
+		activeEnv.value === 'local'
+			? synaplanPublicUrlLocal.value
+			: synaplanPublicUrl.value,
+	set: (value: string) => {
+		if (activeEnv.value === 'local') {
+			synaplanPublicUrlLocal.value = value
+		} else {
+			synaplanPublicUrl.value = value
+		}
+	},
+})
+
+const apiKeyHint = computed(() =>
+	mode.value === 'link'
+		? t(
+				'synaplan_integration',
+				'Optional. Needed to create accounts for users who have none, and to show the activated-users table.',
+			)
+		: t('synaplan_integration', 'Your Synaplan API key for authentication.'),
+)
+
+const modeHint = computed(() => {
+	if (mode.value === 'link') {
+		return t(
+			'synaplan_integration',
+			'Each person connects their own Synaplan account. Their models, knowledge and memories stay theirs.',
+		)
+	}
+	if (mode.value === 'provision') {
+		return t(
+			'synaplan_integration',
+			'The key above is treated as an admin key: every Nextcloud user gets their own Synaplan account.',
+		)
+	}
+	return t('synaplan_integration', 'All users share the single configured key.')
+})
+
+const instanceStatusLabel = computed(() => {
+	const inst = linkInstance.value
+	const host = inst?.host || ''
+	if (inst?.status === 'pending') {
+		return host
+			? t(
+					'synaplan_integration',
+					'Waiting for approval by the Synaplan administrator ({host}).',
+					{ host },
+				)
+			: t(
+					'synaplan_integration',
+					'Waiting for approval by the Synaplan administrator.',
+				)
+	}
+	if (inst?.status === 'active') {
+		return host
+			? t('synaplan_integration', 'Registered and ready ({host}).', { host })
+			: t('synaplan_integration', 'Registered and ready.')
+	}
+	if (linkInstanceId.value) {
+		return t('synaplan_integration', 'Registered. Checking status…')
+	}
+	return t('synaplan_integration', 'Not registered yet.')
+})
 
 interface AiUser {
 	uid: string
@@ -631,6 +841,7 @@ interface AiUser {
 	synaplanUserId: number | null
 	hasKey: boolean
 	consentAt: string
+	kind?: 'linked' | 'provisioned' | null
 }
 
 const AI_USERS_PER_PAGE = 20
@@ -738,6 +949,8 @@ async function loadSettings() {
 		apiKeySet.value = data.api_key_set || false
 		apiKeyMasked.value = data.api_key_masked || ''
 		synaplanUrlLocal.value = data.synaplan_url_local || ''
+		synaplanPublicUrl.value = data.synaplan_public_url || ''
+		synaplanPublicUrlLocal.value = data.synaplan_public_url_local || ''
 		apiKeyLocalSet.value = data.api_key_local_set || false
 		apiKeyLocalMasked.value = data.api_key_local_masked || ''
 		defaultLanguage.value =
@@ -745,7 +958,19 @@ async function loadSettings() {
 			?? languageOptions[0]
 		useInterfaceLanguage.value = data.use_interface_language !== false
 		enableMemories.value = data.enable_memories !== false
-		perUserAccounts.value = data.per_user_accounts === true
+		if (
+			data.mode === 'link'
+			|| data.mode === 'provision'
+			|| data.mode === 'shared'
+		) {
+			mode.value = data.mode
+		} else {
+			mode.value = data.per_user_accounts === true ? 'provision' : 'shared'
+		}
+		linkAutoProvision.value = data.link_auto_provision === true
+		linkRegistered.value = data.link_registered === true
+		linkInstanceId.value = data.link_instance_id || ''
+		linkInstance.value = data.link_instance || null
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
@@ -763,11 +988,15 @@ async function save() {
 			synaplan_url: synaplanUrl.value,
 			api_key: apiKey.value,
 			synaplan_url_local: synaplanUrlLocal.value,
+			synaplan_public_url: synaplanPublicUrl.value,
+			synaplan_public_url_local: synaplanPublicUrlLocal.value,
 			api_key_local: apiKeyLocal.value,
 			default_language: defaultLanguage.value.id,
 			use_interface_language: useInterfaceLanguage.value,
 			enable_memories: enableMemories.value,
-			per_user_accounts: perUserAccounts.value,
+			mode: mode.value,
+			per_user_accounts: mode.value !== 'shared',
+			link_auto_provision: linkAutoProvision.value,
 		})
 		if (apiKey.value) {
 			apiKeySet.value = true
@@ -877,8 +1106,8 @@ async function openDetails(u: AiUser) {
 const detailModalTitle = computed(() =>
 	detailUser.value
 		? t('synaplan_integration', 'AI user: {name}', {
-			name: detailUser.value.displayName,
-		})
+				name: detailUser.value.displayName,
+			})
 		: '',
 )
 
@@ -900,13 +1129,13 @@ function onDetailOpenChange(open: boolean) {
  * Flatten a user's usage payload into scalar key/value rows for display.
  * @param {string} uid Nextcloud user id
  */
-function usageEntries(uid: string): { key: string, value: string }[] {
+function usageEntries(uid: string): { key: string; value: string }[] {
 	const data = usageData.value[uid] as Record<string, unknown> | undefined
 	const usage = (data?.usage ?? data) as Record<string, unknown> | undefined
 	if (!usage || typeof usage !== 'object') {
 		return []
 	}
-	const out: { key: string, value: string }[] = []
+	const out: { key: string; value: string }[] = []
 	for (const [key, value] of Object.entries(usage)) {
 		if (value === null || typeof value === 'object') {
 			continue
@@ -948,10 +1177,111 @@ function formatConsentDate(iso: string): string {
 	return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
+/**
+ * Register this Nextcloud as a Synaplan platform instance.
+ */
+async function registerInstance() {
+	registering.value = true
+	try {
+		const { data } = await axios.post(
+			`${baseUrl}/api/v1/settings/register-instance`,
+		)
+		if (data.success) {
+			linkRegistered.value = true
+			linkInstanceId.value = data.instance_id || ''
+			linkInstance.value = {
+				status: data.status,
+				host: data.host,
+			}
+			showMessage(
+				t(
+					'synaplan_integration',
+					'This Nextcloud is registered with Synaplan.',
+				),
+			)
+		} else {
+			showMessage(
+				data.error
+					|| t(
+						'synaplan_integration',
+						'Could not register this Nextcloud.',
+					),
+				'error',
+			)
+		}
+	} catch (err: unknown) {
+		let errorMsg = t(
+			'synaplan_integration',
+			'Could not register this Nextcloud.',
+		)
+		if (err instanceof Error) {
+			errorMsg = err.message
+		}
+		showMessage(errorMsg, 'error')
+	} finally {
+		registering.value = false
+	}
+}
+
+/**
+ * Forget the stored instance credentials.
+ */
+async function forgetInstance() {
+	registering.value = true
+	try {
+		await axios.post(`${baseUrl}/api/v1/settings/forget-instance`)
+		linkRegistered.value = false
+		linkInstanceId.value = ''
+		linkInstance.value = null
+		showMessage(
+			t('synaplan_integration', 'Registration forgotten on this Nextcloud.'),
+		)
+	} catch {
+		showMessage(
+			t('synaplan_integration', 'Could not forget the registration.'),
+			'error',
+		)
+	} finally {
+		registering.value = false
+	}
+}
+
+let statusTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Refresh instance status while waiting for Synaplan approval.
+ */
+async function refreshInstanceStatus() {
+	if (mode.value !== 'link' || !linkRegistered.value) {
+		return
+	}
+	try {
+		const { data } = await axios.get(
+			`${baseUrl}/api/v1/settings/instance-status`,
+		)
+		if (data.instance) {
+			linkInstance.value = data.instance
+		}
+	} catch {
+		// Keep the last known status.
+	}
+}
+
 onMounted(async () => {
 	await loadSettings()
-	if (perUserAccounts.value) {
+	if (mode.value !== 'shared') {
 		loadAiUsers()
+	}
+	statusTimer = setInterval(() => {
+		if (linkInstance.value?.status === 'pending') {
+			refreshInstanceStatus()
+		}
+	}, 8000)
+})
+
+onUnmounted(() => {
+	if (statusTimer) {
+		clearInterval(statusTimer)
 	}
 })
 </script>
@@ -1201,5 +1531,15 @@ onMounted(async () => {
 	margin: 0;
 	padding: 0 0 0 16px;
 	columns: 2;
+}
+
+.sp-kind-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 0.8em;
+	font-weight: 600;
+	background: var(--color-background-dark, rgba(127, 127, 127, 0.15));
+	color: var(--color-main-text, #222);
 }
 </style>

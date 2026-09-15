@@ -5,6 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-summary-modal">
+			<AiConsentGate @blocked-change="aiBlocked = $event" />
 			<!-- Options (shown before result) -->
 			<div v-if="!loading && !result" class="options">
 				<div class="field">
@@ -70,7 +71,10 @@
 						: t('synaplan_integration', 'Copy')
 				}}
 			</NcButton>
-			<NcButton v-if="!loading && !result" type="primary" @click="doSummarize">
+			<NcButton
+				v-if="!loading && !result && !aiBlocked"
+				type="primary"
+				@click="doSummarize">
 				{{ t('synaplan_integration', 'Summarize') }}
 			</NcButton>
 			<NcButton v-if="result" type="primary" @click="onClose">
@@ -91,6 +95,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
+import AiConsentGate from './AiConsentGate.vue'
 
 const props = defineProps<{
 	fileId: number
@@ -106,6 +111,7 @@ const loading = ref(false)
 const result = ref('')
 const error = ref('')
 const copied = ref(false)
+const aiBlocked = ref(false)
 
 const summaryType = ref({
 	id: 'bullet-points',

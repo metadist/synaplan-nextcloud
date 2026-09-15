@@ -551,6 +551,9 @@ class SynaplanClient
                 'Accept' => 'application/json',
             ],
             'timeout' => self::TIMEOUT,
+            'nextcloud' => [
+                'allow_local_address' => true,
+            ],
         ];
 
         if ($body !== null) {
@@ -568,11 +571,23 @@ class SynaplanClient
 
             return $decoded;
         } catch (\Exception $e) {
-            // Self-heal a stale/revoked per-user key: drop it and retry once so
-            // the next getApiKey() re-provisions + re-mints. Only meaningful in
-            // per-user mode; the install-wide key path never re-mints.
+            // Self-heal a stale/revoked per-user key. In provision mode, drop
+            // it and retry once so the next getApiKey() re-provisions. In
+            // link mode a 401 means the user disconnected — clear prefs and
+            // do not remint (the UI shows Connect again).
             if ($this->isUnauthorized($e) && $this->synaplanConfig->isPerUserAccountsEnabled()) {
                 $this->userAccounts->clearCurrentUserApiKey();
+                if ($this->synaplanConfig->isLinkMode()) {
+                    $this->userAccounts->clearLinkPrefs();
+                    $this->logger->error('Synaplan API request failed: {message}', [
+                        'app' => Application::APP_ID,
+                        'message' => $e->getMessage(),
+                        'method' => $method,
+                        'path' => $path,
+                    ]);
+
+                    throw $e;
+                }
                 $options['headers']['X-API-Key'] = $this->getApiKey();
                 try {
                     $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);

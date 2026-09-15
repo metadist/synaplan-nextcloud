@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Controller;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -69,6 +70,7 @@ class ApiController extends Controller
         private IConfig $config,
         private IAppManager $appManager,
         private LoggerInterface $logger,
+        private ?UserAccountService $userAccounts = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -95,14 +97,14 @@ class ApiController extends Controller
             $memory['configured'] = $serviceState['configured'];
         }
 
-        return new JSONResponse([
+        return new JSONResponse(array_merge([
             'success' => true,
             'version' => $this->appManager->getAppVersion(Application::APP_ID),
             'language' => $language,
             'languageName' => $this->languageService->getLanguageName($language),
             'useInterfaceLanguage' => $this->languageService->useInterfaceLanguage(),
             'memory' => $memory,
-        ]);
+        ], $this->userAccounts?->getLinkStatus() ?? []));
     }
 
     /**

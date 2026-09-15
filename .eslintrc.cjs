@@ -7,6 +7,8 @@ module.exports = {
 		'vue/html-closing-bracket-newline': 'off',
 		'vue/html-indent': 'off',
 		'operator-linebreak': 'off',
+		// Prettier owns wrapping/indent of t() argument lists in <script setup>.
+		indent: 'off',
 	},
 	overrides: [
 		{

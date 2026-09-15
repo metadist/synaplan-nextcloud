@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Listener;
 
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\EventDispatcher\Event;
@@ -24,6 +25,7 @@ class UserDeletedListener implements IEventListener
     public function __construct(
         private UserAccountService $userAccounts,
         private SynaplanConfig $synaplanConfig,
+        private ?PlatformLinkService $platformLinks = null,
     ) {
     }
 
@@ -37,8 +39,17 @@ class UserDeletedListener implements IEventListener
             return;
         }
 
+        $uid = $event->getUser()->getUID();
+        // Linking never deletes a Synaplan user (decision 9). Disconnect
+        // revokes only the minted key.
+        if ($this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED) {
+            $this->platformLinks?->disconnectUid($uid);
+
+            return;
+        }
+
         // Best-effort; deleteRemoteAccount never throws so Nextcloud's own user
         // deletion is never blocked by a Synaplan hiccup.
-        $this->userAccounts->deleteRemoteAccount($event->getUser()->getUID());
+        $this->userAccounts->deleteRemoteAccount($uid);
     }
 }
