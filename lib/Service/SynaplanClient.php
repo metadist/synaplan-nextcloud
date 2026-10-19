@@ -724,18 +724,13 @@ class SynaplanClient
     }
 
     /**
-     * Best-effort detection of an HTTP 401 from the Nextcloud HTTP client
-     * exception (the underlying Guzzle exception message carries the status).
+     * Whether Synaplan answered 401. The Nextcloud HTTP client throws Guzzle's
+     * exceptions, which carry the HTTP status as their code. The message holds
+     * the URL and transport errors, so a "401" in it proves nothing.
      */
     private function isUnauthorized(\Exception $e): bool
     {
-        if ($e->getCode() === 401) {
-            return true;
-        }
-
-        $message = $e->getMessage();
-
-        return str_contains($message, '401') || stripos($message, 'Unauthorized') !== false;
+        return $e->getCode() === Http::STATUS_UNAUTHORIZED;
     }
 
     private function doRequest(IClient $client, string $method, string $url, array $options): \OCP\Http\Client\IResponse
