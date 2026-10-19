@@ -414,7 +414,7 @@ class SynaplanClientTest extends TestCase
 
         $this->httpClient->expects($this->once())
             ->method('get')
-            ->willThrowException(new \Exception('401 Unauthorized'));
+            ->willThrowException(new \Exception('401 Unauthorized', 401));
 
         $client = $this->makeClient($config);
 
@@ -482,6 +482,46 @@ class SynaplanClientTest extends TestCase
             self::fail('A refused key must fail.');
         } catch (FailureException $e) {
             self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{\Exception}>
+     */
+    public static function failuresThatMention401(): iterable
+    {
+        yield 'a 404 for a path with 401' => [new \Exception(
+            'Client error: `GET http://backend/api/v1/files/uploads/401/cat.png` resulted in a `404 Not Found` response',
+            404,
+        )];
+        yield 'a connection failure on port 4010' => [new \Exception(
+            'cURL error 7: Failed to connect to backend port 4010: Connection refused',
+        )];
+    }
+
+    #[DataProvider('failuresThatMention401')]
+    public function testOnlyA401ForgetsTheLinkedKey(\Exception $failure): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn('sk_linked');
+        $this->userAccounts->expects($this->never())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->never())->method('clearLinkPrefs');
+        $this->httpClient->method('get')->willThrowException($failure);
+        $this->httpClient->method('post')->willThrowException($failure);
+        $client = $this->makeClient($this->modeConfig('link'));
+
+        foreach ([
+            fn () => $client->downloadFile('/api/v1/files/uploads/401/cat.png'),
+            fn () => $client->uploadFile('notes.txt', 'Notes', 'DOCS'),
+            fn () => $client->summarize('Notes'),
+        ] as $call) {
+            $caught = null;
+            try {
+                $call();
+            } catch (\Exception $e) {
+                $caught = $e;
+            }
+            self::assertSame($failure, $caught);
         }
     }
 
@@ -576,7 +616,7 @@ class SynaplanClientTest extends TestCase
             ->willReturnCallback(function () use (&$calls, $ok): IResponse {
                 ++$calls;
                 if ($calls === 1) {
-                    throw new \Exception('401 Unauthorized');
+                    throw new \Exception('401 Unauthorized', 401);
                 }
 
                 return $ok;
