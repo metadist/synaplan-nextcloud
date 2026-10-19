@@ -36,7 +36,7 @@ Binary formats (PDF, Office, OpenDocument) are processed via Synaplan's built-in
 
 ## Requirements
 
-- Nextcloud 30–34
+- Nextcloud 33–35
 - PHP 8.2+
 - A running [Synaplan](https://synaplan.com) instance with a valid API key
 

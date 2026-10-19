@@ -25,7 +25,7 @@ This guide covers the features shipped for the hosting scenario:
   (Synaplan → Settings → API Keys → *Create key* while logged in as an admin).
   In per-user mode this key is used only to provision accounts and mint per-user
   keys — never for end-user traffic.
-- Nextcloud 30–34, PHP 8.2+.
+- Nextcloud 33–35, PHP 8.2+.
 
 ---
 
