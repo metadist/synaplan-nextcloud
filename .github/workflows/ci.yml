@@ -117,10 +117,87 @@ jobs:
           path: synaplan_integration.tar.gz
           retention-days: 7
 
+  e2e:
+    name: E2E (Nextcloud ${{ matrix.nextcloud }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        nextcloud: [33, 35]
+    defaults:
+      run:
+        working-directory: nextcloud
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: nextcloud
+
+      # The test stack files come from the commit the pinned image was built
+      # from, so SYNAPLAN_IMAGE_DIGEST stays the only pin.
+      - name: Find the Synaplan commit of the pinned image
+        id: synaplan
+        run: |
+          image="ghcr.io/metadist/synaplan@${SYNAPLAN_IMAGE_DIGEST}"
+          docker pull -q "$image"
+          ref="$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+          if ! echo "$ref" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "The pinned Synaplan image has no source revision label." >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: metadist/synaplan
+          ref: ${{ steps.synaplan.outputs.ref }}
+          path: synaplan
+          persist-credentials: false
+          sparse-checkout: |
+            /docker-compose.test.yml
+            /docker-compose.test.ci.yml
+            /backend/.env.test
+            /frontend/tests/e2e/stub-servers/
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: nextcloud/package-lock.json
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Start Synaplan and Nextcloud ${{ matrix.nextcloud }}
+        env:
+          NC_IMAGE: nextcloud:${{ matrix.nextcloud }}-apache
+        run: make e2e-up
+
+      - run: make test-e2e
+
+      - name: Collect the server logs
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          docker compose -p synaplan-nextcloud-e2e -f docker-compose.ci.yml exec -T nextcloud \
+            cat /var/www/html/data/nextcloud.log > e2e-logs/nextcloud.log || true
+          docker logs synaplan-app-test > e2e-logs/synaplan.log 2>&1 || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: e2e-nextcloud-${{ matrix.nextcloud }}
+          path: |
+            nextcloud/playwright-report/
+            nextcloud/test-results/
+            nextcloud/e2e-logs/
+          retention-days: 7
+
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [php, contract, frontend, package]
+    needs: [php, contract, frontend, package, e2e]
     if: always()
     steps:
       - name: Check for failures
