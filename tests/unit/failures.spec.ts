@@ -21,7 +21,9 @@ describe('describeFailure', () => {
 		const failure = describeFailure('not_connected')
 
 		expect(failure.text).toBe('Connect your Synaplan account first.')
-		expect(failure.settingsUrl).toMatch(/\/settings\/user\/Synaplan$/)
+		expect(failure.settingsUrl).toMatch(
+			/\/settings\/user\/synaplan_integration$/,
+		)
 	})
 
 	it('names an unreachable Synaplan and the way out', () => {
