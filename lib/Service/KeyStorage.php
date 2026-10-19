@@ -28,6 +28,9 @@ final class KeyStorage
     /** What Nextcloud 33–35 return for a sensitive user value they cannot decrypt. */
     private const USER_ENCRYPTION_PREFIX = '$UserConfigEncryption$';
 
+    /** What Nextcloud's ICrypto throws when a value no longer decrypts. */
+    private const DECRYPTION_FAILURE = '/HMAC does not match|ciphertext could not be decoded|Decryption failed/';
+
     public function __construct(
         private IUserConfig $userConfig,
         private IAppConfig $appConfig,
@@ -67,12 +70,16 @@ final class KeyStorage
 
     /**
      * @param 'api_key'|'api_key_local' $name
+     * @throws \Exception when the config cannot be read for another reason than decryption
      */
     public function getAppKey(string $name): string
     {
         try {
             $key = $this->appConfig->getValueString(Application::APP_ID, $name);
         } catch (\Exception $e) {
+            if (preg_match(self::DECRYPTION_FAILURE, $e->getMessage()) !== 1) {
+                throw $e;
+            }
             $this->appConfig->deleteKey(Application::APP_ID, $name);
             $this->logger->warning('The stored Synaplan key {name} could not be decrypted and was removed', [
                 'app' => Application::APP_ID,

@@ -149,6 +149,21 @@ class UserAccountServiceTest extends TestCase
         ));
     }
 
+    public function testAnUndecryptableKeyShowsConnectInTheSettings(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_user_api_key'] = '$UserConfigEncryption$b4d7|cipher';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|synaplan_link_email'] = 'demo@synaplan.com';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $status = $this->service()->getLinkStatus();
+
+        $this->assertNull($status['kind']);
+        $this->assertNull($status['linked']);
+        $this->assertArrayNotHasKey('alice|synaplan_link_kind', $this->userConfig);
+    }
+
     public function testProvisionsAndMintsOnFirstUse(): void
     {
         // Consent already granted — provisioning is allowed to proceed.

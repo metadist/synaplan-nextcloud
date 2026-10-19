@@ -101,6 +101,16 @@ final class KeyStorageTest extends TestCase
         $this->assertSame('', $this->storage(appConfig: $appConfig)->getAppKey('api_key'));
     }
 
+    public function testAnotherReadFailureKeepsTheAdminKey(): void
+    {
+        $appConfig = $this->createMock(IAppConfig::class);
+        $appConfig->method('getValueString')->willThrowException(new \RuntimeException('Deadlock found when trying to get lock'));
+        $appConfig->expects($this->never())->method('deleteKey');
+
+        $this->expectExceptionMessage('Deadlock found');
+        $this->storage(appConfig: $appConfig)->getAppKey('api_key');
+    }
+
     private function storage(?IUserConfig $userConfig = null, ?IAppConfig $appConfig = null, ?LoggerInterface $logger = null): KeyStorage
     {
         return new KeyStorage(
