@@ -119,8 +119,15 @@ function injectFormStyles(): void {
 }
 
 .synaplan-chat-modal .message-content {
-	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+.synaplan-chat-modal .message.user .message-content {
+	white-space: pre-wrap;
+}
+
+.synaplan-chat-modal .markdown-body {
+	white-space: normal;
 }
 
 .synaplan-chat-modal .chat-input {

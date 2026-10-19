@@ -12,7 +12,13 @@
 					v-for="(msg, idx) in messages"
 					:key="idx"
 					:class="['message', msg.role]">
-					<div class="message-content" v-text="msg.text" />
+					<NcRichText
+						v-if="msg.role === 'assistant'"
+						class="message-content markdown-body"
+						:text="msg.text"
+						:use-markdown="true"
+						:use-extended-markdown="true" />
+					<div v-else class="message-content" v-text="msg.text" />
 				</div>
 				<div v-if="loading" class="message assistant">
 					<div class="message-content loading-dots">
@@ -70,6 +76,7 @@ import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
 
@@ -196,8 +203,79 @@ function onClose() {
 }
 
 .message-content {
-	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+.message.user .message-content {
+	white-space: pre-wrap;
+}
+
+/* Rendered markdown — the files script also sets pre-wrap on .message-content. */
+.markdown-body {
+	white-space: normal;
+}
+
+.markdown-body :deep(> *:first-child) {
+	margin-top: 0;
+}
+
+.markdown-body :deep(> *:last-child) {
+	margin-bottom: 0;
+}
+
+.markdown-body :deep(p) {
+	margin: 0 0 6px;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+	margin: 4px 0 6px;
+	padding-left: 18px;
+}
+
+.markdown-body :deep(li) {
+	margin: 1px 0;
+}
+
+.markdown-body :deep(li > p) {
+	margin: 0;
+}
+
+.markdown-body :deep(li + li) {
+	margin-top: 2px;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3) {
+	margin: 12px 0 6px;
+	font-size: 1em;
+	line-height: 1.3;
+}
+
+.markdown-body :deep(pre),
+.markdown-body :deep(code) {
+	background: var(--color-background-darker, rgba(0, 0, 0, 0.06));
+	border-radius: 4px;
+	font-family: var(--font-face-monospace, monospace);
+}
+
+.markdown-body :deep(pre) {
+	padding: 10px 12px;
+	overflow-x: auto;
+}
+
+.markdown-body :deep(code) {
+	padding: 1px 5px;
+}
+
+.markdown-body :deep(pre code) {
+	padding: 0;
+	background: none;
+}
+
+.markdown-body :deep(a) {
+	color: var(--color-primary-element);
 }
 
 .loading-dots {
