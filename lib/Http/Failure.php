@@ -104,19 +104,45 @@ final class Failure
                 default => new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR),
             };
         }
-        $error = is_string($decoded['error'] ?? null) ? trim($decoded['error']) : '';
-        if (preg_match('/^[a-z][a-z0-9_]*$/', $error) === 1) {
-            return new self($kept, $error);
-        }
+        [$code, $message] = self::errorOf($decoded);
 
-        $code = match ($kept) {
+        return new self($kept, $code ?? match ($kept) {
             Http::STATUS_TOO_MANY_REQUESTS => self::RATE_LIMITED,
             Http::STATUS_REQUEST_ENTITY_TOO_LARGE => self::FILE_TOO_LARGE,
             default => self::SYNAPLAN_REJECTED,
-        };
-        $message = $error !== '' && mb_strlen($error) <= self::MESSAGE_MAX_LENGTH ? $error : null;
+        }, $message);
+    }
 
-        return new self($kept, $code, $message);
+    /**
+     * Synaplan's machine code and sentence from its error body, in the shapes
+     * its endpoints use: `{error: "code"}`, `{error: "Sentence", code: "code"}`
+     * and, from the chat completions endpoint, `{error: {code, message}}`.
+     *
+     * @param array<mixed> $decoded
+     * @return array{0: ?string, 1: ?string}
+     */
+    private static function errorOf(array $decoded): array
+    {
+        $error = $decoded['error'] ?? null;
+        $code = $decoded['code'] ?? null;
+        $text = $error;
+        if (is_array($error)) {
+            $code = $error['code'] ?? null;
+            $text = $error['message'] ?? null;
+        }
+        $code = is_string($code) && self::isCode(trim($code)) ? trim($code) : null;
+        $text = is_string($text) ? trim($text) : '';
+        if (self::isCode($text)) {
+            return [$code ?? $text, null];
+        }
+        $sentence = $text !== '' && mb_strlen($text) <= self::MESSAGE_MAX_LENGTH ? $text : null;
+
+        return [$code, $sentence];
+    }
+
+    private static function isCode(string $value): bool
+    {
+        return preg_match('/^[a-z][a-z0-9_]*$/', $value) === 1;
     }
 
     /**

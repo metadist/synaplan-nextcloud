@@ -28,6 +28,30 @@ final class FailureTest extends TestCase
         self::assertSame([422, 'synaplan_rejected', $sentence], [$failure->status, $failure->code, $failure->message]);
     }
 
+    public function testTheChatCompletionsErrorShapeKeepsCodeAndSentence(): void
+    {
+        $sentence = 'No model specified and no default chat model is configured.';
+        $failure = Failure::fromSynaplanResponse(400, (string) json_encode([
+            'error' => ['code' => 'model_not_found', 'message' => $sentence, 'type' => 'invalid_request_error'],
+        ]));
+
+        self::assertSame([400, 'model_not_found', $sentence], [$failure->status, $failure->code, $failure->message]);
+    }
+
+    public function testACodeBesideASentenceKeepsBoth(): void
+    {
+        $failure = Failure::fromSynaplanResponse(403, '{"error":"This key may not use this route.","code":"insufficient_scope"}');
+
+        self::assertSame(['insufficient_scope', 'This key may not use this route.'], [$failure->code, $failure->message]);
+    }
+
+    public function testANestedSentenceWithoutCodeIsPassedOnAsTheMessage(): void
+    {
+        $failure = Failure::fromSynaplanResponse(400, '{"error":{"message":"The prompt is empty."}}');
+
+        self::assertSame(['synaplan_rejected', 'The prompt is empty.'], [$failure->code, $failure->message]);
+    }
+
     public function testRateLimitAndSizeGetTheirOwnCodes(): void
     {
         self::assertSame('rate_limited', Failure::fromSynaplanResponse(429, '{"error":"Too many requests."}')->code);
