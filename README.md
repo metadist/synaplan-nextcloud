@@ -96,8 +96,12 @@ php /path/to/nextcloud/occ app:enable synaplan_integration
 composer install          # PHP dependencies
 npm install               # JS dependencies
 
-make lint                 # Run all linters (PHP + JS + Prettier)
-make test                 # Run PHPUnit tests
+make ci-local             # Every CI job except e2e — run before each push
+make lint                 # php-cs-fixer, ESLint, Prettier
+make stan                 # PHPStan
+make test                 # PHPUnit
+make typecheck            # vue-tsc
+make test-unit-js         # Vitest
 make build                # Production frontend build
 make help                 # Show all available commands
 

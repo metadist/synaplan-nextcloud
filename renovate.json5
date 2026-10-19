@@ -1,0 +1,49 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:best-practices',
+    'docker:enableMajor',
+    ':separateMultipleMajorReleases',
+  ],
+  timezone: 'Europe/Berlin',
+  prConcurrentLimit: 6,
+  prHourlyLimit: 2,
+  dependencyDashboard: true,
+  labels: ['dependencies'],
+  'docker-compose': {
+    managerFilePatterns: ['/(^|/)docker-compose[^/]*\\.ya?ml(\\.example)?$/'],
+  },
+  packageRules: [
+    {
+      groupName: 'Nextcloud',
+      matchPackageNames: ['@nextcloud/**', 'nextcloud/ocp'],
+      matchUpdateTypes: ['minor', 'patch'],
+    },
+    {
+      groupName: 'QA & Dev Tools',
+      matchPackageNames: [
+        'vitest',
+        '@vitest/**',
+        'happy-dom',
+        'vue-tsc',
+        'typescript',
+        'eslint',
+        'prettier',
+        'phpstan/phpstan',
+        'phpunit/phpunit',
+        'friendsofphp/php-cs-fixer',
+      ],
+      matchUpdateTypes: ['minor', 'patch'],
+    },
+    {
+      groupName: 'Docker Images',
+      matchManagers: ['docker-compose'],
+      matchUpdateTypes: ['minor', 'patch', 'digest', 'pinDigest'],
+    },
+    {
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      labels: ['dependencies', 'breaking'],
+    },
+  ],
+}

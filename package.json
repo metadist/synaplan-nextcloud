@@ -6,10 +6,12 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/"
+    "lint": "eslint src/ tests/unit/",
+    "lint:fix": "eslint src/ tests/unit/ --fix",
+    "format": "prettier --write src/ tests/unit/ vitest.config.ts",
+    "format:check": "prettier --check src/ tests/unit/ vitest.config.ts",
+    "check:types": "vue-tsc --noEmit",
+    "test:unit": "vitest run"
   },
   "prettier": "@nextcloud/prettier-config",
   "overrides": {
@@ -31,8 +33,11 @@
     "@nextcloud/eslint-config": "^8.4.1",
     "@nextcloud/prettier-config": "^1.2.0",
     "@nextcloud/vite-config": "^2.3.0",
+    "happy-dom": "21.0.1",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "5.0.4",
+    "vue-tsc": "3.3.13"
   }
 }

@@ -1,0 +1,6 @@
+parameters:
+	# Never lower the level; raise it once the next one passes without a baseline.
+	level: 5
+	paths:
+		- lib
+		- tests
