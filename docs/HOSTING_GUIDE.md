@@ -51,8 +51,10 @@ then uses your admin key to:
   identified by `source = "nextcloud"` and
   `external_id = "<nextcloud-instance-id>:<uid>"`;
 - mint a **per-user API key** scoped to `chat`, `files`, `rag`. Synaplan
-  enforces the scopes: the key reaches chat, files and search, and gets
-  `403 insufficient_scope` everywhere else, the admin endpoints included;
+  enforces the scopes: the key reaches chat, files and search, its own
+  account (`/api/v1/auth/me`), the health check, and can revoke itself. Any
+  other route, the admin endpoints included, answers
+  `403 insufficient_scope`;
 - store that key encrypted on the Nextcloud server (never sent to the
   browser) and use it for all that user’s Synaplan traffic.
 
@@ -255,6 +257,8 @@ Notes:
      (`providerId = external`, source nextcloud), and that in the AI chat (the
      chat button at the bottom right) each user only finds their own document.
 2. **Connect your Synaplan account**
+   - Under **How users connect**, choose **Connect your Synaplan account** and
+     click **Save**; the registration and Connect only appear in this mode.
    - Click **Register this instance**; it reports **Registered and ready**.
    - As a person with a Synaplan account: Personal settings → Synaplan →
      **Connect Synaplan**, sign in, confirm, then **Summarize with Synaplan** on
