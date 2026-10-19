@@ -149,8 +149,9 @@ Releases come from CI (`.github/workflows/release.yml`):
    throwaway key.
 2. After the merge, and once **All Checks Passed** is green on `main`, tag the
    merge commit: `git tag v1.7.0 && git push origin v1.7.0`.
-3. The workflow refuses a tag that is not on `main` or whose CI run failed. It
-   packages, signs, verifies the signature against the certificate the App
+3. The workflow refuses a tag that is not on `main` or whose CI run failed,
+   and an `info.xml` the App Store schema rejects (`scripts/check-info-xml.sh`).
+   It packages, signs, verifies the signature against the certificate the App
    Store holds for the app, attaches the tarball and its signature to a GitHub
    release and publishes the release to the App Store.
 

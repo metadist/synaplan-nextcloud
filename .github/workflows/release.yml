@@ -17,6 +17,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/release-check.sh
+      - scripts/check-info-xml.sh
       - scripts/check-tarball.sh
       - Makefile
       - appinfo/info.xml
@@ -118,6 +119,8 @@ jobs:
         run: |
           set -euo pipefail
           scripts/release-check.sh ${TAG:+"$TAG"} | tee -a "$GITHUB_OUTPUT"
+
+      - run: scripts/check-info-xml.sh
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:

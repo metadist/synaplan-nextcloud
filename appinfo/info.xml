@@ -23,9 +23,9 @@ Requires a running Synaplan instance. Shared-key, per-user provision, or account
 	<category>integration</category>
 	<category>ai</category>
 	<website>https://synaplan.com</website>
+	<discussion>https://github.com/metadist/synaplan-nextcloud/discussions</discussion>
 	<bugs>https://github.com/metadist/synaplan-nextcloud/issues</bugs>
 	<repository type="git">https://github.com/metadist/synaplan-nextcloud</repository>
-	<discussion>https://github.com/metadist/synaplan-nextcloud/discussions</discussion>
 	<screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/main/screens/context_options.png</screenshot>
 	<screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/main/screens/research_chat.png</screenshot>
 	<dependencies>
