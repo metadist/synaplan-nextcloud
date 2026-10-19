@@ -84,7 +84,7 @@ jobs:
         run: |
           tar -tzf synaplan_integration.tar.gz > contents.txt
           for path in appinfo/info.xml appinfo/routes.php lib/AppInfo/Application.php js/ templates/; do
-            grep -q "^synaplan_integration/$path" contents.txt || { echo "missing: $path"; exit 1; }
+            grep -Fxq "synaplan_integration/$path" contents.txt || { echo "missing: $path"; exit 1; }
           done
           if grep -qE "^synaplan_integration/(tests|node_modules|vendor|src)/" contents.txt; then
             echo "development files in the tarball"; exit 1
