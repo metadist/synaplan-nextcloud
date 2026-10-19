@@ -387,48 +387,23 @@ class SynaplanClientTest extends TestCase
         $this->assertSame('ok', $result['status']);
     }
 
-    public function testAskWithGroupKeyCallsRagSearch(): void
+    public function testChatPostsTheMessagesAndTheChosenModel(): void
     {
-        $ragResponse = $this->createMock(IResponse::class);
-        $ragResponse->method('getBody')->willReturn(json_encode([
-            'success' => true,
-            'results' => [['text' => 'Relevant context chunk']],
-        ]));
-
-        $summaryResponse = $this->createMock(IResponse::class);
-        $summaryResponse->method('getBody')->willReturn(json_encode([
-            'summary' => 'Answer based on RAG context.',
-        ]));
-
-        $this->httpClient->expects($this->exactly(2))
-            ->method('post')
-            ->willReturnOnConsecutiveCalls($ragResponse, $summaryResponse);
-
-        $result = $this->synaplanClient->ask('Question?', '', 'en', 'DEFAULT');
-        $this->assertSame('Answer based on RAG context.', $result['summary']);
-    }
-
-    public function testAskLeavesTheSelectedModelOffTheSummaryRequest(): void
-    {
+        $messages = [['role' => 'user', 'content' => 'By how much did restores exceed the contract?']];
         $response = $this->createMock(IResponse::class);
-        $response->method('getBody')->willReturn(json_encode(['summary' => 'Answer.']));
+        $response->method('getBody')->willReturn(json_encode([
+            'choices' => [['message' => ['role' => 'assistant', 'content' => 'By four hours.']]],
+        ]));
 
         $this->httpClient->expects($this->once())
             ->method('post')
             ->with(
-                'http://localhost:8000/api/v1/summary/generate',
-                $this->callback(function (array $options): bool {
-                    $body = json_decode($options['body'], true);
-
-                    return is_array($body)
-                        && !array_key_exists('modelId', $body)
-                        && $body['text'] === 'Which model?';
-                }),
+                $this->stringEndsWith('/v1/chat/completions'),
+                $this->callback(fn (array $options): bool => json_decode($options['body'], true)
+                    === ['messages' => $messages, 'stream' => false, 'model' => 'gpt-oss-120b']),
             )
             ->willReturn($response);
 
-        $result = $this->synaplanClient->ask('Which model?', '', 'en', null, 42);
-
-        $this->assertSame('Answer.', $result['summary']);
+        $this->assertSame('By four hours.', $this->synaplanClient->chat($messages, 'gpt-oss-120b'));
     }
 }
