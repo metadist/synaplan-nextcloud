@@ -453,11 +453,7 @@
 						<NcTextField
 							id="synaplan-public-url"
 							v-model="synaplanPublicUrlActive"
-							:placeholder="
-								activeEnv === 'local'
-									? 'http://localhost:5173'
-									: 'https://synaplan.example.com'
-							"
+							:placeholder="publicUrlPlaceholder"
 							:disabled="saving"
 							:style="{ width: '100%' }" />
 					</div>
@@ -769,6 +765,12 @@ const registering = ref(false)
 
 const hasAdminKey = computed(() =>
 	activeEnv.value === 'local' ? apiKeyLocalSet.value : apiKeySet.value,
+)
+
+const publicUrlPlaceholder = computed(() =>
+	activeEnv.value === 'local'
+		? 'http://localhost:5173'
+		: 'https://synaplan.example.com',
 )
 
 const synaplanPublicUrlActive = computed({

@@ -31,7 +31,7 @@ class SynaplanClient
     /**
      * Check if Synaplan is reachable.
      *
-     * @return array{status: string, providers?: array<string, bool>}
+     * @return array{status?: string, providers?: array<string, bool>}
      * @throws \Exception on connection failure
      */
     public function healthCheck(): array
@@ -42,7 +42,7 @@ class SynaplanClient
     /**
      * Generate a document summary.
      *
-     * @return array{success: bool, summary: string, metadata?: array<string, mixed>}
+     * @return array{success?: bool, summary?: string, metadata?: array<string, mixed>}
      * @throws \Exception on API error
      */
     public function summarize(
@@ -231,7 +231,7 @@ class SynaplanClient
     /**
      * Get available AI models grouped by capability.
      *
-     * @return array{success: bool, models: array<string, array<int, array<string, mixed>>>}
+     * @return array{success?: bool, models?: array<string, mixed>}
      * @throws \Exception on API error
      */
     public function getModels(): array
@@ -242,7 +242,7 @@ class SynaplanClient
     /**
      * Get file group keys with chunk counts.
      *
-     * @return array{success: bool, groups: array<int, array{name: string, count: int}>}
+     * @return array{success?: bool, groups?: array<int, array{name: string, count: int}>}
      * @throws \Exception on API error
      */
     public function getFileGroups(): array
@@ -266,7 +266,7 @@ class SynaplanClient
      * Bulk-check which Nextcloud-sourced files drifted (CORE-4).
      *
      * @param array<int, array{source_id: string, source_etag?: string|null}> $items
-     * @return array{success?: bool, results?: array<int, array{source_id: string, status: string, file_id: int|null, stored_etag: string|null}>, counts?: array<string, int>}
+     * @return array{success?: bool, results?: array<int, array{source_id: string, status?: string, file_id?: int|null, stored_etag?: string|null}>, counts?: array<string, int>}
      * @throws \Exception on API error
      */
     public function checkStale(array $items, string $source = 'nextcloud'): array
@@ -418,7 +418,7 @@ class SynaplanClient
      * @param string   $prompt  Text description of the media to generate
      * @param string   $type    "image" or "video"
      * @param int|null $modelId Specific model ID (uses user default if null)
-     * @return array{success: bool, file: array{url: string, type: string, mimeType: string}, provider: string, model: string}
+     * @return array{success?: bool, file?: array{url: string, type: string, mimeType: string}, provider?: string, model?: string}
      * @throws \Exception on API error
      */
     public function generateMedia(string $prompt, string $type, ?int $modelId = null): array
@@ -617,7 +617,7 @@ class SynaplanClient
      */
     private function isUnauthorized(\Exception $e): bool
     {
-        if (method_exists($e, 'getCode') && $e->getCode() === 401) {
+        if ($e->getCode() === 401) {
             return true;
         }
 

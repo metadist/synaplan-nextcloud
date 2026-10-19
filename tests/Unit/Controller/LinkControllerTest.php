@@ -35,7 +35,6 @@ class LinkControllerTest extends TestCase
         $this->synaplanConfig = $this->createMock(SynaplanConfig::class);
         $this->userAccounts = $this->createMock(UserAccountService::class);
         $this->platformLinks = $this->createMock(PlatformLinkService::class);
-        $this->sessionStore = [];
 
         $this->session->method('get')->willReturnCallback(
             fn (string $key) => $this->sessionStore[$key] ?? null

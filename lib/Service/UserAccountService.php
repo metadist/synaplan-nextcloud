@@ -234,7 +234,7 @@ class UserAccountService
         $linked = null;
         if ($kind === self::KIND_LINKED) {
             $linked = [
-                'email' => $email !== '' ? $email : ($user instanceof IUser ? (string) $user->getEMailAddress() : ''),
+                'email' => $email !== '' ? $email : (string) $user->getEMailAddress(),
                 'since' => $since,
             ];
         }
@@ -533,14 +533,12 @@ class UserAccountService
             'DELETE' => $client->delete($url, $options),
             default => $client->get($url, $options),
         };
-        if (method_exists($response, 'getStatusCode')) {
-            $status = (int) $response->getStatusCode();
-            if ($status === 409) {
-                throw new EmailConflictException();
-            }
-            if ($status >= 400) {
-                throw new \RuntimeException('Synaplan admin API returned HTTP ' . $status);
-            }
+        $status = (int) $response->getStatusCode();
+        if ($status === 409) {
+            throw new EmailConflictException();
+        }
+        if ($status >= 400) {
+            throw new \RuntimeException('Synaplan admin API returned HTTP ' . $status);
         }
 
         $decoded = json_decode($response->getBody(), true);

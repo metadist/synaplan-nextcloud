@@ -18,7 +18,6 @@ class SynaplanConfigTest extends TestCase
     protected function setUp(): void
     {
         $this->config = $this->createMock(IConfig::class);
-        $this->appConfig = [];
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = '') => $this->appConfig[$key] ?? $default
         );

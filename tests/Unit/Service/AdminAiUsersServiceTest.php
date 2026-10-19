@@ -95,7 +95,7 @@ class AdminAiUsersServiceTest extends TestCase
         $this->userManager->method('get')->willReturn(null);
         $this->userAccounts->method('getSynaplanUserId')->willReturn(1);
         $this->userAccounts->method('getLinkKind')->willReturnCallback(
-            fn (string $uid): ?string => $uid === 'alice' ? 'linked' : 'provisioned'
+            fn (string $uid): string => $uid === 'alice' ? 'linked' : 'provisioned'
         );
 
         $users = $this->service->listActivatedUsers();
