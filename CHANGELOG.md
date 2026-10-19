@@ -47,6 +47,9 @@ folded in here.
 - Only a refused key (HTTP 401) makes the app forget a person's key. A 404 for
   a path that contains "401", or a connection error, no longer disconnects
   them.
+- A `/pic` or `/vid` typed right after opening the AI chat is no longer
+  refused as "not available": the chat waits until it knows whether image and
+  video generation are available.
 
 ### Upgrade notes
 - Going back to 1.6 after 1.7.0 is not supported: 1.6 cannot read the
