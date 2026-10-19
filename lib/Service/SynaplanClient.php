@@ -73,47 +73,23 @@ class SynaplanClient
     }
 
     /**
-     * Ask a question about given context, optionally with RAG.
+     * One answer from Synaplan's chat endpoint (the OpenAI-compatible gateway the
+     * streaming chat uses, here without streaming).
      *
-     * When a groupKey is provided, first searches the Synaplan RAG knowledge base
-     * for relevant context, then combines it with any provided file context.
-     * $modelId is accepted from the chat controller and not sent: the pinned
-     * POST /api/v1/summary/generate schema has no model field, and that handler
-     * ignores it. Streaming chat carries the model name instead.
-     *
-     * @return array<string, mixed>
+     * @param list<array{role: string, content: string}> $messages
+     * @param string|null $model Provider model id; null = the account's chat model
      * @throws \Exception on API error
      */
-    public function ask(
-        string $question,
-        string $context = '',
-        string $outputLanguage = 'en',
-        ?string $groupKey = null,
-        ?int $modelId = null,
-    ): array {
-        // If a group key is provided, search RAG for relevant context
-        if ($groupKey !== null && $groupKey !== '') {
-            $ragContext = $this->searchRagContext($question, $groupKey);
-            if ($ragContext !== '') {
-                // Prepend RAG context to any existing file context
-                $context = $ragContext . ($context !== '' ? "\n\n" . $context : '');
-            }
+    public function chat(array $messages, ?string $model = null): string
+    {
+        $body = ['messages' => $messages, 'stream' => false];
+        if ($model !== null && $model !== '') {
+            $body['model'] = $model;
         }
 
-        $prompt = $context !== ''
-            ? "Based on the following context, answer the user's question.\n\n"
-                . "--- CONTEXT ---\n" . $context . "\n--- END CONTEXT ---\n\n"
-                . 'Question: ' . $question
-            : $question;
+        $result = $this->request('POST', '/v1/chat/completions', $body);
 
-        $body = [
-            'text' => $prompt,
-            'summaryType' => 'abstractive',
-            'length' => 'long',
-            'outputLanguage' => $outputLanguage,
-        ];
-
-        return $this->request('POST', '/api/v1/summary/generate', $body);
+        return (string) ($result['choices'][0]['message']['content'] ?? '');
     }
 
     /**
@@ -510,6 +486,14 @@ class SynaplanClient
     public function getBaseUrl(): string
     {
         return $this->synaplanConfig->getBaseUrl();
+    }
+
+    /**
+     * The address people open in the browser (falls back to the API URL).
+     */
+    public function getPublicBaseUrl(): string
+    {
+        return $this->synaplanConfig->getPublicBaseUrl();
     }
 
     /**

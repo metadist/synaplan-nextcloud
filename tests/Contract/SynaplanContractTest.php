@@ -99,19 +99,16 @@ final class SynaplanContractTest extends TestCase
         self::assertSame([], $missing, 'Add a call to callEverything() for each Synaplan operation.');
     }
 
-    public function testASelectedModelIsLeftOffTheSummaryRequest(): void
+    public function testASelectedModelIsSentToTheChatEndpoint(): void
     {
         $this->callEverything();
         $selected = array_filter(
             $this->calls,
-            static fn (array $call): bool => $call['path'] === '/api/v1/summary/generate'
-                && str_contains((string) ($call['body']['text'] ?? ''), 'Which model?'),
+            static fn (array $call): bool => $call['path'] === '/v1/chat/completions'
+                && ($call['body']['model'] ?? null) === 'gpt-oss-120b',
         );
 
         self::assertNotEmpty($selected, 'callEverything() must exercise a selected model.');
-        foreach ($selected as $call) {
-            self::assertArrayNotHasKey('modelId', $call['body']);
-        }
     }
 
     public function testNestedItemFieldsAreChecked(): void
@@ -196,8 +193,8 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->healthCheck(),
             fn () => $client->summarize('A long text.'),
             fn () => $client->createChat('Contract'),
-            fn () => $client->ask('What changed?', 'Context', 'en', 'Contracts'),
-            fn () => $client->ask('Which model?', 'Notes', 'en', null, 42),
+            fn () => $client->searchRagContext('What changed?', 'Contracts'),
+            fn () => $client->chat([['role' => 'user', 'content' => 'What changed?']], 'gpt-oss-120b'),
             fn () => $this->recordBlockingChat($client, $session),
             fn () => $client->checkMemoryService(),
             fn () => $client->searchMemoryContext('budget'),
@@ -233,7 +230,7 @@ final class SynaplanContractTest extends TestCase
 
     private function recordBlockingChat(SynaplanClient $client, IUserSession $session): void
     {
-        $response = $this->chatController($client, $session)->chat('Which model?', null, null, 42);
+        $response = $this->chatController($client, $session)->chat('Which model?', null, null, 'gpt-oss-120b');
         self::assertTrue($response->getData()['success'] ?? false);
     }
 

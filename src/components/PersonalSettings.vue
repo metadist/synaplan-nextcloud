@@ -278,7 +278,9 @@ onMounted(async () => {
 
 .sp-btn-danger {
 	background: transparent;
-	color: var(--color-error, #e9322d);
-	border: 2px solid var(--color-error, #e9322d);
+	/* --color-error is the dark fill of an error card. On a dark page it is
+	   nearly the page color, so the label uses the readable error text. */
+	color: var(--color-error-text, #db1d1d);
+	border: 2px solid var(--color-error-text, #db1d1d);
 }
 </style>

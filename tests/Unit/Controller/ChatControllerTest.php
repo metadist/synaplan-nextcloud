@@ -75,125 +75,79 @@ class ChatControllerTest extends TestCase
             ->willReturn($userFolder);
     }
 
-    public function testChatWithFileContext(): void
+    public function testChatAnswersTheQuestionAboutTheFile(): void
     {
         $this->mockUserAndFile('File content here', 'text/plain', 'report.txt');
 
         $this->synaplanClient->expects($this->once())
-            ->method('ask')
+            ->method('chat')
             ->with(
-                'What is this file about?',
-                'File content here',
-                'en',
-                null,
+                $this->callback(fn (array $messages): bool => $messages[0]['role'] === 'system'
+                    && str_contains($messages[0]['content'], 'always answer in English')
+                    && str_contains($messages[1]['content'], "--- CONTEXT ---\nFile content here")
+                    && str_contains($messages[1]['content'], 'Question: What is this file about?')),
                 null,
             )
-            ->willReturn(['summary' => 'This file is about reporting.']);
+            ->willReturn('This file is about reporting.');
+        $this->synaplanClient->method('getPublicBaseUrl')->willReturn('https://synaplan.example.org');
 
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
-
-        $response = $this->controller->chat('What is this file about?', 42);
-        $data = $response->getData();
+        $data = $this->controller->chat('What is this file about?', 42)->getData();
 
         $this->assertTrue($data['success']);
         $this->assertSame('This file is about reporting.', $data['response']);
-        $this->assertSame('http://localhost:8000', $data['deepLink']);
+        $this->assertSame('https://synaplan.example.org', $data['deepLink']);
     }
 
-    public function testChatWithoutFile(): void
+    public function testChatWithoutFileSendsTheQuestionAlone(): void
     {
         $this->synaplanClient->expects($this->once())
-            ->method('ask')
-            ->with('What is AI?', '', 'en', null, null)
-            ->willReturn(['summary' => 'AI is artificial intelligence.']);
+            ->method('chat')
+            ->with($this->callback(fn (array $messages): bool => $messages[1] === ['role' => 'user', 'content' => 'What is AI?']), null)
+            ->willReturn('AI is artificial intelligence.');
 
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
-
-        $response = $this->controller->chat('What is AI?');
-        $data = $response->getData();
-
-        $this->assertTrue($data['success']);
-        $this->assertSame('AI is artificial intelligence.', $data['response']);
+        $this->assertSame('AI is artificial intelligence.', $this->controller->chat('What is AI?')->getData()['response']);
     }
 
-    public function testChatWithGroupKey(): void
+    public function testChatWithGroupKeyAnswersFromTheFolder(): void
     {
         $this->synaplanClient->expects($this->once())
-            ->method('ask')
-            ->with('What is in my docs?', '', 'en', 'RESEARCH', null)
-            ->willReturn(['summary' => 'Your docs contain research papers.']);
+            ->method('searchRagContext')
+            ->with('What is in my docs?', 'RESEARCH')
+            ->willReturn('A chunk about research papers.');
+        $this->synaplanClient->expects($this->once())
+            ->method('chat')
+            ->with($this->callback(fn (array $messages): bool => str_contains($messages[1]['content'], 'A chunk about research papers.')), null)
+            ->willReturn('Your docs contain research papers.');
 
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
+        $data = $this->controller->chat('What is in my docs?', null, 'RESEARCH')->getData();
 
-        $response = $this->controller->chat('What is in my docs?', null, 'RESEARCH');
-        $data = $response->getData();
-
-        $this->assertTrue($data['success']);
         $this->assertSame('Your docs contain research papers.', $data['response']);
     }
 
-    public function testChatWithModelId(): void
+    public function testChatPassesTheChosenModel(): void
     {
         $this->synaplanClient->expects($this->once())
-            ->method('ask')
-            ->with('Explain AI', '', 'en', null, 42)
-            ->willReturn(['summary' => 'AI explained by model 42.']);
+            ->method('chat')
+            ->with($this->anything(), 'gpt-oss-120b')
+            ->willReturn('Explained.');
 
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
-
-        $response = $this->controller->chat('Explain AI', null, null, 42);
-        $data = $response->getData();
-
-        $this->assertTrue($data['success']);
-        $this->assertSame('AI explained by model 42.', $data['response']);
+        $this->assertSame('Explained.', $this->controller->chat('Explain AI', null, null, 'gpt-oss-120b')->getData()['response']);
     }
 
-    public function testChatWithGroupKeyAndModelId(): void
-    {
-        $this->synaplanClient->expects($this->once())
-            ->method('ask')
-            ->with('Summarize docs', '', 'en', 'DEFAULT', 7)
-            ->willReturn(['summary' => 'Summary of DEFAULT group.']);
-
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
-
-        $response = $this->controller->chat('Summarize docs', null, 'DEFAULT', 7);
-        $data = $response->getData();
-
-        $this->assertTrue($data['success']);
-        $this->assertSame('Summary of DEFAULT group.', $data['response']);
-    }
-
-    public function testChatWithMemoriesInjectsContext(): void
+    public function testChatWithMemoriesPutsThemInTheSystemPrompt(): void
     {
         $this->synaplanClient->expects($this->once())
             ->method('searchMemoryContext')
             ->with('What do I prefer?')
             ->willReturn('- diet: vegetarian');
-
         $this->synaplanClient->expects($this->once())
-            ->method('ask')
-            ->with(
-                'What do I prefer?',
-                "What you remember about the user:\n- diet: vegetarian",
-                'en',
-                null,
-                null,
-            )
-            ->willReturn(['summary' => 'You prefer vegetarian food.']);
+            ->method('chat')
+            ->with($this->callback(fn (array $messages): bool => str_contains($messages[0]['content'], '- diet: vegetarian')
+                && $messages[1]['content'] === 'What do I prefer?'), null)
+            ->willReturn('You prefer vegetarian food.');
 
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
+        $data = $this->controller->chat('What do I prefer?', null, null, null, true)->getData();
 
-        $response = $this->controller->chat('What do I prefer?', null, null, null, true);
-        $data = $response->getData();
-
-        $this->assertTrue($data['success']);
         $this->assertSame('You prefer vegetarian food.', $data['response']);
     }
 
@@ -201,15 +155,9 @@ class ChatControllerTest extends TestCase
     {
         $this->synaplanClient->expects($this->never())
             ->method('searchMemoryContext');
+        $this->synaplanClient->method('chat')->willReturn('ok');
 
-        $this->synaplanClient->method('ask')
-            ->willReturn(['summary' => 'ok']);
-        $this->synaplanClient->method('getBaseUrl')
-            ->willReturn('http://localhost:8000');
-
-        $response = $this->controller->chat('Hi');
-
-        $this->assertTrue($response->getData()['success']);
+        $this->assertTrue($this->controller->chat('Hi')->getData()['success']);
     }
 
     public function testChatEmptyMessage(): void
@@ -237,7 +185,7 @@ class ChatControllerTest extends TestCase
 
     public function testChatApiError(): void
     {
-        $this->synaplanClient->method('ask')
+        $this->synaplanClient->method('chat')
             ->willThrowException(new \RuntimeException('Timeout'));
 
         $response = $this->controller->chat('Hello');
