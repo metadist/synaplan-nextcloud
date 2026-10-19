@@ -6,14 +6,15 @@ customers and want to offer Synaplan AI features **with per-user isolation** and
 
 This guide covers the features shipped for the hosting scenario:
 
-1. **How users connect** — shared key, create-an-account-per-user (`provision`),
-   or **connect an existing Synaplan account** (`link`).
+1. **How users connect** — one shared account, accounts created by the
+   administrator (`provision`), or people connect their own Synaplan account
+   (`link`).
 2. **Bring-your-own OpenAI-compatible AI** — point Synaplan at your own LocalAI /
    vLLM / LiteLLM (or any OpenAI-compatible) endpoint and expose those models to
    users, including chat, embeddings and vision.
 
-> Roadmap items that are planned but **not yet implemented** (bulk folder sync,
-> stale re-index, admin cross-usage panel) are listed at the end under
+> This guide describes version 1.7.0. What is planned but **not yet
+> implemented** (watched folders) is listed at the end under
 > [Roadmap](#roadmap).
 
 ---
@@ -33,23 +34,27 @@ This guide covers the features shipped for the hosting scenario:
 
 1. In Nextcloud, go to **Administration settings → Synaplan**.
 2. Set the **Synaplan URL** and paste the **admin API key**.
-3. Under **How users connect**, pick **Create an account for each user**
-   (`provision`) or **Connect existing accounts** (`link`).
+3. Under **How users connect**, pick **Accounts created by the administrator**
+   (`provision`) or **Connect your Synaplan account** (`link`).
 4. In `link` mode click **Register this instance** (once). People then open
    **Personal settings → Synaplan → Connect Synaplan**, sign in, and confirm.
 5. Click **Save**, then **Test connection**.
 
 In **link** mode people open **Personal settings → Synaplan → Connect Synaplan**
 first; nothing is created until they confirm (or choose **Create one for me**,
-if you turned that on). In **provision** mode the first Files action creates
-the account, using your admin key:
+if you turned on **Offer to create an account for users who have none**). A
+Files action before that offers **Connect my Synaplan account**. In
+**provision** mode a person turns AI on once with **Activate AI**; the app
+then uses your admin key to:
 
 - create a Synaplan account for that user (idempotent — one account per user),
   identified by `source = "nextcloud"` and
   `external_id = "<nextcloud-instance-id>:<uid>"`;
-- mint a **per-user API key** scoped to `chat`, `files`, `rag`;
-- store that key server-side in the user’s Nextcloud preferences (never exposed
-  to the browser) and use it for all that user’s Synaplan traffic.
+- mint a **per-user API key** scoped to `chat`, `files`, `rag`. Synaplan
+  enforces the scopes: the key reaches chat, files and search, and gets
+  `403 insufficient_scope` everywhere else, the admin endpoints included;
+- store that key encrypted on the Nextcloud server (never sent to the
+  browser) and use it for all that user’s Synaplan traffic.
 
 ### What “isolation” means
 
@@ -68,8 +73,15 @@ as that user.
 
 - If a **provisioned** user’s key is revoked in Synaplan, the next request
   returns 401; the app forgets the stale key and re-provisions on the following
-  request. In **link** mode a 401 means the person disconnected — Nextcloud
-  shows **Connect Synaplan** again and does not create a new account.
+  request. In **link** mode a 401 means the person disconnected in Synaplan:
+  the next action says **Connect your Synaplan account first.** with a link to
+  Personal settings → Synaplan, which shows **Connect Synaplan** again. No new
+  account is created.
+- **Disconnect** in Personal settings → Synaplan revokes the person’s key in
+  Synaplan.
+- A key that no longer decrypts (for example after the Nextcloud server secret
+  changed) counts as no key: linked people connect again, provisioned people
+  get a new key, and you enter the admin key again.
 - Deleting a **provisioned** Nextcloud user also deletes their Synaplan
   account. A **linked** account is only disconnected — the Synaplan user stays.
   That cleanup still runs if you later switch **How users connect** back to
@@ -216,13 +228,18 @@ Notes:
 
 ## 5. Security notes
 
-- Per-user keys are stored in Nextcloud **user preferences** (server-side) and
-  are never sent to the browser or written to logs.
+- Per-user keys are stored **encrypted** in Nextcloud (sensitive user values,
+  encrypted with the server secret), and are never sent to the browser or
+  written to logs.
 - OpenAI-compatible endpoint secrets are **encrypted at rest** in Synaplan
   (AES-256, key derived from `APP_SECRET`).
 - Treat the **admin API key** like a root credential: it can create users and
-  mint keys. Store it only in Nextcloud’s admin settings (encrypted app config).
+  mint keys. Enter it only in Nextcloud’s admin settings, which store it
+  encrypted (a sensitive app value).
 - Endpoint listings and settings responses never echo secrets back.
+- Upgrading to 1.7.0 encrypts keys that earlier versions stored in plain text,
+  each on first use. Going back to 1.6 afterwards is not supported: 1.6 cannot
+  read the encrypted admin key, so you would have to enter it again.
 
 ---
 
@@ -231,36 +248,47 @@ Notes:
 1. **Per-user provisioning**
    - Enable per-user mode, save, test connection (should succeed with an admin
      key).
-   - Log in as two different Nextcloud users; each opens Research Chat and adds a
-     different document to knowledge.
+   - Log in as two different Nextcloud users; each clicks **Activate AI** and
+     makes a different document searchable (right-click →
+     **Make searchable by AI**).
    - Confirm in Synaplan’s admin UI that two separate accounts exist
-     (`providerId = external`, source nextcloud), and that each user’s RAG only
-     returns their own document.
-2. **OpenAI-compatible backbone**
+     (`providerId = external`, source nextcloud), and that in the AI chat (the
+     chat button at the bottom right) each user only finds their own document.
+2. **Connect your Synaplan account**
+   - Click **Register this instance**; it reports **Registered and ready**.
+   - As a person with a Synaplan account: Personal settings → Synaplan →
+     **Connect Synaplan**, sign in, confirm, then **Summarize with Synaplan** on
+     a file.
+   - Disconnect that link in Synaplan: the next Summarize asks to connect again.
+3. **OpenAI-compatible backbone**
    - Register your endpoint, run the `/test` call (expect `ok: true`).
    - Register a chat + an embedding model.
-   - In Research Chat, pick the chat model and ask a question; add a document and
-     confirm retrieval works (uses your embedding model).
+   - In the AI chat, pick the chat model and ask a question; make a document
+     searchable and confirm the chat finds it (uses your embedding model).
 
 ---
 
 ## Roadmap
 
-Planned in the design docs, **not yet implemented** in this release:
+Shipped since this guide first listed them as planned:
 
-- **Bulk folder sync** — automatically ingest whole Nextcloud folders and keep
-  them in sync (filesystem events + nightly reconciliation), with GPU-cost-aware
-  debouncing.
-- **Stale / overwrite handling** — mark knowledge entries stale when the source
-  file changes, overwrite-in-place by source id, delete-after-embed.
-- **Admin cross-usage panel** — an in-Nextcloud table mapping NC users ↔ Synaplan
-  accounts with per-user usage and controls (revoke key, pause sync, delete
-  data).
-- **API-key scope enforcement** — per-user keys currently carry scopes
-  (`chat`, `files`, `rag`) but Synaplan does not yet *enforce* them; a scoped key
-  still authenticates as its user with full access. Do not rely on scopes as a
-  security boundary yet.
+- **Changed files** (1.5.0) — making a file searchable again updates its copy
+  in place, found by the Nextcloud file id. The **Make searchable by AI**
+  dialog warns when the file changed in Nextcloud since, and **Update** brings
+  the copy up to date in one click.
+- **AI users panel** — Administration settings → Synaplan → **AI Users** lists
+  the people who turned AI on, with their Synaplan account and usage.
+  **Deactivate** turns AI off for one person: a linked person’s key is revoked
+  in Synaplan; for a provisioned person Nextcloud forgets the key, which stays
+  valid in Synaplan until you revoke it there.
+- **Scope enforcement** — Synaplan enforces the scopes of per-user keys (§2).
 
-The detailed design for all of the above lives in the planning docs
-(`synaplan/_devextras/planning/20260709-hosting-partner-core-requirements.md` and
-`.local/20260709-hosting-partner-extension-plan.md`).
+Planned, **not yet implemented**:
+
+- **Watched folders** — choose a folder once; a new or changed file in it is
+  made searchable, summarized or translated without a click, with a list of
+  what happened. Until then nothing re-reads a changed file on its own: a
+  person opens the dialog and clicks **Update**.
+
+The design lives in the public Synaplan repository, under
+`_devextras/planning/20261013-cloud-file-sharing/`.
