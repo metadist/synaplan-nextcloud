@@ -308,29 +308,27 @@ class PlatformLinkService
             throw new PlatformLinkException('Synaplan request failed.', $code);
         }
 
-        if (method_exists($response, 'getStatusCode')) {
-            $status = (int) $response->getStatusCode();
-            if ($status === 404) {
-                if ($notFoundOk) {
-                    return [];
-                }
-                throw new PlatformLinkException(
-                    'Synaplan is not accepting platform connections yet.',
-                    PlatformLinkException::CODE_INSTANCE_PENDING
-                );
+        $status = (int) $response->getStatusCode();
+        if ($status === 404) {
+            if ($notFoundOk) {
+                return [];
             }
-            if ($status === 403) {
-                throw new PlatformLinkException(
-                    'This Nextcloud is waiting for approval.',
-                    PlatformLinkException::CODE_INSTANCE_PENDING
-                );
-            }
-            if ($status >= 400) {
-                throw new PlatformLinkException(
-                    'Could not finish connecting this account.',
-                    PlatformLinkException::CODE_EXCHANGE
-                );
-            }
+            throw new PlatformLinkException(
+                'Synaplan is not accepting platform connections yet.',
+                PlatformLinkException::CODE_INSTANCE_PENDING
+            );
+        }
+        if ($status === 403) {
+            throw new PlatformLinkException(
+                'This Nextcloud is waiting for approval.',
+                PlatformLinkException::CODE_INSTANCE_PENDING
+            );
+        }
+        if ($status >= 400) {
+            throw new PlatformLinkException(
+                'Could not finish connecting this account.',
+                PlatformLinkException::CODE_EXCHANGE
+            );
         }
 
         $decoded = json_decode($response->getBody(), true);

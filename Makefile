@@ -1,10 +1,12 @@
-.PHONY: lint lint-php lint-js format format-check lint-fix test test-php build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
+.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
 build_dir := release-work/build
 
 ## Quality
+
+ci-local: lint stan test test-contract typecheck test-unit-js package ## Every CI job except e2e — run before each push
 
 lint: lint-php lint-js format-check ## Run all linters + format check
 
@@ -25,12 +27,27 @@ lint-fix: ## Auto-fix lint issues
 	npm run lint:fix
 	npm run format
 
+stan: ## PHPStan (level in phpstan.neon)
+	composer run stan
+
+typecheck: ## vue-tsc type check
+	npm run check:types
+
 ## Testing
 
-test: test-php ## Run all tests
+test: test-php ## Run PHPUnit tests
 
 test-php: ## Run PHPUnit tests
 	composer run test
+
+test-unit-js: ## Run Vitest unit tests
+	npm run test:unit
+
+openapi: ## Dump the pinned Synaplan's OpenAPI spec and routes (SYNAPLAN_SRC_CONTAINER=synaplan-backend: the dev stack)
+	scripts/synaplan-openapi.sh
+
+test-contract: openapi ## Check every call the app makes against the pinned Synaplan
+	composer run test:contract
 
 ## Build
 

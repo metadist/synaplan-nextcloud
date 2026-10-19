@@ -11,6 +11,6 @@ declare(strict_types=1);
  */
 class OC
 {
-    /** @var \OC\Server|null */
+    /** @var \Psr\Container\ContainerInterface|null */
     public static $server = null;
 }

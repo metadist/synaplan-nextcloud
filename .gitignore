@@ -32,3 +32,4 @@ Thumbs.db
 
 # npm
 npm-debug.log*
+tests/Contract/.cache/

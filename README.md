@@ -36,7 +36,7 @@ Binary formats (PDF, Office, OpenDocument) are processed via Synaplan's built-in
 
 ## Requirements
 
-- Nextcloud 30–34
+- Nextcloud 33–35
 - PHP 8.2+
 - A running [Synaplan](https://synaplan.com) instance with a valid API key
 
@@ -96,8 +96,13 @@ php /path/to/nextcloud/occ app:enable synaplan_integration
 composer install          # PHP dependencies
 npm install               # JS dependencies
 
-make lint                 # Run all linters (PHP + JS + Prettier)
-make test                 # Run PHPUnit tests
+make ci-local             # Every CI job except e2e — run before each push
+make lint                 # php-cs-fixer, ESLint, Prettier
+make stan                 # PHPStan
+make test                 # PHPUnit
+make test-contract        # Every call to Synaplan against the pinned Synaplan's OpenAPI spec (Docker)
+make typecheck            # vue-tsc
+make test-unit-js         # Vitest
 make build                # Production frontend build
 make help                 # Show all available commands
 

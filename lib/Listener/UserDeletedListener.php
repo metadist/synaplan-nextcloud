@@ -31,9 +31,6 @@ class UserDeletedListener implements IEventListener
 
     public function handle(Event $event): void
     {
-        if (!$event instanceof BeforeUserDeletedEvent) {
-            return;
-        }
 
         $uid = $event->getUser()->getUID();
         // Linking never deletes a Synaplan user (decision 9). Disconnect

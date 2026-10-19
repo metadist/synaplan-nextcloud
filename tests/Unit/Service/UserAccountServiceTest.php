@@ -46,7 +46,6 @@ class UserAccountServiceTest extends TestCase
             'api_key_local' => 'sk_admin_key',
             'per_user_accounts' => '1',
         ];
-        $this->userConfig = [];
 
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = '') => $this->appConfig[$key] ?? $default

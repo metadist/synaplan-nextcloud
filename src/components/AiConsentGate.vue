@@ -7,14 +7,14 @@
 			<div class="ai-consent-actions">
 				<NcButton
 					v-if="showConnect"
-					type="primary"
+					variant="primary"
 					:disabled="saving"
 					@click="connect">
 					{{ t('synaplan_integration', 'Connect my Synaplan account') }}
 				</NcButton>
 				<NcButton
 					v-if="showCreate"
-					:type="showConnect ? 'secondary' : 'primary'"
+					:variant="showConnect ? 'secondary' : 'primary'"
 					:disabled="saving"
 					@click="createAccount">
 					{{
@@ -25,7 +25,7 @@
 				</NcButton>
 				<NcButton
 					v-if="showActivate"
-					type="primary"
+					variant="primary"
 					:disabled="saving"
 					@click="activate">
 					{{

@@ -7,9 +7,10 @@
 		"php": ">=8.2"
 	},
 	"require-dev": {
-		"nextcloud/ocp": "dev-master",
+		"nextcloud/ocp": "dev-stable33",
 		"phpunit/phpunit": "^10.5",
-		"friendsofphp/php-cs-fixer": "^3.0"
+		"friendsofphp/php-cs-fixer": "^3.0",
+		"phpstan/phpstan": "^2.1.53"
 	},
 	"autoload": {
 		"psr-4": {
@@ -30,7 +31,9 @@
 	"scripts": {
 		"lint": "php-cs-fixer fix --dry-run --diff",
 		"lint:fix": "php-cs-fixer fix",
-		"test": "phpunit --configuration phpunit.xml"
+		"test": "phpunit --configuration phpunit.xml --testsuite Unit",
+		"stan": "phpstan analyse --memory-limit=1G --no-progress",
+		"test:contract": "phpunit --configuration phpunit.xml --testsuite Contract"
 	},
 	"config": {
 		"allow-plugins": {

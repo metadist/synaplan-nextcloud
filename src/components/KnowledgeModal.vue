@@ -222,26 +222,26 @@
 		<template #actions>
 			<NcButton
 				v-if="uploadSuccess || removed"
-				type="primary"
+				variant="primary"
 				@click="onClose">
 				{{ t('synaplan_integration', 'Done') }}
 			</NcButton>
 			<template v-else>
 				<NcButton
-					type="tertiary"
+					variant="tertiary"
 					:disabled="loading || removing"
 					@click="onClose">
 					{{ t('synaplan_integration', 'Cancel') }}
 				</NcButton>
 				<NcButton
 					v-if="inKnowledge"
-					type="error"
+					variant="error"
 					:disabled="loading || removing"
 					@click="removeFromKnowledge">
 					{{ t('synaplan_integration', 'Remove from Knowledge') }}
 				</NcButton>
 				<NcButton
-					type="primary"
+					variant="primary"
 					:disabled="loading || removing || aiBlocked || !selectedGroup"
 					@click="uploadFile">
 					{{

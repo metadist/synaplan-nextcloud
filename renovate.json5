@@ -1,0 +1,66 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:best-practices',
+    'docker:enableMajor',
+    ':separateMultipleMajorReleases',
+  ],
+  timezone: 'Europe/Berlin',
+  prConcurrentLimit: 6,
+  prHourlyLimit: 2,
+  dependencyDashboard: true,
+  labels: ['dependencies'],
+  customManagers: [
+    {
+      // SYNAPLAN_IMAGE_DIGEST in ci.yml follows ghcr.io/metadist/synaplan:latest;
+      // Renovate's github-actions manager does not read env blocks.
+      customType: 'regex',
+      managerFilePatterns: ['/^\\.github/workflows/ci\\.yml$/'],
+      matchStrings: ['SYNAPLAN_IMAGE_DIGEST:\\s*(?<currentDigest>sha256:[a-f0-9]+)'],
+      depNameTemplate: 'ghcr.io/metadist/synaplan',
+      datasourceTemplate: 'docker',
+      currentValueTemplate: 'latest',
+    },
+  ],
+  'docker-compose': {
+    managerFilePatterns: ['/(^|/)docker-compose[^/]*\\.ya?ml(\\.example)?$/'],
+  },
+  packageRules: [
+    {
+      groupName: 'Nextcloud',
+      matchPackageNames: ['@nextcloud/**', 'nextcloud/ocp'],
+      matchUpdateTypes: ['minor', 'patch'],
+    },
+    {
+      groupName: 'QA & Dev Tools',
+      matchPackageNames: [
+        'vitest',
+        '@vitest/**',
+        'happy-dom',
+        'vue-tsc',
+        'typescript',
+        'eslint',
+        'prettier',
+        'phpstan/phpstan',
+        'phpunit/phpunit',
+        'friendsofphp/php-cs-fixer',
+      ],
+      matchUpdateTypes: ['minor', 'patch'],
+    },
+    {
+      groupName: 'Docker Images',
+      matchManagers: ['docker-compose'],
+      matchUpdateTypes: ['minor', 'patch', 'digest', 'pinDigest'],
+    },
+    {
+      groupName: 'Synaplan',
+      matchPackageNames: ['ghcr.io/metadist/synaplan'],
+      matchUpdateTypes: ['digest', 'pinDigest'],
+    },
+    {
+      matchUpdateTypes: ['major'],
+      automerge: false,
+      labels: ['dependencies', 'breaking'],
+    },
+  ],
+}

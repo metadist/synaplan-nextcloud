@@ -39,7 +39,7 @@
 					:disabled="loading || aiBlocked"
 					@keydown.enter="sendMessage" />
 				<NcButton
-					type="primary"
+					variant="primary"
 					:disabled="loading || aiBlocked || !inputMessage.trim()"
 					@click="sendMessage">
 					{{ t('synaplan_integration', 'Send') }}
@@ -55,7 +55,7 @@
 		</div>
 
 		<template #actions>
-			<NcButton type="tertiary" @click="onClose">
+			<NcButton variant="tertiary" @click="onClose">
 				{{ t('synaplan_integration', 'Close') }}
 			</NcButton>
 		</template>

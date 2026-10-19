@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\Files\File;
@@ -44,14 +45,13 @@ class ChatController extends Controller
     /**
      * Ask a question, optionally with file context or RAG group.
      *
-     * @NoAdminRequired
-     *
      * @param string      $message     User's question
      * @param int|null    $fileId      Nextcloud file ID for document context
      * @param string|null $groupKey    RAG group key for knowledge base context
      * @param int|null    $modelId     Specific model ID to use
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
      */
+    #[NoAdminRequired]
     public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?int $modelId = null, bool $useMemories = false): JSONResponse
     {
         // Parse JSON body as fallback
@@ -125,14 +125,13 @@ class ChatController extends Controller
      * endpoint. RAG (group) and file context are resolved here, exactly like
      * {@see self::chat()}, then relayed to the browser as it arrives.
      *
-     * @NoAdminRequired
-     *
      * @param string      $message     User's question
      * @param int|null    $fileId      Nextcloud file ID for document context
      * @param string|null $groupKey    RAG group key for knowledge base context
      * @param string|null $model       Provider model id/name (null = user default)
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
      */
+    #[NoAdminRequired]
     public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false): Response
     {
         if ($message === '') {
