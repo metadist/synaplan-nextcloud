@@ -15,6 +15,8 @@ occ background:cron
 occ config:system:set allow_local_remote_servers --value true --type boolean
 occ config:system:set skeletondirectory --value ''
 occ config:system:set default_language --value en
+# Its welcome dialog covers the Files app on every first visit, also in E2E runs.
+occ app:disable firstrunwizard
 
 # Mail goes to the Synaplan stack's MailHog (http://localhost:8025).
 occ config:system:set mail_smtpmode --value smtp
