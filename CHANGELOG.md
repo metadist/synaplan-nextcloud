@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.6.1 – Unreleased
+
+### Changed
+- **Nextcloud 33 to 35.** Nextcloud 35 joins the supported range. Nextcloud 30
+  to 32 no longer get maintenance releases; installations there keep 1.6.0,
+  which the App Store still offers them.
+- Controllers declare who may call each route with PHP attributes instead of
+  the docblock annotations Nextcloud deprecated. Access is unchanged, and a
+  test now pins it for every route.
+
 ## 1.6.0 – 2026-09-15
 
 Three ways to connect Nextcloud to Synaplan. Existing installs keep working:

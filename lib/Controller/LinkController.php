@@ -44,9 +44,6 @@ class LinkController extends Controller
 
     /**
      * Begin the handshake: store state and send the user to Synaplan.
-     *
-     * @NoAdminRequired
-     * @NoCSRFRequired
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]
@@ -79,9 +76,6 @@ class LinkController extends Controller
 
     /**
      * Cross-site GET from Synaplan. `state` is the CSRF check.
-     *
-     * @NoAdminRequired
-     * @NoCSRFRequired
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]
@@ -125,8 +119,6 @@ class LinkController extends Controller
 
     /**
      * Revoke the linked key and forget local prefs.
-     *
-     * @NoAdminRequired
      */
     #[NoAdminRequired]
     public function disconnect(): JSONResponse
@@ -145,9 +137,6 @@ class LinkController extends Controller
         return new JSONResponse(['success' => true]);
     }
 
-    /**
-     * @NoAdminRequired
-     */
     #[NoAdminRequired]
     public function status(): JSONResponse
     {

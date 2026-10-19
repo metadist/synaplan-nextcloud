@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Exception\EmailConflictException;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -38,9 +39,8 @@ class ConsentController extends Controller
 
     /**
      * Current consent state for the logged-in user.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function getConsent(): JSONResponse
     {
         return new JSONResponse([
@@ -51,9 +51,8 @@ class ConsentController extends Controller
 
     /**
      * Grant or withdraw consent to activate AI.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function setConsent(bool $granted = false, bool $createAccount = false): JSONResponse
     {
         // Nextcloud does not always bind a JSON body to typed params; re-read

@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
@@ -81,9 +82,8 @@ class ApiController extends Controller
      * Tells the frontend which output language will be used (so the user knows
      * up front), and whether the Synaplan memory service is reachable so the
      * memory toggle can be shown only when it actually works.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function clientConfig(): JSONResponse
     {
         $language = $this->languageService->resolveLanguage();
@@ -110,13 +110,12 @@ class ApiController extends Controller
     /**
      * Summarize a file.
      *
-     * @NoAdminRequired
-     *
      * @param int    $fileId         Nextcloud file ID
      * @param string $summaryType    bullet-points|abstractive|extractive
      * @param string $length         short|medium|long
      * @param string $outputLanguage ISO language code (en, de, fr, es, it)
      */
+    #[NoAdminRequired]
     public function summarize(
         int $fileId,
         string $summaryType = 'bullet-points',
@@ -166,11 +165,10 @@ class ApiController extends Controller
      * Uses Synaplan's summarization endpoint with abstractive/long
      * settings to produce a full translation.
      *
-     * @NoAdminRequired
-     *
      * @param int    $fileId         Nextcloud file ID
      * @param string $targetLanguage ISO language code (en, de, fr, es, it)
      */
+    #[NoAdminRequired]
     public function translate(
         int $fileId,
         string $targetLanguage = '',
@@ -217,11 +215,10 @@ class ApiController extends Controller
      *
      * Sends the file content to Synaplan for text extraction and vectorization.
      *
-     * @NoAdminRequired
-     *
      * @param int    $fileId   Nextcloud file ID
      * @param string $groupKey Target group key for vectorization
      */
+    #[NoAdminRequired]
     public function uploadToKnowledge(int $fileId, string $groupKey = 'DEFAULT'): JSONResponse
     {
         // Parse JSON body for groupKey
@@ -316,10 +313,9 @@ class ApiController extends Controller
      * file id — so the UI can offer Add vs. Update vs. Remove and a "changed"
      * badge.
      *
-     * @NoAdminRequired
-     *
      * @param int $fileId Nextcloud file ID
      */
+    #[NoAdminRequired]
     public function knowledgeStatus(int $fileId): JSONResponse
     {
         try {
@@ -367,10 +363,9 @@ class ApiController extends Controller
     /**
      * Remove a Nextcloud file from the Synaplan knowledge base (CORE-4).
      *
-     * @NoAdminRequired
-     *
      * @param int $fileId Nextcloud file ID
      */
+    #[NoAdminRequired]
     public function removeFromKnowledge(int $fileId): JSONResponse
     {
         try {
@@ -409,9 +404,8 @@ class ApiController extends Controller
 
     /**
      * Get available file groups from Synaplan.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function getGroups(): JSONResponse
     {
         try {
@@ -436,9 +430,8 @@ class ApiController extends Controller
 
     /**
      * Get available AI models from Synaplan.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function getModels(): JSONResponse
     {
         try {

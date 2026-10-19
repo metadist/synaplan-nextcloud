@@ -16,7 +16,7 @@ Bring Synaplan's AI capabilities directly into Nextcloud:
 
 Requires a running Synaplan instance. Shared-key, per-user provision, or account-link mode.
 	]]></description>
-	<version>1.6.0</version>
+	<version>1.6.1</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>
@@ -30,7 +30,7 @@ Requires a running Synaplan instance. Shared-key, per-user provision, or account
 	<screenshot>https://raw.githubusercontent.com/metadist/synaplan-nextcloud/main/screens/research_chat.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
-		<nextcloud min-version="30" max-version="34"/>
+		<nextcloud min-version="33" max-version="35"/>
 	</dependencies>
 	<settings>
 		<admin>OCA\SynaplanIntegration\Settings\SynaplanAdmin</admin>

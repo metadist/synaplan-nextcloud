@@ -8,6 +8,8 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\Folder;
@@ -58,9 +60,8 @@ class MediaController extends Controller
 
     /**
      * Generate an image or video via Synaplan.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function generate(): JSONResponse
     {
         $body = file_get_contents('php://input');
@@ -112,9 +113,8 @@ class MediaController extends Controller
 
     /**
      * Download generated media from Synaplan and save it to the user's Nextcloud files.
-     *
-     * @NoAdminRequired
      */
+    #[NoAdminRequired]
     public function save(): JSONResponse
     {
         $user = $this->userSession->getUser();
@@ -193,10 +193,9 @@ class MediaController extends Controller
 
     /**
      * Proxy a Synaplan media file through the Nextcloud server.
-     *
-     * @NoAdminRequired
-     * @NoCSRFRequired
      */
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
     public function proxy(string $url = ''): Http\Response
     {
         if ($url === '') {
