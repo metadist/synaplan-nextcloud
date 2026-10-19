@@ -16,7 +16,7 @@ apply: English in code and commits, the UX and stability bar, no secrets.
 ## Before you push
 
 `make ci-local` runs every CI job except e2e: php-cs-fixer, ESLint, Prettier,
-PHPStan, PHPUnit, vue-tsc, Vitest, build and package. CI
+PHPStan, PHPUnit, the contract test, vue-tsc, Vitest, build and package. CI
 (`.github/workflows/ci.yml`) runs the PHP checks against the Nextcloud 33 and
 35 APIs; **All Checks Passed** is the merge gate. Never push red.
 
@@ -32,6 +32,9 @@ PHPStan, PHPUnit, vue-tsc, Vitest, build and package. CI
 - The PHPStan level in `phpstan.neon` only goes up: fix findings, no baseline.
 - Controller access rules are PHP attributes; `ControllerAccessTest` lists
   every route with its rules.
+- A new call to Synaplan needs a line in `SynaplanContractTest::callEverything()`;
+  the test checks it against the Synaplan pinned in `ci.yml`
+  (`SYNAPLAN_SRC_CONTAINER=synaplan-backend make test-contract` tries a local one).
 - Every user-facing string goes through `t()` / `n()`.
 - Never commit `js/`, tarballs or anything from `.local/` (signing keys).
 

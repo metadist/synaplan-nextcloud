@@ -31,8 +31,9 @@
 	"scripts": {
 		"lint": "php-cs-fixer fix --dry-run --diff",
 		"lint:fix": "php-cs-fixer fix",
-		"test": "phpunit --configuration phpunit.xml",
-		"stan": "phpstan analyse --memory-limit=1G --no-progress"
+		"test": "phpunit --configuration phpunit.xml --testsuite Unit",
+		"stan": "phpstan analyse --memory-limit=1G --no-progress",
+		"test:contract": "phpunit --configuration phpunit.xml --testsuite Contract"
 	},
 	"config": {
 		"allow-plugins": {

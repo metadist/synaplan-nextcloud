@@ -100,6 +100,7 @@ make ci-local             # Every CI job except e2e — run before each push
 make lint                 # php-cs-fixer, ESLint, Prettier
 make stan                 # PHPStan
 make test                 # PHPUnit
+make test-contract        # Every call to Synaplan against the pinned Synaplan's OpenAPI spec (Docker)
 make typecheck            # vue-tsc
 make test-unit-js         # Vitest
 make build                # Production frontend build
