@@ -106,23 +106,33 @@ npm run dev               # Watch mode (auto-rebuild on changes)
 
 ### Local Nextcloud next to Synaplan (WSL)
 
-`docker-compose.dev.yml` is gitignored. Copy the example and start it while
-the Synaplan stack is already up (`docker compose up -d` in `/wwwroot/synaplan`):
+Start the Synaplan stack with Keycloak first (`docker compose --profile oidc up -d`
+in `../synaplan`), then:
 
 ```bash
-cp docker-compose.dev.yml.example docker-compose.dev.yml
-make dev-up
+make dev-up        # copies docker-compose.dev.yml.example (gitignored) on the first run
 ```
 
-- Nextcloud: http://localhost:8081 — admin / admin
-- The container hostname is `nextcloud` on `synaplan_synaplan-network`
-- The Synaplan Integration app is mounted from this repo and enabled on first ready
-- From the Nextcloud container, Synaplan is `http://backend` (host browser: http://localhost:5173). In `link` mode set **Address people open in the browser** to `http://localhost:5173` so Connect opens the Synaplan confirm card.
+- Nextcloud: http://localhost:8081 — `admin` / `admin`; the test people `ada`,
+  `bob` and `carol` (password `<name>-dev-pass`). Ada has the folders the
+  journeys use; `Incoming-DE` (edit) and `Specs` (read) are shared with Bob.
+- Organisation login: the Keycloak button on the login page. Keycloak's `ada`
+  (`ada-dev-pass`) signs in as the local `ada`. `NC_OIDC=0 make dev-reset dev-up`
+  installs without it.
+- Version: `nextcloud:35-apache` by default; `NC_IMAGE=nextcloud:33-apache make dev-reset dev-up`
+  for the floor (a major version change needs fresh volumes).
+- MariaDB on a private network, system cron (`nextcloud-cron`), mail to
+  Synaplan's MailHog (http://localhost:8025).
+- The app is mounted from this repo and preconfigured for the local stack: it
+  calls Synaplan at `http://backend` and sends browsers to http://localhost:5173.
 - Three modes: **shared** key, **provision** (create an account per user), and
   **link** (each person connects their existing Synaplan account). Synaplan
   must have Linked platforms enabled (`PLATFORM_LINKS.ENABLED`) for `link`.
+- Ready check: `../synaplan/_devextras/testing/cloud-apps/env-check.sh --cloud nextcloud --oidc`.
 
-`make dev-down` stops the container. Data lives in the `nextcloud_data` volume.
+`make dev-down` stops the stack and keeps the volumes; `make dev-reset` deletes
+them. `make dev-occ CMD="user:list"`, `make dev-logs` and `make dev-shell` help
+while it runs.
 
 ## Release
 

@@ -1,4 +1,4 @@
-.PHONY: lint lint-php lint-js format format-check lint-fix test test-php build dev clean package sign appstore dev-up dev-down help
+.PHONY: lint lint-php lint-js format format-check lint-fix test test-php build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
@@ -84,26 +84,37 @@ appstore: sign ## Build, sign, and prepare for App Store upload
 	@echo ""
 
 ## Local Synaplan stack (WSL)
+# NC_IMAGE picks the Nextcloud version (default: the top of the supported range);
+# NC_OIDC=0 skips organisation login. Both apply to a fresh install (dev-reset).
 
 COMPOSE_DEV := docker compose -f docker-compose.dev.yml
+NC_EXEC := $(COMPOSE_DEV) exec -T -u www-data nextcloud
 
-dev-up: ## Start local Nextcloud on :8081 (joins the Synaplan Docker network)
+# A Windows docker.exe called from WSL sees only the variables WSLENV names.
+export WSLENV := $(if $(WSLENV),$(WSLENV):)NC_IMAGE:NC_OIDC
+
+dev-up: ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network)
 	@test -f docker-compose.dev.yml || cp docker-compose.dev.yml.example docker-compose.dev.yml
-	$(COMPOSE_DEV) up -d
-	@echo "Waiting for Nextcloud to finish first-run install…"
-	@for i in $$(seq 1 90); do \
-		if $(COMPOSE_DEV) exec -T -u www-data nextcloud php occ status >/dev/null 2>&1; then \
-			break; \
-		fi; \
-		sleep 2; \
-	done
-	$(COMPOSE_DEV) exec -T -u www-data nextcloud php occ app:enable synaplan_integration
+	$(COMPOSE_DEV) up -d --wait
+	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
 	@echo ""
-	@echo "Nextcloud:  http://localhost:8081  (admin / admin)"
-	@echo "Synaplan:   http://localhost:8000  (from the NC container: http://backend)"
+	@echo "Nextcloud:  http://localhost:8081  (admin / admin; ada, bob, carol / <name>-dev-pass)"
+	@echo "Synaplan:   http://localhost:5173  (from the Nextcloud containers: http://backend)"
 
-dev-down: ## Stop local Nextcloud (keeps the data volume)
+dev-down: ## Stop local Nextcloud (keeps the volumes)
 	$(COMPOSE_DEV) down
+
+dev-reset: ## Remove the Nextcloud and database volumes — destroys local data; needed to change the major version
+	$(COMPOSE_DEV) down -v
+
+dev-occ: ## Run occ in the dev container, e.g. make dev-occ CMD="user:list"
+	$(NC_EXEC) php occ $(CMD)
+
+dev-logs: ## Follow the Nextcloud container logs
+	$(COMPOSE_DEV) logs -f nextcloud
+
+dev-shell: ## Open a shell in the Nextcloud container as www-data
+	$(COMPOSE_DEV) exec -u www-data nextcloud bash
 
 ## Help
 
