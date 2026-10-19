@@ -2,8 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 /**
  * Journeys against a real Nextcloud (docker-compose.ci.yml) and the Synaplan
- * test stack. The files run in order with one worker: they share the app's
- * mode and the person's Synaplan link. See README, section Development.
+ * test stack. One worker: the journeys share the server, the app's mode and
+ * the person's Synaplan link. Each test sets up the state it starts from, so
+ * a retry runs on its own. See README, section Development.
  */
 export default defineConfig({
 	testDir: './tests/e2e',

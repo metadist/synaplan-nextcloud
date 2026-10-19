@@ -1,9 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { logIn, nextcloudAs, openFileAction } from './support'
+import {
+	ensureConnected,
+	logIn,
+	makeUnsearchable,
+	nextcloudAs,
+	openFileAction,
+} from './support'
 
-// ada connected in 02-connect.spec.ts.
 test.beforeEach(async ({ page }) => {
 	await logIn(page, 'ada')
+	await ensureConnected(page)
 })
 
 test('Summarize writes a summary', async ({ page }) => {
@@ -36,6 +42,7 @@ test('Chat about this file answers a question', async ({ page }) => {
 })
 
 test('Make searchable by AI, then remove it again', async ({ page }) => {
+	await makeUnsearchable('ada')
 	let dialog = await openFileAction(page, 'Make searchable by AI')
 	await dialog.getByRole('combobox').click()
 	await page.keyboard.type('Vendors')
@@ -58,9 +65,21 @@ test('Make searchable by AI, then remove it again', async ({ page }) => {
 })
 
 test('an image from the chat is saved to Synaplan/Images', async ({ page }) => {
+	// Hold the models request, which carries the image capability, until
+	// /pic is sent: a quick /pic must wait for it instead of being refused.
+	let answerModels = (): void => {}
+	const modelsHeld = new Promise<void>((resolve) => {
+		answerModels = resolve
+	})
+	await page.route('**/api/v1/knowledge/models', async (route) => {
+		await modelsHeld
+		await route.continue()
+	})
+
 	await page.goto('/index.php/apps/synaplan_integration/research')
 	await page.getByPlaceholder(/Ask a question/).fill('/pic a red bicycle')
 	await page.getByRole('button', { name: 'Send' }).click()
+	answerModels()
 
 	await expect(page.getByAltText('Generated image')).toBeVisible()
 	await page.getByRole('button', { name: 'Save to Nextcloud' }).click()

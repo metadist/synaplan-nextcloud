@@ -82,6 +82,21 @@ export async function saveSettings(
 }
 
 /**
+ * Take a person's AI access away, as Deactivate in the admin settings does,
+ * so a journey starts from a known state, also when Playwright retries it.
+ *
+ * @param uid Nextcloud user id
+ */
+export async function resetPerson(uid: string): Promise<void> {
+	const admin = await nextcloudAs('admin')
+	const response = await admin.post(
+		`${APP}/api/v1/admin/ai-users/${uid}/deactivate`,
+	)
+	expect(response.ok(), `resetting ${uid}'s AI access`).toBe(true)
+	await admin.dispose()
+}
+
+/**
  * Sign in on the Nextcloud login page.
  *
  * @param page the browser page
@@ -135,6 +150,8 @@ export async function allowOnSynaplan(page: Page): Promise<void> {
 	await page.waitForURL(`${NC_URL}/**`)
 }
 
+const CONNECTED = /Connected as demo@synaplan\.com/
+
 /**
  * Connect from the personal settings, as a person would.
  *
@@ -144,7 +161,51 @@ export async function connectFromSettings(page: Page): Promise<void> {
 	await page.goto('/index.php/settings/user/synaplan_integration')
 	await page.getByRole('link', { name: 'Connect Synaplan' }).click()
 	await allowOnSynaplan(page)
-	await expect(page.getByText(/Connected as demo@synaplan\.com/)).toBeVisible()
+	await expect(page.getByText(CONNECTED)).toBeVisible()
+}
+
+/**
+ * Connect unless the personal settings already say "Connected as …".
+ *
+ * @param page the browser page, signed in to Nextcloud
+ */
+export async function ensureConnected(page: Page): Promise<void> {
+	await page.goto('/index.php/settings/user/synaplan_integration')
+	const connect = page.getByRole('link', { name: 'Connect Synaplan' })
+	const connected = page.getByText(CONNECTED)
+	await expect(connect.or(connected)).toBeVisible()
+	if (await connect.isVisible()) {
+		await connect.click()
+		await allowOnSynaplan(page)
+		await expect(connected).toBeVisible()
+	}
+}
+
+/**
+ * Make sure the file is not searchable by AI, through the app's own API, so
+ * the knowledge journey starts from the same state on a retry.
+ *
+ * @param uid Nextcloud user id
+ * @param file the file name in the person's root folder
+ */
+export async function makeUnsearchable(uid: string, file = FILE): Promise<void> {
+	const person = await nextcloudAs(uid)
+	const found = await person.fetch(`/remote.php/dav/files/${uid}/${file}`, {
+		method: 'PROPFIND',
+		headers: { Depth: '0', 'Content-Type': 'application/xml' },
+		data: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><oc:fileid/></d:prop></d:propfind>',
+	})
+	const fileId = /<oc:fileid>(\d+)<\/oc:fileid>/.exec(await found.text())?.[1]
+	expect(fileId, `the file id of ${file}`).toBeTruthy()
+	const status = await person.get(`${APP}/api/v1/knowledge/status/${fileId}`)
+	const { in_knowledge: searchable } = (await status.json()) as {
+		in_knowledge?: boolean
+	}
+	if (searchable) {
+		const removed = await person.delete(`${APP}/api/v1/knowledge/${fileId}`)
+		expect(removed.ok(), `removing ${file} from AI search`).toBe(true)
+	}
+	await person.dispose()
 }
 
 interface Link {

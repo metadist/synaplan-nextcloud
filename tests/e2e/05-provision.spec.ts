@@ -1,8 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { logIn, openFileAction, saveSettings } from './support'
+import { logIn, openFileAction, resetPerson, saveSettings } from './support'
 
 test.beforeAll(async () => {
 	await saveSettings({ mode: 'provision' })
+})
+
+test.beforeEach(async () => {
+	await resetPerson('carol')
 })
 
 test.afterAll(async () => {

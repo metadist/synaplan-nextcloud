@@ -6,6 +6,7 @@ import {
 	SYNAPLAN_ADMIN,
 	SYNAPLAN_URL,
 	nextcloudAs,
+	resetPerson,
 	saveSettings,
 	synaplanAs,
 } from './support'
@@ -84,15 +85,10 @@ export default async function globalSetup(): Promise<void> {
 	expect(registration.error ?? '', 'registering Nextcloud').toBe('')
 	expect(registration.status, 'the instance is active').toBe('active')
 
-	for (const uid of PEOPLE) {
-		const reset = await admin.post(
-			`${APP}/api/v1/admin/ai-users/${uid}/deactivate`,
-		)
-		expect(reset.ok(), `resetting ${uid}'s AI access`).toBe(true)
-	}
 	await admin.dispose()
 
 	for (const uid of PEOPLE) {
+		await resetPerson(uid)
 		const person = await nextcloudAs(uid)
 		const uploaded = await person.put(`/remote.php/dav/files/${uid}/${FILE}`, {
 			data: REVIEW_TEXT,

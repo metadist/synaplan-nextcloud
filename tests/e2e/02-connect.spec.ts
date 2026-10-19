@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { allowOnSynaplan, logIn, openFileAction } from './support'
+import { allowOnSynaplan, logIn, openFileAction, resetPerson } from './support'
+
+test.beforeEach(async () => {
+	await resetPerson('ada')
+})
 
 test('a new person connects from the first file action', async ({ page }) => {
 	await logIn(page, 'ada')

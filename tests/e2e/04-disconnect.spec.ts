@@ -2,26 +2,30 @@ import { expect, test } from '@playwright/test'
 import {
 	SYNAPLAN_PERSON,
 	connectFromSettings,
+	ensureConnected,
 	keyIdsOf,
 	linksOf,
 	logIn,
 	openFileAction,
+	resetPerson,
 	synaplanAs,
 } from './support'
 
 test('after a disconnect in Synaplan, the next action says how to reconnect', async ({
 	page,
 }) => {
+	await logIn(page, 'ada')
+	await ensureConnected(page)
+
 	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
 	const links = await linksOf(synaplan, 'ada')
-	expect(links.length, 'ada is linked from 02-connect').toBeGreaterThan(0)
+	expect(links.length, 'ada is linked').toBeGreaterThan(0)
 	for (const link of links) {
 		const removed = await synaplan.delete(`/api/v1/me/platform-links/${link.id}`)
 		expect(removed.ok(), `disconnecting link ${link.id}`).toBe(true)
 	}
 	await synaplan.dispose()
 
-	await logIn(page, 'ada')
 	const dialog = await openFileAction(page, 'Summarize with Synaplan')
 	await dialog.getByRole('button', { name: 'Summarize', exact: true }).click()
 
@@ -35,6 +39,7 @@ test('after a disconnect in Synaplan, the next action says how to reconnect', as
 // Synaplan keeps listing the link after its key is gone; only the key is
 // checked here until the core removes the link with its key.
 test('a disconnect in Nextcloud revokes the key in Synaplan', async ({ page }) => {
+	await resetPerson('ada')
 	await logIn(page, 'ada')
 	await connectFromSettings(page)
 	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
