@@ -20,19 +20,31 @@ use Psr\Log\LoggerInterface;
  * each network chunk the instant it arrives, and we echo + flush it
  * immediately, defeating PHP/Nextcloud output buffering so the answer truly
  * streams token by token.
+ *
+ * A Synaplan error status or a failed connection ends the stream with one
+ * error event that carries a {@see Failure} code, never Synaplan's raw body or
+ * the cURL message.
  */
 class SseProxyResponse extends Response implements ICallbackResponse
 {
+    /** Enough of an upstream error body to read its error code. */
+    private const ERROR_BODY_LIMIT = 8192;
+
+    private int $upstreamStatus = 0;
+    private string $errorBody = '';
+
     /**
-     * @param string $url     Upstream chat-completions endpoint
-     * @param string $apiKey  Synaplan API key
-     * @param string $payload JSON request body (messages + stream:true)
+     * @param string                 $url        Upstream chat-completions endpoint
+     * @param string                 $apiKey     Synaplan API key
+     * @param string                 $payload    JSON request body (messages + stream:true)
+     * @param (\Closure(): Failure)|null $keyRefused What a 401 means for this person
      */
     public function __construct(
         private string $url,
         private string $apiKey,
         private string $payload,
         private LoggerInterface $logger,
+        private ?\Closure $keyRefused = null,
     ) {
         parent::__construct();
 
@@ -78,9 +90,22 @@ class SseProxyResponse extends Response implements ICallbackResponse
             \CURLOPT_TIMEOUT => 300,
             \CURLOPT_CONNECTTIMEOUT => 15,
             \CURLOPT_BUFFERSIZE => 256,
+            \CURLOPT_HEADERFUNCTION => function ($handle, string $header): int {
+                if (preg_match('#^HTTP/\S+\s+(\d{3})#', $header, $match) === 1) {
+                    $this->upstreamStatus = (int) $match[1];
+                }
+
+                return \strlen($header);
+            },
             \CURLOPT_WRITEFUNCTION => function ($handle, string $data): int {
                 if (connection_aborted()) {
                     return 0;
+                }
+                if ($this->upstreamStatus >= 400) {
+                    $room = self::ERROR_BODY_LIMIT - \strlen($this->errorBody);
+                    $this->errorBody .= substr($data, 0, max(0, $room));
+
+                    return \strlen($data);
                 }
                 echo $data;
                 $this->flush();
@@ -89,20 +114,45 @@ class SseProxyResponse extends Response implements ICallbackResponse
             },
         ]);
 
-        if (curl_exec($ch) === false && !connection_aborted()) {
-            $error = curl_error($ch);
-            $this->logger->error('SSE chat proxy failed: {message}', [
-                'app' => 'synaplan_integration',
-                'message' => $error,
-            ]);
-            echo 'data: ' . json_encode([
-                'error' => ['message' => $error !== '' ? $error : 'Stream connection failed'],
-            ]) . "\n\n";
-            echo "data: [DONE]\n\n";
-            $this->flush();
+        $completed = curl_exec($ch) !== false;
+        if (!connection_aborted()) {
+            if (!$completed) {
+                $this->logger->error('SSE chat proxy failed: {message}', [
+                    'app' => 'synaplan_integration',
+                    'message' => curl_error($ch),
+                ]);
+                $this->send(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE));
+            } elseif ($this->upstreamStatus >= 400) {
+                $this->logger->error('SSE chat proxy: Synaplan answered HTTP {status}', [
+                    'app' => 'synaplan_integration',
+                    'status' => $this->upstreamStatus,
+                ]);
+                $this->send($this->upstreamStatus === Http::STATUS_UNAUTHORIZED && $this->keyRefused !== null
+                    ? ($this->keyRefused)()
+                    : Failure::fromSynaplanResponse($this->upstreamStatus, $this->errorBody));
+            }
         }
 
         curl_close($ch);
+    }
+
+    /**
+     * The frames that end a stream with a failure the browser can name.
+     */
+    public static function errorEvent(Failure $failure): string
+    {
+        $error = ['code' => $failure->code];
+        if ($failure->message !== null) {
+            $error['message'] = $failure->message;
+        }
+
+        return 'data: ' . json_encode(['error' => $error]) . "\n\ndata: [DONE]\n\n";
+    }
+
+    private function send(Failure $failure): void
+    {
+        echo self::errorEvent($failure);
+        $this->flush();
     }
 
     private function flush(): void

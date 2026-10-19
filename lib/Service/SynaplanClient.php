@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use Psr\Log\LoggerInterface;
@@ -40,7 +43,7 @@ class SynaplanClient
      */
     public function healthCheck(): array
     {
-        return $this->request('GET', '/api/health');
+        return $this->request('GET', '/api/health', null, false);
     }
 
     /**
@@ -389,7 +392,7 @@ class SynaplanClient
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->getApiKey(),
+                'X-API-Key' => $this->requireApiKey(),
                 'Accept' => 'application/json',
             ],
             'multipart' => $multipart,
@@ -401,7 +404,7 @@ class SynaplanClient
             $decoded = json_decode($response->getBody(), true);
 
             if (!is_array($decoded)) {
-                throw new \RuntimeException('Invalid JSON response from Synaplan API');
+                throw FailureException::invalidSynaplanAnswer();
             }
 
             return $decoded;
@@ -440,7 +443,7 @@ class SynaplanClient
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->getApiKey(),
+                'X-API-Key' => $this->requireApiKey(),
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ],
@@ -453,7 +456,7 @@ class SynaplanClient
             $decoded = json_decode($response->getBody(), true);
 
             if (!is_array($decoded)) {
-                throw new \RuntimeException('Invalid JSON response from Synaplan API');
+                throw FailureException::invalidSynaplanAnswer();
             }
 
             return $decoded;
@@ -482,7 +485,7 @@ class SynaplanClient
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->getApiKey(),
+                'X-API-Key' => $this->requireApiKey(),
             ],
             'timeout' => self::MEDIA_TIMEOUT,
         ];
@@ -530,8 +533,7 @@ class SynaplanClient
      * In per-user mode this is the logged-in Nextcloud user's own Synaplan key
      * (provisioned + minted on first use, AFTER the user activates AI). If the
      * user has no key yet — because they have not consented, or provisioning
-     * failed — an EMPTY key is returned on purpose: the request then fails
-     * (401) rather than silently falling back to the shared admin key, which
+     * failed — the key is EMPTY on purpose, never the shared admin key, which
      * would break both isolation and the consent gate. The admin key is used
      * only internally for provisioning (see UserAccountService).
      *
@@ -590,17 +592,59 @@ class SynaplanClient
     }
 
     /**
+     * The current request's key, or the failure that says what the person can
+     * do: connect their account (link mode), activate AI, or ask the
+     * administrator because provisioning failed. Nothing is sent without a key.
+     *
+     * @throws FailureException
+     */
+    public function requireApiKey(): string
+    {
+        $key = $this->getApiKey();
+        if ($key !== '' || !$this->synaplanConfig->isPerUserAccountsEnabled()) {
+            return $key;
+        }
+        if ($this->synaplanConfig->isLinkMode()) {
+            throw FailureException::notConnected();
+        }
+
+        throw $this->userAccounts->hasConsentForCurrentUser()
+            ? FailureException::accountUnavailable()
+            : FailureException::consentRequired();
+    }
+
+    /**
+     * Synaplan refused the person's key in a stream, which cannot be repeated:
+     * forget the key and say what to do. A linked person has to connect again;
+     * a provisioned one gets a new key with the next request.
+     */
+    public function keyRefused(): Failure
+    {
+        if (!$this->synaplanConfig->isPerUserAccountsEnabled()) {
+            return new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_KEY_REJECTED);
+        }
+        $this->userAccounts->clearCurrentUserApiKey();
+        if (!$this->synaplanConfig->isLinkMode()) {
+            return new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_ERROR);
+        }
+        $this->userAccounts->clearLinkPrefs();
+
+        return FailureException::notConnected()->failure;
+    }
+
+    /**
+     * @param bool $requiresKey false for public routes, which work without an account
      * @return array<string, mixed>
      * @throws \Exception on HTTP or decode error
      */
-    private function request(string $method, string $path, ?array $body = null): array
+    private function request(string $method, string $path, ?array $body = null, bool $requiresKey = true): array
     {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . $path;
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->getApiKey(),
+                'X-API-Key' => $requiresKey ? $this->requireApiKey() : $this->getApiKey(),
                 'Accept' => 'application/json',
             ],
             'timeout' => self::TIMEOUT,
@@ -619,7 +663,7 @@ class SynaplanClient
             $decoded = json_decode($response->getBody(), true);
 
             if (!is_array($decoded)) {
-                throw new \RuntimeException('Invalid JSON response from Synaplan API');
+                throw FailureException::invalidSynaplanAnswer();
             }
 
             return $decoded;
@@ -632,24 +676,25 @@ class SynaplanClient
                 $this->userAccounts->clearCurrentUserApiKey();
                 if ($this->synaplanConfig->isLinkMode()) {
                     $this->userAccounts->clearLinkPrefs();
-                    $this->logger->error('Synaplan API request failed: {message}', [
+                    $this->logger->info('Synaplan refused the linked key, the user has to connect again: {message}', [
                         'app' => Application::APP_ID,
                         'message' => $e->getMessage(),
                         'method' => $method,
                         'path' => $path,
                     ]);
 
-                    throw $e;
+                    throw FailureException::notConnected();
                 }
-                $options['headers']['X-API-Key'] = $this->getApiKey();
                 try {
+                    $options['headers']['X-API-Key'] = $this->requireApiKey();
                     $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                     $decoded = json_decode($response->getBody(), true);
                     if (is_array($decoded)) {
                         return $decoded;
                     }
+                    $e = FailureException::invalidSynaplanAnswer();
                 } catch (\Exception $retry) {
-                    $e = $retry;
+                    $e = $this->isUnauthorized($retry) ? FailureException::accountUnavailable() : $retry;
                 }
             }
 

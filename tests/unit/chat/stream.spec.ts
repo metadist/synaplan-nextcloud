@@ -6,15 +6,25 @@ import { readEvents, streamChat } from '@/chat/stream'
  * A fetch answer whose body yields the given chunks, the shape streamChat reads.
  *
  * @param chunks Text chunks of the body, in order
- * @param init Status and body presence
+ * @param init Status, body presence and JSON body
  * @param init.ok Whether the status is a success
  * @param init.body Whether there is a body to read
+ * @param init.json What response.json() resolves to; rejects when absent
  */
-function answer(chunks: string[], init: { ok?: boolean; body?: boolean } = {}) {
+function answer(
+	chunks: string[],
+	init: { ok?: boolean; body?: boolean; json?: unknown } = {},
+) {
 	const encoder = new TextEncoder()
 	let next = 0
 	return {
 		ok: init.ok ?? true,
+		json: async () => {
+			if (init.json === undefined) {
+				throw new SyntaxError('Unexpected token < in JSON')
+			}
+			return init.json
+		},
 		body:
 			(init.body ?? true)
 				? {
@@ -102,6 +112,42 @@ describe('streamChat', () => {
 		expect(await streamChat('/stream', {}, () => {})).toEqual({
 			kind: 'failed',
 			message: 'Model not available',
+		})
+	})
+
+	it('reports the code of an error event', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi
+				.fn()
+				.mockResolvedValue(
+					answer([
+						delta('Par'),
+						'data: {"error":{"code":"synaplan_unreachable"}}\n\ndata: [DONE]\n\n',
+					]),
+				),
+		)
+
+		expect(await streamChat('/stream', {}, () => {})).toEqual({
+			kind: 'failed',
+			code: 'synaplan_unreachable',
+		})
+	})
+
+	it("takes the app's refusal as final, so the blocking endpoint is not asked", async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue(
+				answer([], {
+					ok: false,
+					json: { success: false, error: 'not_connected' },
+				}),
+			),
+		)
+
+		expect(await streamChat('/stream', {}, () => {})).toEqual({
+			kind: 'failed',
+			code: 'not_connected',
 		})
 	})
 

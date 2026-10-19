@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -416,8 +417,90 @@ class SynaplanClientTest extends TestCase
 
         $client = $this->makeClient($config);
 
-        $this->expectException(\Exception::class);
-        $client->healthCheck();
+        try {
+            $client->healthCheck();
+            self::fail('A refused linked key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame('not_connected', $e->failure->code);
+        }
+    }
+
+    public function testWithoutALinkedKeyNothingIsSent(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->never())->method('post');
+
+        try {
+            $this->makeClient($this->modeConfig('link'))->summarize('Notes');
+            self::fail('Summarize without a key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testWithoutAKeyAProvisionedPersonIsAskedToActivateFirst(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->userAccounts->method('hasConsentForCurrentUser')->willReturn(false);
+
+        $this->expectExceptionObject(FailureException::consentRequired());
+        $this->makeClient($this->modeConfig('provision'))->requireApiKey();
+    }
+
+    public function testAnActivatedPersonWithoutAKeyIsToldTheAccountIsUnavailable(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->userAccounts->method('hasConsentForCurrentUser')->willReturn(true);
+
+        try {
+            $this->makeClient($this->modeConfig('provision'))->requireApiKey();
+            self::fail('A missing key after consent must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([502, 'account_unavailable'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testTheHealthCheckNeedsNoKey(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->once())->method('get')->willReturn($this->json(['status' => 'ok']));
+
+        $this->assertSame('ok', $this->makeClient($this->modeConfig('link'))->healthCheck()['status']);
+    }
+
+    public function testAKeyRefusedInAStreamAsksALinkedPersonToConnectAgain(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->once())->method('clearLinkPrefs');
+
+        $this->assertSame('not_connected', $this->makeClient($this->modeConfig('link'))->keyRefused()->code);
+    }
+
+    public function testAKeyRefusedInAStreamIsTheAdministratorsMatterInSharedMode(): void
+    {
+        $this->userAccounts->expects($this->never())->method('clearCurrentUserApiKey');
+
+        $this->assertSame('synaplan_key_rejected', $this->synaplanClient->keyRefused()->code);
+    }
+
+    private function modeConfig(string $mode): IConfig
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => match ($key) {
+                'mode' => $mode,
+                'synaplan_url' => 'http://localhost:8000',
+                'api_key' => 'sk_admin',
+                default => $default,
+            },
+        );
+
+        return $config;
     }
 
     public function testProvisionMode401StillRetriesOnce(): void

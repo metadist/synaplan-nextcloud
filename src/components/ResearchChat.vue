@@ -260,9 +260,7 @@
 			</div>
 
 			<!-- Error -->
-			<NcNoteCard v-if="error" type="error">
-				{{ error }}
-			</NcNoteCard>
+			<FailureNote :failure="failure" />
 
 			<!-- Input -->
 			<div class="chat-input">
@@ -323,17 +321,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import axios, { isAxiosError } from '@nextcloud/axios'
+import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
+import FailureNote from './FailureNote.vue'
 import { streamChat } from '../chat/stream'
+import { describeFailure, failureFromError, type Failure } from '../failures'
 
 interface MediaInfo {
 	url: string
@@ -374,7 +373,7 @@ const loading = ref(false)
 const streaming = ref(false)
 const loadingGroups = ref(false)
 const loadingModels = ref(false)
-const error = ref('')
+const failure = ref<Failure | null>(null)
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -581,24 +580,28 @@ async function sendMessage() {
 	const { command, prompt } = parseCommand(text)
 
 	if (command === 'pic' && !capabilities.value.image) {
-		error.value = t(
-			'synaplan_integration',
-			'Image generation is not available. No image models are configured.',
-		)
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Image generation is not available. No image models are configured.',
+			),
+		}
 		return
 	}
 	if (command === 'vid' && !capabilities.value.video) {
-		error.value = t(
-			'synaplan_integration',
-			'Video generation is not available. No video models are configured.',
-		)
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Video generation is not available. No video models are configured.',
+			),
+		}
 		return
 	}
 
 	messages.value.push({ role: 'user', text })
 	inputMessage.value = ''
 	loading.value = true
-	error.value = ''
+	failure.value = null
 	await scrollToBottom()
 
 	if (command) {
@@ -658,13 +661,10 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 				},
 			})
 		} else {
-			error.value =
-				data.error ?? t('synaplan_integration', 'Media generation failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
+		failure.value = failureFromError(err)
 	} finally {
 		loadingText.value = t('synaplan_integration', 'Thinking...')
 	}
@@ -714,7 +714,7 @@ async function handleChatMessage(text: string) {
 			appendDelta,
 		)
 		if (outcome.kind === 'failed') {
-			error.value = outcome.message
+			failure.value = describeFailure(outcome.code, outcome.message)
 		} else if (outcome.kind === 'unavailable' && assistantIndex === -1) {
 			await handleChatMessageBlocking(payload)
 		}
@@ -736,12 +736,10 @@ async function handleChatMessageBlocking(payload: Record<string, unknown>) {
 		if (data.success) {
 			messages.value.push({ role: 'assistant', text: data.response })
 		} else {
-			error.value = data.error || t('synaplan_integration', 'Request failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
+		failure.value = failureFromError(err)
 	}
 }
 
@@ -754,7 +752,7 @@ async function saveMedia(messageIdx: number) {
 	if (!msg?.media || msg.media.saved || msg.media.saving) return
 
 	msg.media.saving = true
-	error.value = ''
+	failure.value = null
 
 	try {
 		const { data } = await axios.post(`${baseUrl}/api/v1/media/save`, {
@@ -766,12 +764,10 @@ async function saveMedia(messageIdx: number) {
 			msg.media.saved = true
 			msg.media.savedPath = data.path
 		} else {
-			error.value = data.error ?? t('synaplan_integration', 'Save failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Save failed')
+		failure.value = failureFromError(err)
 	} finally {
 		msg.media.saving = false
 	}

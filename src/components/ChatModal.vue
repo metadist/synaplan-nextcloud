@@ -28,9 +28,7 @@
 			</div>
 
 			<!-- Error -->
-			<NcNoteCard v-if="error" type="error">
-				{{ error }}
-			</NcNoteCard>
+			<FailureNote :failure="failure" />
 
 			<!-- Input -->
 			<div class="chat-input">
@@ -70,15 +68,16 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import axios, { isAxiosError } from '@nextcloud/axios'
+import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
+import FailureNote from './FailureNote.vue'
+import { describeFailure, failureFromError, type Failure } from '../failures'
 
 interface ChatMessage {
 	role: 'user' | 'assistant'
@@ -97,7 +96,7 @@ const emit = defineEmits<{
 const opened = ref(true)
 const aiBlocked = ref(false)
 const loading = ref(false)
-const error = ref('')
+const failure = ref<Failure | null>(null)
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
 const deepLink = ref('')
@@ -129,7 +128,7 @@ async function sendMessage() {
 	messages.value.push({ role: 'user', text })
 	inputMessage.value = ''
 	loading.value = true
-	error.value = ''
+	failure.value = null
 	await scrollToBottom()
 
 	try {
@@ -144,13 +143,10 @@ async function sendMessage() {
 				deepLink.value = data.deepLink
 			}
 		} else {
-			error.value =
-				data.error || t('synaplan_integration', 'Chat request failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
+		failure.value = failureFromError(err)
 	} finally {
 		loading.value = false
 		await scrollToBottom()

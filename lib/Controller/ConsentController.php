@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
@@ -15,6 +16,7 @@ use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 
 /**
  * Per-user "Activate AI" consent.
@@ -33,6 +35,7 @@ class ConsentController extends Controller
         private ?SynaplanConfig $synaplanConfig = null,
         private ?IURLGenerator $urlGenerator = null,
         private ?IUserSession $userSession = null,
+        private ?LoggerInterface $logger = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -90,10 +93,15 @@ class ConsentController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                     } catch (\Throwable $e) {
-                        return new JSONResponse([
-                            'success' => false,
-                            'error' => $e->getMessage(),
-                        ], 500);
+                        $failure = Failure::fromThrowable($e);
+                        $this->logger?->error('Creating a Synaplan account failed: {message}', [
+                            'app' => Application::APP_ID,
+                            'message' => $e->getMessage(),
+                            'code' => $failure->code,
+                            'exception' => $e,
+                        ]);
+
+                        return $failure->toResponse();
                     }
                 }
             }

@@ -7,8 +7,8 @@
 export type StreamOutcome =
 	/** Deltas arrived and the stream ended without an error. */
 	| { kind: 'answered' }
-	/** The stream ended with an error event. */
-	| { kind: 'failed'; message: string }
+	/** The app refused the request or the stream ended with an error event. */
+	| { kind: 'failed'; code?: string; message?: string }
 	/** No answer could be streamed; the caller may ask the blocking endpoint. */
 	| { kind: 'unavailable' }
 
@@ -55,7 +55,7 @@ export async function streamChat(
 	onDelta: DeltaHandler,
 ): Promise<StreamOutcome> {
 	let answered = false
-	let streamError = ''
+	let failure: { code?: string; message?: string } | null = null
 
 	try {
 		const response = await fetch(url, {
@@ -68,7 +68,10 @@ export async function streamChat(
 			body: JSON.stringify(payload),
 		})
 
-		if (!response.ok || !response.body) {
+		if (!response.ok) {
+			return refusal(response)
+		}
+		if (!response.body) {
 			return { kind: 'unavailable' }
 		}
 
@@ -92,7 +95,10 @@ export async function streamChat(
 				try {
 					const json = JSON.parse(data)
 					if (json.error) {
-						streamError = json.error.message || ''
+						failure = {
+							code: json.error.code,
+							message: json.error.message,
+						}
 						continue
 					}
 					const delta = json.choices?.[0]?.delta?.content
@@ -112,8 +118,27 @@ export async function streamChat(
 		return answered ? { kind: 'answered' } : { kind: 'unavailable' }
 	}
 
-	if (streamError) {
-		return { kind: 'failed', message: streamError }
+	if (failure && (failure.code || failure.message)) {
+		return { kind: 'failed', ...failure }
 	}
 	return answered ? { kind: 'answered' } : { kind: 'unavailable' }
+}
+
+/**
+ * The app answered the stream request with an error status. Its code (not
+ * connected, file not found) is final; an answer without one lets the caller
+ * try the blocking endpoint.
+ *
+ * @param response The app's answer
+ */
+async function refusal(response: Pick<Response, 'json'>): Promise<StreamOutcome> {
+	try {
+		const data = await response.json()
+		if (typeof data?.error === 'string') {
+			return { kind: 'failed', code: data.error, message: data.message }
+		}
+	} catch {
+		// Not the app's JSON: a proxy or server page.
+	}
+	return { kind: 'unavailable' }
 }
