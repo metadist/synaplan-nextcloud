@@ -156,7 +156,9 @@ Releases come from CI (`.github/workflows/release.yml`):
    release and publishes the release to the App Store.
 
 `v1.7.0-rc.1` stops at a draft GitHub release, for a test install before the
-release. The workflow needs two repository secrets: `APP_STORE_SIGNING_KEY`
+release. Running the workflow again for a tag reuses the files its release
+already holds, so the App Store's signature keeps matching. The workflow
+needs two repository secrets: `APP_STORE_SIGNING_KEY`
 (the app's private key) and `APP_STORE_TOKEN` (an App Store API token of an
 owner or co-maintainer).
 

@@ -2,7 +2,7 @@
 # Checks that a release tag, appinfo/info.xml, package.json and CHANGELOG.md
 # agree, and prints the result for $GITHUB_OUTPUT.
 #
-#   scripts/release-check.sh v1.7.0        release: the section has its date
+#   scripts/release-check.sh v1.7.0        release: "## 1.7.0 – YYYY-MM-DD"
 #   scripts/release-check.sh v1.7.0-rc.1   candidate for 1.7.0
 #   scripts/release-check.sh               dry run: info.xml against itself
 set -eu
@@ -44,8 +44,8 @@ escaped="$(echo "$version" | sed 's/\./\\./g')"
 heading="$(grep -E "^## \[?$escaped\]?( |$)" CHANGELOG.md | head -n 1 || true)"
 [ -n "$heading" ] || fail "CHANGELOG.md has no section for $version."
 if [ "$dry_run" = false ] && [ "$prerelease" = false ]; then
-	echo "$heading" | grep -qi 'unreleased' \
-		&& fail "CHANGELOG.md still calls $version unreleased; give the section its date."
+	echo "$heading" | grep -Eq "^## \[?$escaped\]? (–|-) [0-9]{4}-[0-9]{2}-[0-9]{2}$" \
+		|| fail "CHANGELOG.md gives $version no release date; write the heading as \"## $version – YYYY-MM-DD\"."
 fi
 
 echo "version=$version"

@@ -3,8 +3,9 @@ name: Release
 # A tag vX.Y.Z on a main commit with green CI builds the tarball, signs it,
 # attaches both to a GitHub release and publishes the release to the
 # Nextcloud App Store. A tag vX.Y.Z-rc.N stops at a draft GitHub release.
-# A pull request that touches the release path runs the same steps as a dry
-# run, signed with a throwaway key, and publishes nothing.
+# A pull request that touches the release path runs the same checks as a dry
+# run, signed with a throwaway key. That job holds no secret and only a
+# read-only token.
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   APP_STORE_SIGNING_KEY  the app's private key, ~/.nextcloud/certificates/synaplan_integration.key
@@ -19,6 +20,9 @@ on:
       - scripts/release-check.sh
       - scripts/check-info-xml.sh
       - scripts/check-tarball.sh
+      - scripts/sign-release.sh
+      - scripts/verify-release.sh
+      - scripts/release-notes.sh
       - Makefile
       - appinfo/info.xml
       - package.json
@@ -35,6 +39,48 @@ env:
   APP_ID: synaplan_integration
 
 jobs:
+  dry-run:
+    name: Release (dry run)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check the versions
+        id: version
+        run: |
+          set -euo pipefail
+          scripts/release-check.sh | tee -a "$GITHUB_OUTPUT"
+
+      - run: scripts/check-info-xml.sh
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: make package
+      - run: scripts/check-tarball.sh
+
+      - name: Sign with a throwaway key and verify
+        run: |
+          set -euo pipefail
+          openssl req -x509 -newkey rsa:4096 -nodes -days 1 -subj "/CN=$APP_ID" \
+            -keyout "$RUNNER_TEMP/throwaway.key" -out "$RUNNER_TEMP/throwaway.crt" 2>/dev/null
+          scripts/sign-release.sh "$RUNNER_TEMP/throwaway.key"
+          scripts/verify-release.sh "$RUNNER_TEMP/throwaway.crt"
+
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          scripts/release-notes.sh "$VERSION"
+          echo "Dry run for $VERSION: packaged, signed with a throwaway key and verified. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+
   require-green-ci:
     name: Require green CI
     if: github.event_name == 'push'
@@ -100,88 +146,91 @@ jobs:
           done
 
   release:
-    name: ${{ github.event_name == 'push' && 'Release' || 'Release (dry run)' }}
+    name: Release
     needs: require-green-ci
-    if: >-
-      always() && (needs.require-green-ci.result == 'success'
-      || (github.event_name == 'pull_request' && needs.require-green-ci.result == 'skipped'))
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Check the versions
         id: version
-        env:
-          TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
         run: |
           set -euo pipefail
-          scripts/release-check.sh ${TAG:+"$TAG"} | tee -a "$GITHUB_OUTPUT"
+          scripts/release-check.sh "$TAG" | tee -a "$GITHUB_OUTPUT"
 
       - run: scripts/check-info-xml.sh
 
+      # A run for a tag whose release already holds its files reuses them:
+      # rebuilding would give different bytes than the signature the App
+      # Store may already hold.
+      - name: Look for files already published with this tag
+        id: published
+        run: |
+          if gh release download "$TAG" --pattern "$APP_ID.tar.gz" --pattern "$APP_ID.tar.gz.sig" 2>/dev/null \
+            && [ -s "$APP_ID.tar.gz" ] && [ -s "$APP_ID.tar.gz.sig" ]; then
+            echo "The release of $TAG already holds its tarball and signature; reusing them."
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+          else
+            rm -f "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig"
+            echo "reuse=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.published.outputs.reuse == 'false'
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
-      - run: make package
+      - if: steps.published.outputs.reuse == 'false'
+        run: npm ci
+      - if: steps.published.outputs.reuse == 'false'
+        run: make package
       - run: scripts/check-tarball.sh
 
-      # Signs as `make sign` does. The signature has to verify against the
-      # certificate the App Store holds for the app; a dry run makes its own.
       - name: Sign the tarball
+        if: steps.published.outputs.reuse == 'false'
         env:
           SIGNING_KEY: ${{ secrets.APP_STORE_SIGNING_KEY }}
-          DRY_RUN: ${{ steps.version.outputs.dry_run }}
         run: |
           set -euo pipefail
-          umask 077
-          key="$RUNNER_TEMP/$APP_ID.key"
-          cert="$RUNNER_TEMP/$APP_ID.crt"
-          if [ "$DRY_RUN" = true ]; then
-            openssl req -x509 -newkey rsa:4096 -nodes -days 1 -subj "/CN=$APP_ID" \
-              -keyout "$key" -out "$cert" 2>/dev/null
-          else
-            if [ -z "$SIGNING_KEY" ]; then
-              echo "::error::The repository secret APP_STORE_SIGNING_KEY is missing."
-              exit 1
-            fi
-            printf '%s\n' "$SIGNING_KEY" > "$key"
-            curl -sfL --retry 3 https://apps.nextcloud.com/api/v1/apps.json \
-              | jq -r --arg id "$APP_ID" '.[] | select(.id == $id) | .certificate' > "$cert"
-            [ -s "$cert" ] || { echo "::error::The App Store has no certificate for $APP_ID."; exit 1; }
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::The repository secret APP_STORE_SIGNING_KEY is missing."
+            exit 1
           fi
-          openssl dgst -sha512 -sign "$key" "$APP_ID.tar.gz" | openssl base64 -A > "$APP_ID.tar.gz.sig"
-          rm -f "$key"
-          openssl base64 -d -A -in "$APP_ID.tar.gz.sig" -out "$RUNNER_TEMP/signature.bin"
-          openssl x509 -in "$cert" -pubkey -noout > "$RUNNER_TEMP/public.pem"
-          openssl dgst -sha512 -verify "$RUNNER_TEMP/public.pem" \
-            -signature "$RUNNER_TEMP/signature.bin" "$APP_ID.tar.gz"
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/$APP_ID.key"
+          scripts/sign-release.sh "$RUNNER_TEMP/$APP_ID.key"
+          rm -f "$RUNNER_TEMP/$APP_ID.key"
 
-      - name: Write the release notes
+      - name: Verify against the App Store's certificate
+        run: |
+          set -euo pipefail
+          curl -sfL --retry 3 https://apps.nextcloud.com/api/v1/apps.json \
+            | jq -r --arg id "$APP_ID" '.[] | select(.id == $id) | .certificate' > "$RUNNER_TEMP/$APP_ID.crt"
+          if [ ! -s "$RUNNER_TEMP/$APP_ID.crt" ]; then
+            echo "::error::The App Store has no certificate for $APP_ID."
+            exit 1
+          fi
+          scripts/verify-release.sh "$RUNNER_TEMP/$APP_ID.crt"
+
+      # Never --clobber: a published file keeps its bytes.
+      - name: Create the GitHub release
+        if: steps.published.outputs.reuse == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          awk -v version="$VERSION" '
-            /^## / { if (found) exit; if ($2 == version || $2 == "[" version "]") { found = 1; next } }
-            found { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md"
-
-      - name: Create the GitHub release
-        if: steps.version.outputs.dry_run == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           set -euo pipefail
+          scripts/release-notes.sh "$VERSION" > "$RUNNER_TEMP/notes.md"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig" --clobber
+            gh release upload "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig"
           elif [ "$PRERELEASE" = true ]; then
             gh release create "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig" --verify-tag \
               --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --draft --prerelease
@@ -191,10 +240,9 @@ jobs:
           fi
 
       - name: Publish to the Nextcloud App Store
-        if: steps.version.outputs.dry_run == 'false' && steps.version.outputs.prerelease == 'false'
+        if: steps.version.outputs.prerelease == 'false'
         env:
           APP_STORE_TOKEN: ${{ secrets.APP_STORE_TOKEN }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if [ -z "$APP_STORE_TOKEN" ]; then
@@ -221,14 +269,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
-          DRY_RUN: ${{ steps.version.outputs.dry_run }}
         run: |
-          {
-            if [ "$DRY_RUN" = true ]; then
-              echo "Dry run for $VERSION: packaged, signed with a throwaway key and verified. Nothing was published."
-            elif [ "$PRERELEASE" = true ]; then
-              echo "Candidate ${GITHUB_REF_NAME}: draft GitHub release with the signed tarball. The App Store was not asked."
-            else
-              echo "Release $VERSION: GitHub release and App Store."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PRERELEASE" = true ]; then
+            echo "Candidate $TAG: draft GitHub release with the signed tarball. The App Store was not asked." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Release $VERSION: GitHub release and App Store." >> "$GITHUB_STEP_SUMMARY"
+          fi
