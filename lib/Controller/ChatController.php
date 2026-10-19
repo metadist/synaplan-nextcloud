@@ -48,7 +48,7 @@ class ChatController extends Controller
      * @param string      $message     User's question
      * @param int|null    $fileId      Nextcloud file ID for document context
      * @param string|null $groupKey    RAG group key for knowledge base context
-     * @param int|null    $modelId     Specific model ID to use
+     * @param int|null    $modelId     Selected model. Not sent to Synaplan: the pinned summary endpoint has no model field.
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
      */
     #[NoAdminRequired]

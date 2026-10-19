@@ -67,7 +67,7 @@ final class SynaplanContractTest extends TestCase
     public function testEveryCallIsAcceptedByThePinnedSynaplan(): void
     {
         $this->callEverything();
-        $contract = new OpenApiContract(self::CACHE . '/openapi.json', self::CACHE . '/routes.json');
+        $contract = $this->contract();
 
         $violations = [];
         foreach ($this->calls as $call) {
@@ -77,20 +77,100 @@ final class SynaplanContractTest extends TestCase
         self::assertSame([], array_values(array_unique($violations)));
     }
 
-    public function testEveryPathTheAppNamesIsCalledAbove(): void
+    public function testEveryOperationTheAppNamesIsCalled(): void
     {
         $this->callEverything();
-        $called = array_column($this->calls, 'path');
 
         $missing = [];
-        foreach (self::pathLiteralsInLib() as $literal) {
-            $hit = array_filter($called, static fn (string $path): bool => str_starts_with($path, $literal));
-            if ($hit === []) {
-                $missing[] = $literal;
+        foreach (self::operationsInLib() as $operation) {
+            $hit = false;
+            foreach ($this->calls as $call) {
+                [$method, $template] = explode(' ', $operation, 2);
+                if (OpenApiContract::operationCalled($method, $template, $call['method'], $call['path'])) {
+                    $hit = true;
+                    break;
+                }
+            }
+            if (!$hit) {
+                $missing[] = $operation;
             }
         }
 
-        self::assertSame([], $missing, 'Add a call to callEverything() for each new Synaplan path.');
+        self::assertSame([], $missing, 'Add a call to callEverything() for each Synaplan operation.');
+    }
+
+    public function testASelectedModelIsLeftOffTheSummaryRequest(): void
+    {
+        $this->callEverything();
+        $selected = array_filter(
+            $this->calls,
+            static fn (array $call): bool => $call['path'] === '/api/v1/summary/generate'
+                && str_contains((string) ($call['body']['text'] ?? ''), 'Which model?'),
+        );
+
+        self::assertNotEmpty($selected, 'callEverything() must exercise a selected model.');
+        foreach ($selected as $call) {
+            self::assertArrayNotHasKey('modelId', $call['body']);
+        }
+    }
+
+    public function testNestedItemFieldsAreChecked(): void
+    {
+        $contract = $this->contract();
+        $renamed = $contract->violations('POST', '/api/v1/files/check-stale', [
+            'items' => [['sourceId' => '7', 'source_etag' => null]],
+        ], false);
+        self::assertNotSame([], $renamed);
+        self::assertStringContainsString("sends 'items[0].sourceId'", implode("\n", $renamed));
+
+        self::assertSame([], $contract->violations('POST', '/api/v1/files/check-stale', [
+            'source' => 'nextcloud',
+            'items' => [['source_id' => '7', 'source_etag' => 'etag-1']],
+        ], false));
+    }
+
+    public function testAFinalParameterDoesNotMatchExtraSegments(): void
+    {
+        $contract = $this->contract();
+        $extra = $contract->violations('DELETE', '/api/v1/files/42/not-a-route', [], false);
+        self::assertNotSame([], $extra);
+        self::assertStringContainsString('no such route', implode("\n", $extra));
+
+        self::assertSame([], $contract->violations('DELETE', '/api/v1/files/42', [], false));
+        self::assertSame([], $contract->violations('GET', '/api/v1/files/uploads/7/cat.png', [], false));
+    }
+
+    public function testASharedPrefixDoesNotCoverAnotherOperation(): void
+    {
+        self::assertFalse(OpenApiContract::operationCalled(
+            'DELETE',
+            '/api/v1/files/{id}',
+            'GET',
+            '/api/v1/files/42/content',
+        ));
+        self::assertFalse(OpenApiContract::operationCalled(
+            'GET',
+            '/api/v1/admin/users/{id}/usage',
+            'DELETE',
+            '/api/v1/admin/users/42',
+        ));
+        self::assertTrue(OpenApiContract::operationCalled(
+            'DELETE',
+            '/api/v1/files/{id}',
+            'DELETE',
+            '/api/v1/files/42',
+        ));
+        self::assertTrue(OpenApiContract::operationCalled(
+            'GET',
+            '/api/v1/admin/users/{id}/usage',
+            'GET',
+            '/api/v1/admin/users/42/usage',
+        ));
+    }
+
+    private function contract(): OpenApiContract
+    {
+        return new OpenApiContract(self::CACHE . '/openapi.json', self::CACHE . '/routes.json');
     }
 
     private function callEverything(): void
@@ -117,6 +197,8 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->summarize('A long text.'),
             fn () => $client->createChat('Contract'),
             fn () => $client->ask('What changed?', 'Context', 'en', 'Contracts'),
+            fn () => $client->ask('Which model?', 'Notes', 'en', null, 42),
+            fn () => $this->recordBlockingChat($client, $session),
             fn () => $client->checkMemoryService(),
             fn () => $client->searchMemoryContext('budget'),
             fn () => $client->getModels(),
@@ -139,19 +221,37 @@ final class SynaplanContractTest extends TestCase
         foreach ($scenarios as $scenario) {
             try {
                 $scenario();
-            } catch (\Throwable) {
-                // Only the outgoing request matters here; testEveryPathTheAppNamesIsCalledAbove
-                // catches a scenario that fails before it calls out.
+            } catch (\Throwable $error) {
+                if ($error instanceof \PHPUnit\Framework\AssertionFailedError) {
+                    throw $error;
+                }
+                // The response only has to be readable. testEveryOperationTheAppNamesIsCalled
+                // fails when a scenario throws before the request goes out.
             }
         }
     }
 
+    private function recordBlockingChat(SynaplanClient $client, IUserSession $session): void
+    {
+        $response = $this->chatController($client, $session)->chat('Which model?', null, null, 42);
+        self::assertTrue($response->getData()['success'] ?? false);
+    }
+
     private function recordChatStream(SynaplanClient $client, IUserSession $session): void
+    {
+        $response = $this->chatController($client, $session)->chatStream('Hello', null, null, 'gpt-model', false);
+        self::assertInstanceOf(SseProxyResponse::class, $response);
+        $read = fn (string $property): string => (string) (new \ReflectionProperty(SseProxyResponse::class, $property))->getValue($response);
+        $this->record('POST', $read('url'), ['body' => $read('payload')]);
+    }
+
+    private function chatController(SynaplanClient $client, IUserSession $session): ChatController
     {
         $language = $this->createStub(LanguageService::class);
         $language->method('resolveLanguage')->willReturn('en');
         $language->method('getLanguageName')->willReturn('English');
-        $controller = new ChatController(
+
+        return new ChatController(
             $this->createStub(IRequest::class),
             $client,
             $this->createStub(IRootFolder::class),
@@ -159,11 +259,6 @@ final class SynaplanContractTest extends TestCase
             $language,
             new NullLogger(),
         );
-
-        $response = $controller->chatStream('Hello', null, null, 'gpt-model', false);
-        self::assertInstanceOf(SseProxyResponse::class, $response);
-        $read = fn (string $property): string => (string) (new \ReflectionProperty(SseProxyResponse::class, $property))->getValue($response);
-        $this->record('POST', $read('url'), ['body' => $read('payload')]);
     }
 
     private function recordingClients(): IClientService
@@ -262,19 +357,159 @@ final class SynaplanContractTest extends TestCase
     }
 
     /**
+     * Method plus full path template for every Synaplan call under lib/.
+     * A quoted path that this cannot parse is reported as UNPARSED.
+     *
      * @return list<string>
      */
-    private static function pathLiteralsInLib(): array
+    private static function operationsInLib(): array
     {
-        $literals = [];
+        $operations = [];
+        $quoted = [];
         $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/lib'));
         foreach ($files as $file) {
-            if ($file->getExtension() === 'php') {
-                preg_match_all("#'(/(?:api|v1)/[^'\$]*)'#", (string) file_get_contents($file->getPathname()), $matches);
-                array_push($literals, ...$matches[1]);
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            $source = (string) file_get_contents($file->getPathname());
+            preg_match_all("#'(/(?:api|v1)/[^'\$]*)'#", $source, $literals);
+            array_push($quoted, ...$literals[1]);
+            preg_match_all(
+                '/->(?:request|adminRequest)\(\s*\'(GET|POST|PUT|PATCH|DELETE|HEAD)\'\s*,\s*/',
+                $source,
+                $calls,
+                PREG_SET_ORDER | PREG_OFFSET_CAPTURE,
+            );
+            foreach ($calls as $call) {
+                $expression = self::readArgument($source, $call[0][1] + strlen($call[0][0]));
+                $template = self::templateFromExpression($expression);
+                $operations[] = $template === null
+                    ? 'UNPARSED ' . $call[1][0] . ' ' . $expression
+                    : $call[1][0] . ' ' . $template;
+            }
+            preg_match_all(
+                '/getBaseUrl\(\)\s*\.\s*\'(\/(?:api|v1)\/[^\']*)\'/',
+                $source,
+                $urls,
+                PREG_SET_ORDER | PREG_OFFSET_CAPTURE,
+            );
+            foreach ($urls as $url) {
+                $verb = self::verbBeside($source, $url[0][1]);
+                $operations[] = $verb === null ? 'UNPARSED ' . $url[1][0] : $verb . ' ' . $url[1][0];
             }
         }
 
-        return array_values(array_unique($literals));
+        $operations = array_values(array_unique($operations));
+        foreach (array_unique($quoted) as $literal) {
+            $parsed = false;
+            foreach ($operations as $operation) {
+                $template = explode(' ', $operation, 2)[1] ?? '';
+                if (str_starts_with($template, $literal)) {
+                    $parsed = true;
+                    break;
+                }
+            }
+            if (!$parsed) {
+                $operations[] = 'UNPARSED ' . $literal;
+            }
+        }
+        sort($operations);
+
+        return $operations;
+    }
+
+    private static function readArgument(string $source, int $offset): string
+    {
+        $length = strlen($source);
+        $depth = 0;
+        $quote = null;
+        $argument = '';
+        for ($i = $offset; $i < $length; $i++) {
+            $character = $source[$i];
+            if ($quote !== null) {
+                $argument .= $character;
+                if ($character === '\\' && $i + 1 < $length) {
+                    $argument .= $source[++$i];
+                    continue;
+                }
+                if ($character === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if ($character === '\'' || $character === '"') {
+                $quote = $character;
+                $argument .= $character;
+                continue;
+            }
+            if ($character === '(') {
+                $depth++;
+                $argument .= $character;
+                continue;
+            }
+            if ($character === ')') {
+                if ($depth === 0) {
+                    break;
+                }
+                $depth--;
+                $argument .= $character;
+                continue;
+            }
+            if ($character === ',' && $depth === 0) {
+                break;
+            }
+            $argument .= $character;
+        }
+
+        return trim($argument);
+    }
+
+    private static function templateFromExpression(string $expression): ?string
+    {
+        $template = '';
+        $length = strlen($expression);
+        for ($i = 0; $i < $length; $i++) {
+            $character = $expression[$i];
+            if ($character === '\'' || $character === '"') {
+                $quote = $character;
+                for ($i++; $i < $length && $expression[$i] !== $quote; $i++) {
+                    if ($expression[$i] === '\\' && $i + 1 < $length) {
+                        $i++;
+                    }
+                    $template .= $expression[$i];
+                }
+                continue;
+            }
+            if (preg_match('/^rawurlencode\s*\(\s*\$(\w+)\s*\)/', substr($expression, $i), $match) === 1) {
+                $template .= '{' . $match[1] . '}';
+                $i += strlen($match[0]) - 1;
+                continue;
+            }
+            if ($character === '$' && preg_match('/^(\w+)/', substr($expression, $i + 1), $match) === 1) {
+                $template .= '{' . $match[1] . '}';
+                $i += strlen($match[1]);
+            }
+        }
+
+        return str_starts_with($template, '/') ? $template : null;
+    }
+
+    private static function verbBeside(string $source, int $offset): ?string
+    {
+        $start = strrpos(substr($source, 0, $offset), 'function ');
+        $start = $start === false ? 0 : $start;
+        $end = strlen($source);
+        if (preg_match('/\n    (?:public|private|protected) function /', $source, $match, PREG_OFFSET_CAPTURE, $offset) === 1) {
+            $end = $match[0][1];
+        }
+        $body = substr($source, $start, $end - $start);
+        if (str_contains($body, 'new SseProxyResponse')) {
+            return 'POST';
+        }
+        if (preg_match('/->(get|post|put|patch|delete)\(/', $body, $match) === 1) {
+            return strtoupper($match[1]);
+        }
+
+        return null;
     }
 }

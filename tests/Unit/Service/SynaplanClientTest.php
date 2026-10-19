@@ -407,4 +407,28 @@ class SynaplanClientTest extends TestCase
         $result = $this->synaplanClient->ask('Question?', '', 'en', 'DEFAULT');
         $this->assertSame('Answer based on RAG context.', $result['summary']);
     }
+
+    public function testAskLeavesTheSelectedModelOffTheSummaryRequest(): void
+    {
+        $response = $this->createMock(IResponse::class);
+        $response->method('getBody')->willReturn(json_encode(['summary' => 'Answer.']));
+
+        $this->httpClient->expects($this->once())
+            ->method('post')
+            ->with(
+                'http://localhost:8000/api/v1/summary/generate',
+                $this->callback(function (array $options): bool {
+                    $body = json_decode($options['body'], true);
+
+                    return is_array($body)
+                        && !array_key_exists('modelId', $body)
+                        && $body['text'] === 'Which model?';
+                }),
+            )
+            ->willReturn($response);
+
+        $result = $this->synaplanClient->ask('Which model?', '', 'en', null, 42);
+
+        $this->assertSame('Answer.', $result['summary']);
+    }
 }

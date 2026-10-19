@@ -73,10 +73,13 @@ class SynaplanClient
     }
 
     /**
-     * Ask a question about given context, optionally with RAG and model selection.
+     * Ask a question about given context, optionally with RAG.
      *
      * When a groupKey is provided, first searches the Synaplan RAG knowledge base
      * for relevant context, then combines it with any provided file context.
+     * $modelId is accepted from the chat controller and not sent: the pinned
+     * POST /api/v1/summary/generate schema has no model field, and that handler
+     * ignores it. Streaming chat carries the model name instead.
      *
      * @return array<string, mixed>
      * @throws \Exception on API error
@@ -109,10 +112,6 @@ class SynaplanClient
             'length' => 'long',
             'outputLanguage' => $outputLanguage,
         ];
-
-        if ($modelId !== null) {
-            $body['modelId'] = $modelId;
-        }
 
         return $this->request('POST', '/api/v1/summary/generate', $body);
     }
