@@ -27,6 +27,7 @@ class SynaplanConfig
 
     public function __construct(
         private IConfig $config,
+        private KeyStorage $keys,
     ) {
     }
 
@@ -79,11 +80,7 @@ class SynaplanConfig
      */
     public function getAdminApiKey(): string
     {
-        if ($this->getActiveEnv() === 'local') {
-            return $this->config->getAppValue(Application::APP_ID, 'api_key_local', '');
-        }
-
-        return $this->config->getAppValue(Application::APP_ID, 'api_key', '');
+        return $this->keys->getAppKey($this->getActiveEnv() === 'local' ? 'api_key_local' : 'api_key');
     }
 
     /**

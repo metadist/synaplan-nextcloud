@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -19,6 +20,8 @@ use Psr\Log\LoggerInterface;
 
 class UserAccountServiceTest extends TestCase
 {
+    use KeyStorageStubs;
+
     private IClientService&MockObject $clientService;
     private IClient&MockObject $httpClient;
     private IConfig&MockObject $config;
@@ -29,6 +32,8 @@ class UserAccountServiceTest extends TestCase
     private array $appConfig = [];
     /** @var array<string, string> */
     private array $userConfig = [];
+    /** @var array<string, bool> */
+    private array $sensitive = [];
 
     protected function setUp(): void
     {
@@ -68,12 +73,15 @@ class UserAccountServiceTest extends TestCase
 
     private function service(): UserAccountService
     {
+        $keys = $this->keyStorageOver($this->userConfig, $this->appConfig, $this->sensitive);
+
         return new UserAccountService(
             $this->clientService,
             $this->config,
             $this->userSession,
-            new SynaplanConfig($this->config),
+            new SynaplanConfig($this->config, $keys),
             $this->logger,
+            $keys,
         );
     }
 
@@ -112,6 +120,35 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('sk_alice_existing', $this->service()->getCurrentUserApiKey());
     }
 
+    public function testALinkMadeWithAnOlderReleaseKeepsWorkingAndIsEncrypted(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_linked_with_1_6';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $this->assertSame('sk_linked_with_1_6', $this->service()->getCurrentUserApiKey());
+        $this->assertTrue($this->sensitive['alice|synaplan_user_api_key'] ?? false);
+    }
+
+    public function testAKeyThatNoLongerDecryptsSendsALinkedPersonBackToConnect(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_user_api_key'] = '$UserConfigEncryption$b4d7|cipher';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|synaplan_link_email'] = 'demo@synaplan.com';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->getCurrentUserApiKey());
+        $this->assertSame([], array_filter(
+            $this->userConfig,
+            static fn (string $key): bool => str_starts_with($key, 'alice|'),
+            ARRAY_FILTER_USE_KEY,
+        ));
+    }
+
     public function testProvisionsAndMintsOnFirstUse(): void
     {
         // Consent already granted — provisioning is allowed to proceed.
@@ -139,8 +176,9 @@ class UserAccountServiceTest extends TestCase
         $key = $this->service()->getCurrentUserApiKey();
 
         $this->assertSame('sk_alice_minted', $key);
-        // Stored for next time
+        // Stored for next time, as a sensitive value Nextcloud encrypts
         $this->assertSame('sk_alice_minted', $this->userConfig['alice|synaplan_user_api_key']);
+        $this->assertTrue($this->sensitive['alice|synaplan_user_api_key'] ?? false);
 
         // Provision call used the admin key + correct external identity
         $this->assertStringEndsWith('/api/v1/admin/users', $captured[0][0]);

@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
+use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class SynaplanConfigTest extends TestCase
 {
+    use KeyStorageStubs;
+
     private IConfig&MockObject $config;
     /** @var array<string, string> */
     private array $appConfig = [];
@@ -25,7 +28,7 @@ class SynaplanConfigTest extends TestCase
 
     private function cfg(): SynaplanConfig
     {
-        return new SynaplanConfig($this->config);
+        return new SynaplanConfig($this->config, $this->keyStorageFrom($this->config));
     }
 
     public function testUnsetModeResolvesToLegacyBehaviour(): void

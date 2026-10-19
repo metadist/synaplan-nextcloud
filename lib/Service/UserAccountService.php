@@ -31,7 +31,7 @@ use Psr\Log\LoggerInterface;
  */
 class UserAccountService
 {
-    public const USER_KEY_PREF = 'synaplan_user_api_key';
+    public const USER_KEY_PREF = KeyStorage::USER_KEY;
     public const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
     public const USER_KEY_ID_PREF = 'synaplan_user_key_id';
     public const CONSENT_PREF = 'ai_consent';
@@ -56,6 +56,7 @@ class UserAccountService
         private IUserSession $userSession,
         private SynaplanConfig $synaplanConfig,
         private LoggerInterface $logger,
+        private KeyStorage $keys,
     ) {
     }
 
@@ -89,7 +90,7 @@ class UserAccountService
             return null;
         }
 
-        $stored = $this->config->getUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF, '');
+        $stored = $this->storedKey($user->getUID());
         if ($stored !== '') {
             return $stored;
         }
@@ -173,7 +174,7 @@ class UserAccountService
         $now = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
 
         if ($key !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, $key);
+            $this->keys->setUserKey($uid, $key);
         }
         if ($keyId !== '') {
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, $keyId);
@@ -202,9 +203,7 @@ class UserAccountService
             return $kind;
         }
 
-        $key = $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, '');
-
-        return $key !== '' ? self::KIND_PROVISIONED : null;
+        return $this->storedKey($uid) !== '' ? self::KIND_PROVISIONED : null;
     }
 
     /**
@@ -283,7 +282,7 @@ class UserAccountService
 
     public function getStoredApiKey(string $uid): string
     {
-        return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_PREF, '');
+        return $this->storedKey($uid);
     }
 
     public function getStoredApiKeyId(string $uid): string
@@ -354,6 +353,21 @@ class UserAccountService
         $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
         $this->clearLinkPrefsForUid($user->getUID());
+    }
+
+    /**
+     * The person's stored key, '' when there is none. A key that no longer
+     * decrypts is gone: in link mode the link goes with it, so the person sees
+     * Connect again; in provision mode the next request provisions a new key.
+     */
+    private function storedKey(string $uid): string
+    {
+        $key = $this->keys->getUserKey($uid);
+        if ($key === null && $this->synaplanConfig->isLinkMode()) {
+            $this->clearLinkPrefsForUid($uid);
+        }
+
+        return $key ?? '';
     }
 
     private function hasConsent(IUser $user): bool
@@ -486,7 +500,7 @@ class UserAccountService
             throw new \RuntimeException('Minting response missing api key');
         }
 
-        $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF, $userKey);
+        $this->keys->setUserKey($user->getUID(), $userKey);
         $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_ACCOUNT_ID_PREF, (string) $synaplanUserId);
         $mintedKeyId = (string) ($minted['api_key']['id'] ?? '');
         if ($mintedKeyId !== '') {

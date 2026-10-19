@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\KeyStorage;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
@@ -26,15 +27,11 @@ class SettingsController extends Controller
         IRequest $request,
         private IConfig $config,
         private SynaplanClient $synaplanClient,
-        private ?SynaplanConfig $synaplanConfig = null,
+        private SynaplanConfig $synaplanConfig,
+        private KeyStorage $keys,
         private ?PlatformLinkService $platformLinks = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
-    }
-
-    private function synaplanConfig(): SynaplanConfig
-    {
-        return $this->synaplanConfig ?? new SynaplanConfig($this->config);
     }
 
     /**
@@ -42,8 +39,8 @@ class SettingsController extends Controller
      */
     public function getSettings(): JSONResponse
     {
-        $apiKey = (string) $this->config->getAppValue(Application::APP_ID, 'api_key', '');
-        $apiKeyLocal = (string) $this->config->getAppValue(Application::APP_ID, 'api_key_local', '');
+        $apiKey = $this->keys->getAppKey('api_key');
+        $apiKeyLocal = $this->keys->getAppKey('api_key_local');
 
         return new JSONResponse([
             // Active backend environment: 'live' (production) or 'local' (dev).
@@ -91,15 +88,15 @@ class SettingsController extends Controller
             // Per-user accounts: when on, the configured key is treated as an
             // ADMIN key and each NC user gets their own provisioned Synaplan
             // account + per-user key (isolated knowledge base & memories).
-            'per_user_accounts' => $this->synaplanConfig()->isPerUserAccountsEnabled(),
-            'mode' => $this->synaplanConfig()->getMode(),
+            'per_user_accounts' => $this->synaplanConfig->isPerUserAccountsEnabled(),
+            'mode' => $this->synaplanConfig->getMode(),
             'link_auto_provision' => $this->config->getAppValue(
                 Application::APP_ID,
                 'link_auto_provision',
                 '0'
             ) === '1',
-            'link_registered' => $this->synaplanConfig()->getLinkInstanceId() !== '',
-            'link_instance_id' => $this->synaplanConfig()->getLinkInstanceId(),
+            'link_registered' => $this->synaplanConfig->getLinkInstanceId() !== '',
+            'link_instance_id' => $this->synaplanConfig->getLinkInstanceId(),
             'link_instance' => $this->platformLinks?->instanceStatus(),
         ]);
     }
@@ -185,7 +182,7 @@ class SettingsController extends Controller
         }
 
         if ($api_key !== '') {
-            $this->config->setAppValue(Application::APP_ID, 'api_key', $api_key);
+            $this->keys->setAppKey('api_key', $api_key);
         }
 
         if ($synaplan_url_local !== '') {
@@ -197,7 +194,7 @@ class SettingsController extends Controller
         }
 
         if ($api_key_local !== '') {
-            $this->config->setAppValue(Application::APP_ID, 'api_key_local', $api_key_local);
+            $this->keys->setAppKey('api_key_local', $api_key_local);
         }
 
         if ($synaplan_public_url !== null) {

@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\Files\IRootFolder;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -34,6 +35,8 @@ use Psr\Log\NullLogger;
  */
 final class SynaplanContractTest extends TestCase
 {
+    use KeyStorageStubs;
+
     private const BASE_URL = 'http://synaplan.test';
 
     private const CACHE = __DIR__ . '/.cache';
@@ -174,10 +177,11 @@ final class SynaplanContractTest extends TestCase
     {
         $this->calls = [];
         $config = $this->config();
-        $synaplanConfig = new SynaplanConfig($config);
+        $keys = $this->keyStorageFrom($config);
+        $synaplanConfig = new SynaplanConfig($config, $keys);
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($this->ada());
-        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger());
+        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
         $links = new PlatformLinkService(
             $this->recordingClients(),
