@@ -1,7 +1,5 @@
 module.exports = {
-	extends: [
-		'@nextcloud',
-	],
+	extends: ['@nextcloud'],
 	rules: {
 		'vue/first-attribute-linebreak': 'off',
 		'vue/html-closing-bracket-newline': 'off',
@@ -16,6 +14,15 @@ module.exports = {
 			parser: 'vue-eslint-parser',
 			parserOptions: {
 				parser: '@typescript-eslint/parser',
+			},
+			// Components import TypeScript modules without the extension, as Vite
+			// resolves them; vue-tsc reports a missing module, as for .ts files.
+			settings: {
+				'import/resolver': { node: { extensions: ['.js', '.ts', '.vue'] } },
+			},
+			rules: {
+				'n/no-missing-import': 'off',
+				'import/extensions': ['warn', 'ignorePackages', { ts: 'never' }],
 			},
 		},
 		{

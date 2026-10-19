@@ -333,6 +333,7 @@ import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
+import { streamChat } from '../chat/stream'
 
 interface MediaInfo {
 	url: string
@@ -670,21 +671,9 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 }
 
 /**
- *
- * @param text
- */
-/**
- * Read Nextcloud's CSRF request token from the document head (the same source
- * the Nextcloud auth helper uses) so plain fetch() calls pass CSRF checks.
- */
-function getCsrfToken(): string {
-	const head = document.getElementsByTagName('head')[0]
-	return head?.getAttribute('data-requesttoken') ?? ''
-}
-
-/**
  * Stream a chat answer token-by-token from the SSE proxy, appending deltas to a
- * live assistant message. Falls back to the blocking endpoint on any failure.
+ * live assistant message. Falls back to the blocking endpoint when no answer
+ * could be streamed.
  *
  * @param text The user's question
  */
@@ -719,77 +708,14 @@ async function handleChatMessage(text: string) {
 	}
 
 	try {
-		const response = await fetch(`${baseUrl}/api/v1/chat/stream`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Accept: 'text/event-stream',
-				requesttoken: getCsrfToken(),
-			},
-			body: JSON.stringify(payload),
-		})
-
-		if (!response.ok || !response.body) {
-			await handleChatMessageBlocking(payload)
-			return
-		}
-
-		const reader = response.body.getReader()
-		const decoder = new TextDecoder()
-		let buffer = ''
-		let streamError = ''
-
-		for (;;) {
-			const { value, done } = await reader.read()
-			if (done) {
-				break
-			}
-			buffer += decoder.decode(value, { stream: true })
-
-			const events = buffer.split('\n\n')
-			buffer = events.pop() ?? ''
-
-			for (const event of events) {
-				const dataLine = event
-					.split('\n')
-					.find((line) => line.startsWith('data:'))
-				if (!dataLine) {
-					continue
-				}
-				const data = dataLine.slice(5).trim()
-				if (data === '' || data === '[DONE]') {
-					continue
-				}
-				try {
-					const json = JSON.parse(data)
-					if (json.error) {
-						streamError = json.error.message || ''
-						continue
-					}
-					const delta = json.choices?.[0]?.delta?.content
-					if (typeof delta === 'string' && delta.length > 0) {
-						appendDelta(
-							delta,
-							typeof json.model === 'string' ? json.model : undefined,
-						)
-					}
-				} catch {
-					// Ignore keep-alives and partial frames.
-				}
-			}
-		}
-
-		if (assistantIndex === -1) {
-			if (streamError) {
-				error.value = streamError
-			} else {
-				await handleChatMessageBlocking(payload)
-			}
-		} else if (streamError) {
-			error.value = streamError
-		}
-	} catch {
-		if (assistantIndex === -1) {
+		const outcome = await streamChat(
+			`${baseUrl}/api/v1/chat/stream`,
+			payload,
+			appendDelta,
+		)
+		if (outcome.kind === 'failed') {
+			error.value = outcome.message
+		} else if (outcome.kind === 'unavailable' && assistantIndex === -1) {
 			await handleChatMessageBlocking(payload)
 		}
 	} finally {
