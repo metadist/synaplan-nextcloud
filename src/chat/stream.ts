@@ -115,7 +115,7 @@ export async function streamChat(
 			}
 		}
 	} catch {
-		return answered ? { kind: 'answered' } : { kind: 'unavailable' }
+		// Fall through: a failure the stream already named outranks the broken read.
 	}
 
 	if (failure && (failure.code || failure.message)) {

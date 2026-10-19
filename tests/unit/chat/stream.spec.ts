@@ -134,6 +134,26 @@ describe('streamChat', () => {
 		})
 	})
 
+	it('keeps a named failure when the read breaks afterwards', async () => {
+		const broken = answer(['data: {"error":{"code":"rate_limited"}}\n\n'])
+		const reader = broken.body!.getReader()
+		let reads = 0
+		broken.body!.getReader = () => ({
+			read: async () => {
+				if (reads++ === 0) {
+					return reader.read()
+				}
+				throw new TypeError('network error')
+			},
+		})
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(broken))
+
+		expect(await streamChat('/stream', {}, () => {})).toEqual({
+			kind: 'failed',
+			code: 'rate_limited',
+		})
+	})
+
 	it("takes the app's refusal as final, so the blocking endpoint is not asked", async () => {
 		vi.stubGlobal(
 			'fetch',

@@ -13,6 +13,7 @@ use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\IConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -434,6 +435,51 @@ class SynaplanClientTest extends TestCase
         try {
             $this->makeClient($this->modeConfig('link'))->summarize('Notes');
             self::fail('Summarize without a key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testTranslateWithoutAKeyAsksSynaplanNothing(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->never())->method('get');
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->expectExceptionObject(FailureException::notConnected());
+        $this->makeClient($this->modeConfig('link'))->translate('Notes', 'de');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function directCalls(): iterable
+    {
+        yield 'upload' => ['upload'];
+        yield 'media' => ['media'];
+        yield 'download' => ['download'];
+    }
+
+    #[DataProvider('directCalls')]
+    public function testAKeyRefusedOnADirectCallAsksALinkedPersonToConnectAgain(string $call): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn('sk_revoked');
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->once())->method('clearLinkPrefs');
+        $refused = new \Exception('Client error: `POST http://backend/api/v1/files/upload` resulted in a `401 Unauthorized` response', 401);
+        $this->httpClient->method('post')->willThrowException($refused);
+        $this->httpClient->method('get')->willThrowException($refused);
+        $client = $this->makeClient($this->modeConfig('link'));
+
+        try {
+            match ($call) {
+                'upload' => $client->uploadFile('notes.txt', 'Notes', 'DOCS'),
+                'media' => $client->generateMedia('A cat', 'image'),
+                default => $client->downloadFile('/api/v1/files/uploads/7/cat.png'),
+            };
+            self::fail('A refused key must fail.');
         } catch (FailureException $e) {
             self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
         }

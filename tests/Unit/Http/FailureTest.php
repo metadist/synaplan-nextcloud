@@ -49,6 +49,15 @@ final class FailureTest extends TestCase
         }
     }
 
+    public function testAProxyErrorPageIsNotTakenForASynaplanRejection(): void
+    {
+        $forbidden = Failure::fromSynaplanResponse(403, '<html><body>403 Forbidden</body></html>');
+        self::assertSame([502, 'synaplan_error'], [$forbidden->status, $forbidden->code]);
+
+        $busy = Failure::fromSynaplanResponse(429, '<html><body>Too Many Requests</body></html>');
+        self::assertSame([429, 'rate_limited', null], [$busy->status, $busy->code, $busy->message]);
+    }
+
     public function testAnUnusualClientStatusIsAnswered422(): void
     {
         self::assertSame(422, Failure::fromSynaplanResponse(405, '{"error":"Method Not Allowed"}')->status);
@@ -99,11 +108,11 @@ final class FailureTest extends TestCase
     public function testAStreamEndsWithOneErrorEvent(): void
     {
         self::assertSame(
-            "data: {\"error\":{\"code\":\"synaplan_rejected\",\"message\":\"Try a shorter document.\"}}\n\ndata: [DONE]\n\n",
+            "\n\ndata: {\"error\":{\"code\":\"synaplan_rejected\",\"message\":\"Try a shorter document.\"}}\n\ndata: [DONE]\n\n",
             SseProxyResponse::errorEvent(new Failure(422, 'synaplan_rejected', 'Try a shorter document.')),
         );
         self::assertSame(
-            "data: {\"error\":{\"code\":\"synaplan_unreachable\"}}\n\ndata: [DONE]\n\n",
+            "\n\ndata: {\"error\":{\"code\":\"synaplan_unreachable\"}}\n\ndata: [DONE]\n\n",
             SseProxyResponse::errorEvent(new Failure(502, 'synaplan_unreachable')),
         );
     }

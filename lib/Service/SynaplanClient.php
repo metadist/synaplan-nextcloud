@@ -79,6 +79,7 @@ class SynaplanClient
      */
     public function translate(string $text, string $targetLanguage): array
     {
+        $this->requireApiKey();
         if (!$this->supportsSummaryType('translation')) {
             return $this->summarize($text, 'abstractive', 'long', $targetLanguage);
         }
@@ -414,7 +415,7 @@ class SynaplanClient
                 'message' => $e->getMessage(),
             ]);
 
-            throw $e;
+            throw $this->refusedKey($e) ?? $e;
         }
     }
 
@@ -467,7 +468,7 @@ class SynaplanClient
                 'type' => $type,
             ]);
 
-            throw $e;
+            throw $this->refusedKey($e) ?? $e;
         }
     }
 
@@ -501,7 +502,7 @@ class SynaplanClient
                 'path' => $relativePath,
             ]);
 
-            throw $e;
+            throw $this->refusedKey($e) ?? $e;
         }
     }
 
@@ -614,9 +615,10 @@ class SynaplanClient
     }
 
     /**
-     * Synaplan refused the person's key in a stream, which cannot be repeated:
-     * forget the key and say what to do. A linked person has to connect again;
-     * a provisioned one gets a new key with the next request.
+     * Synaplan refused the person's key in a request that is not repeated (a
+     * stream, an upload, media): forget the key and say what to do. A linked
+     * person has to connect again; a provisioned one gets a new key with the
+     * next request.
      */
     public function keyRefused(): Failure
     {
@@ -630,6 +632,18 @@ class SynaplanClient
         $this->userAccounts->clearLinkPrefs();
 
         return FailureException::notConnected()->failure;
+    }
+
+    /**
+     * The failure for a 401 in the per-user modes, null for anything else.
+     */
+    private function refusedKey(\Exception $e): ?FailureException
+    {
+        if (!$this->isUnauthorized($e) || !$this->synaplanConfig->isPerUserAccountsEnabled()) {
+            return null;
+        }
+
+        return new FailureException($this->keyRefused(), 'Synaplan refused the key: ' . $e->getMessage());
     }
 
     /**

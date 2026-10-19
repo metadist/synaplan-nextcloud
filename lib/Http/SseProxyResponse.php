@@ -137,7 +137,9 @@ class SseProxyResponse extends Response implements ICallbackResponse
     }
 
     /**
-     * The frames that end a stream with a failure the browser can name.
+     * The frames that end a stream with a failure the browser can name. The
+     * leading blank line ends a frame the upstream left half-sent, so the
+     * error is an event of its own.
      */
     public static function errorEvent(Failure $failure): string
     {
@@ -146,7 +148,7 @@ class SseProxyResponse extends Response implements ICallbackResponse
             $error['message'] = $failure->message;
         }
 
-        return 'data: ' . json_encode(['error' => $error]) . "\n\ndata: [DONE]\n\n";
+        return "\n\ndata: " . json_encode(['error' => $error]) . "\n\ndata: [DONE]\n\n";
     }
 
     private function send(Failure $failure): void

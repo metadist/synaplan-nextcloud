@@ -72,7 +72,9 @@ final class Failure
      * A Synaplan answer with an error status. A machine code Synaplan sent
      * (`insufficient_scope`) is kept; a sentence is passed on as the message.
      * Statuses the browser would read as its own session or proxy problem
-     * (401, 407, 412) are never passed on.
+     * (401, 407, 412) are never passed on. A body that is not Synaplan's JSON
+     * (a proxy's error page) is a 502, except 413 and 429, which mean the same
+     * whoever sent them.
      */
     public static function fromSynaplanResponse(int $status, string $body): self
     {
@@ -95,7 +97,14 @@ final class Failure
         };
 
         $decoded = json_decode($body, true);
-        $error = is_array($decoded) && is_string($decoded['error'] ?? null) ? trim($decoded['error']) : '';
+        if (!is_array($decoded)) {
+            return match ($kept) {
+                Http::STATUS_TOO_MANY_REQUESTS => new self($kept, self::RATE_LIMITED),
+                Http::STATUS_REQUEST_ENTITY_TOO_LARGE => new self($kept, self::FILE_TOO_LARGE),
+                default => new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR),
+            };
+        }
+        $error = is_string($decoded['error'] ?? null) ? trim($decoded['error']) : '';
         if (preg_match('/^[a-z][a-z0-9_]*$/', $error) === 1) {
             return new self($kept, $error);
         }
