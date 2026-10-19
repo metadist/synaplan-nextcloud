@@ -805,11 +805,7 @@ async function handleChatMessage(text: string) {
  */
 async function handleChatMessageBlocking(payload: Record<string, unknown>) {
 	try {
-		const { data } = await axios.post(`${baseUrl}/api/v1/chat`, {
-			...payload,
-			// The blocking endpoint expects a numeric modelId, not a model name.
-			modelId: selectedModel.value?.id,
-		})
+		const { data } = await axios.post(`${baseUrl}/api/v1/chat`, payload)
 
 		if (data.success) {
 			messages.value.push({ role: 'assistant', text: data.response })
