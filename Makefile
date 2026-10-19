@@ -93,27 +93,37 @@ NC_EXEC := $(COMPOSE_DEV) exec -T -u www-data nextcloud
 # A Windows docker.exe called from WSL sees only the variables WSLENV names.
 export WSLENV := $(if $(WSLENV),$(WSLENV):)NC_IMAGE:NC_OIDC
 
-dev-up: ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network)
-	@test -f docker-compose.dev.yml || cp docker-compose.dev.yml.example docker-compose.dev.yml
+# The gitignored copy follows the example: created when missing, and refreshed
+# when the example is newer, with the old copy kept as docker-compose.dev.yml.bak.
+docker-compose.dev.yml: docker-compose.dev.yml.example
+	@if [ -f $@ ]; then \
+		cp $@ $@.bak; \
+		echo "docker-compose.dev.yml was older than the example: refreshed, your copy is docker-compose.dev.yml.bak."; \
+		echo "An existing install keeps its data and its old setup. 'make dev-reset dev-up' deletes the local"; \
+		echo "Nextcloud data and installs the new setup."; \
+	fi
+	cp $< $@
+
+dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network)
 	$(COMPOSE_DEV) up -d --wait
 	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
 	@echo ""
 	@echo "Nextcloud:  http://localhost:8081  (admin / admin; ada, bob, carol / <name>-dev-pass)"
 	@echo "Synaplan:   http://localhost:5173  (from the Nextcloud containers: http://backend)"
 
-dev-down: ## Stop local Nextcloud (keeps the volumes)
+dev-down: docker-compose.dev.yml ## Stop local Nextcloud (keeps the volumes)
 	$(COMPOSE_DEV) down
 
-dev-reset: ## Remove the Nextcloud and database volumes — destroys local data; needed to change the major version
+dev-reset: docker-compose.dev.yml ## Remove the Nextcloud and database volumes — destroys local data; needed to change the major version
 	$(COMPOSE_DEV) down -v
 
-dev-occ: ## Run occ in the dev container, e.g. make dev-occ CMD="user:list"
+dev-occ: docker-compose.dev.yml ## Run occ in the dev container, e.g. make dev-occ CMD="user:list"
 	$(NC_EXEC) php occ $(CMD)
 
-dev-logs: ## Follow the Nextcloud container logs
+dev-logs: docker-compose.dev.yml ## Follow the Nextcloud container logs
 	$(COMPOSE_DEV) logs -f nextcloud
 
-dev-shell: ## Open a shell in the Nextcloud container as www-data
+dev-shell: docker-compose.dev.yml ## Open a shell in the Nextcloud container as www-data
 	$(COMPOSE_DEV) exec -u www-data nextcloud bash
 
 ## Help

@@ -13,6 +13,7 @@ release-work/build/
 
 # Dev environment
 docker-compose.dev.yml
+docker-compose.dev.yml.bak
 .local/
 
 # IDE / OS
