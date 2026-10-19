@@ -19,6 +19,10 @@ class SynaplanClient
 {
     private const TIMEOUT = 120;
     private const MEDIA_TIMEOUT = 180;
+    private const CAPABILITIES_TIMEOUT = 10;
+
+    /** @var array<string, mixed>|null */
+    private ?array $capabilities = null;
 
     public function __construct(
         private IClientService $clientService,
@@ -56,6 +60,30 @@ class SynaplanClient
             'summaryType' => $summaryType,
             'length' => $length,
             'outputLanguage' => $outputLanguage,
+        ]);
+    }
+
+    /**
+     * Translate a whole document into one language.
+     *
+     * A Synaplan that lists the summary type `translation` translates the
+     * document as it is. An older one does not know that type, so the request
+     * stays what earlier app releases sent: a long summary in the target
+     * language.
+     *
+     * @return array{success?: bool, summary?: string, metadata?: array<string, mixed>}
+     * @throws \Exception on API error
+     */
+    public function translate(string $text, string $targetLanguage): array
+    {
+        if (!$this->supportsSummaryType('translation')) {
+            return $this->summarize($text, 'abstractive', 'long', $targetLanguage);
+        }
+
+        return $this->request('POST', '/api/v1/summary/generate', [
+            'text' => $text,
+            'summaryType' => 'translation',
+            'outputLanguage' => $targetLanguage,
         ]);
     }
 
@@ -517,6 +545,48 @@ class SynaplanClient
         }
 
         return $this->synaplanConfig->getAdminApiKey();
+    }
+
+    private function supportsSummaryType(string $type): bool
+    {
+        $summary = $this->capabilities()['summary'] ?? null;
+        $types = is_array($summary) ? ($summary['types'] ?? null) : null;
+
+        return is_array($types) && in_array($type, $types, true);
+    }
+
+    /**
+     * What the connected Synaplan supports, read once per request. The endpoint
+     * is public and is called without the user's key: Synaplan refuses a
+     * restricted key on any path outside its scopes.
+     *
+     * @return array<string, mixed>
+     */
+    private function capabilities(): array
+    {
+        if ($this->capabilities !== null) {
+            return $this->capabilities;
+        }
+
+        try {
+            $response = $this->clientService->newClient()->get($this->getBaseUrl() . '/api/v1/config/capabilities', [
+                'headers' => ['Accept' => 'application/json'],
+                'timeout' => self::CAPABILITIES_TIMEOUT,
+                'nextcloud' => [
+                    'allow_local_address' => true,
+                ],
+            ]);
+            $decoded = json_decode($response->getBody(), true);
+            $this->capabilities = is_array($decoded) ? $decoded : [];
+        } catch (\Exception $e) {
+            $this->logger->warning('Synaplan capabilities could not be read: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+            $this->capabilities = [];
+        }
+
+        return $this->capabilities;
     }
 
     /**

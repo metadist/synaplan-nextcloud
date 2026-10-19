@@ -189,12 +189,13 @@ class ApiControllerTest extends TestCase
         $this->mockUserAndFile('Hello world');
 
         $this->synaplanClient->expects($this->once())
-            ->method('summarize')
-            ->with('Hello world', 'abstractive', 'long', 'de')
+            ->method('translate')
+            ->with('Hello world', 'de')
             ->willReturn([
                 'success' => true,
                 'summary' => 'Hallo Welt',
             ]);
+        $this->synaplanClient->expects($this->never())->method('summarize');
 
         $response = $this->controller->translate(42, 'de');
         $data = $response->getData();
@@ -224,7 +225,7 @@ class ApiControllerTest extends TestCase
     {
         $this->mockUserAndFile('Some content');
 
-        $this->synaplanClient->method('summarize')
+        $this->synaplanClient->method('translate')
             ->willThrowException(new \RuntimeException('Rate limited'));
 
         $response = $this->controller->translate(42, 'es');

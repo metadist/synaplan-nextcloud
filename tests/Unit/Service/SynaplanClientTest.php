@@ -118,6 +118,78 @@ class SynaplanClientTest extends TestCase
         $this->assertStringContainsString('Point 1', $result['summary']);
     }
 
+    public function testTranslateUsesTheTranslationModeWhenSynaplanListsIt(): void
+    {
+        $this->httpClient->expects($this->once())
+            ->method('get')
+            ->with(
+                'http://localhost:8000/api/v1/config/capabilities',
+                $this->callback(fn (array $options): bool => !isset($options['headers']['X-API-Key'])),
+            )
+            ->willReturn($this->capabilities(['abstractive', 'extractive', 'bullet-points', 'translation']));
+        $this->httpClient->expects($this->once())
+            ->method('post')
+            ->with(
+                'http://localhost:8000/api/v1/summary/generate',
+                $this->callback(fn (array $options): bool => json_decode($options['body'], true) === [
+                    'text' => 'Hello world',
+                    'summaryType' => 'translation',
+                    'outputLanguage' => 'de',
+                ]),
+            )
+            ->willReturn($this->json(['success' => true, 'summary' => 'Hallo Welt']));
+
+        $this->assertSame('Hallo Welt', $this->synaplanClient->translate('Hello world', 'de')['summary']);
+    }
+
+    public function testTranslateKeepsTheLongSummaryOnASynaplanWithoutTranslationMode(): void
+    {
+        $this->httpClient->method('get')
+            ->willReturn($this->capabilities(['abstractive', 'extractive', 'bullet-points']));
+        $this->httpClient->expects($this->once())
+            ->method('post')
+            ->with(
+                'http://localhost:8000/api/v1/summary/generate',
+                $this->callback(fn (array $options): bool => json_decode($options['body'], true) === [
+                    'text' => 'Hello world',
+                    'summaryType' => 'abstractive',
+                    'length' => 'long',
+                    'outputLanguage' => 'fr',
+                ]),
+            )
+            ->willReturn($this->json(['success' => true, 'summary' => 'Bonjour le monde']));
+
+        $this->assertSame('Bonjour le monde', $this->synaplanClient->translate('Hello world', 'fr')['summary']);
+    }
+
+    public function testTranslateKeepsTheLongSummaryWhenCapabilitiesCannotBeRead(): void
+    {
+        $this->httpClient->method('get')->willThrowException(new \Exception('Connection refused'));
+        $this->logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('capabilities could not be read'));
+        $this->httpClient->expects($this->once())
+            ->method('post')
+            ->with(
+                $this->anything(),
+                $this->callback(fn (array $options): bool => json_decode($options['body'], true)['summaryType'] === 'abstractive'),
+            )
+            ->willReturn($this->json(['success' => true, 'summary' => 'Hola mundo']));
+
+        $this->assertSame('Hola mundo', $this->synaplanClient->translate('Hello world', 'es')['summary']);
+    }
+
+    public function testCapabilitiesAreReadOncePerRequest(): void
+    {
+        $this->httpClient->expects($this->once())
+            ->method('get')
+            ->willReturn($this->capabilities(['translation']));
+        $this->httpClient->method('post')->willReturn($this->json(['success' => true, 'summary' => 'Hallo']));
+
+        $this->synaplanClient->translate('Hello', 'de');
+        $this->synaplanClient->translate('World', 'de');
+    }
+
     public function testCreateChatReturnsId(): void
     {
         $response = $this->createMock(IResponse::class);
@@ -405,5 +477,24 @@ class SynaplanClientTest extends TestCase
             ->willReturn($response);
 
         $this->assertSame('By four hours.', $this->synaplanClient->chat($messages, 'gpt-oss-120b'));
+    }
+
+    /**
+     * @param list<string> $types
+     */
+    private function capabilities(array $types): IResponse
+    {
+        return $this->json(['summary' => ['types' => $types, 'lengths' => ['short', 'medium', 'long'], 'focus_areas' => []]]);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function json(array $body): IResponse
+    {
+        $response = $this->createMock(IResponse::class);
+        $response->method('getBody')->willReturn((string) json_encode($body));
+
+        return $response;
     }
 }
