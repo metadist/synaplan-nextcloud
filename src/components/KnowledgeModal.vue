@@ -53,7 +53,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'Large documents take a little longer to vectorize.',
+							'Large documents take a little longer.',
 						)
 					}}
 				</p>
@@ -92,24 +92,24 @@
 						wasUpdate
 							? t(
 									'synaplan_integration',
-									'File updated in AI Knowledge Base',
+									'Updated: the AI now uses the latest version',
 								)
 							: t(
 									'synaplan_integration',
-									'File added to AI Knowledge Base',
+									'This file is now searchable by AI',
 								)
 					}}
 				</p>
 				<div class="success-details">
 					<div class="detail-row">
 						<span class="detail-label">{{
-							t('synaplan_integration', 'Group')
+							t('synaplan_integration', 'Knowledge folder')
 						}}</span>
 						<span class="detail-value">{{ selectedGroup }}</span>
 					</div>
 					<div class="detail-row">
 						<span class="detail-label">{{
-							t('synaplan_integration', 'Chunks created')
+							t('synaplan_integration', 'Searchable passages')
 						}}</span>
 						<span class="detail-value">{{ chunksCreated }}</span>
 					</div>
@@ -154,7 +154,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'File removed from AI Knowledge Base',
+							'This file is no longer searchable by AI',
 						)
 					}}
 				</p>
@@ -167,11 +167,11 @@
 						inKnowledge
 							? t(
 									'synaplan_integration',
-									'This file is already in your AI knowledge base. Updating re-indexes the latest version.',
+									'This file is already searchable by AI. Updating it makes the AI use the latest version.',
 								)
 							: t(
 									'synaplan_integration',
-									'Upload this file to the Synaplan knowledge base for AI-powered search and chat.',
+									'The AI can then find this file when you ask a question, here in the chat or in Synaplan.',
 								)
 					}}
 				</p>
@@ -181,7 +181,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'This file changed in Nextcloud since it was indexed. Update to refresh the AI knowledge.',
+							'This file changed in Nextcloud after it was made searchable. Update it so the AI uses the latest version.',
 						)
 					}}
 				</NcNoteCard>
@@ -189,7 +189,7 @@
 				<!-- Group selection -->
 				<div class="field">
 					<label class="field-label">{{
-						t('synaplan_integration', 'Knowledge group')
+						t('synaplan_integration', 'Knowledge folder')
 					}}</label>
 					<NcSelect
 						v-model="selectedGroup"
@@ -197,7 +197,7 @@
 						:placeholder="
 							t(
 								'synaplan_integration',
-								'Select or type a new group...',
+								'Choose a folder or type a new name…',
 							)
 						"
 						:taggable="true"
@@ -236,7 +236,7 @@
 					variant="error"
 					:disabled="loading || removing"
 					@click="removeFromKnowledge">
-					{{ t('synaplan_integration', 'Remove from Knowledge') }}
+					{{ t('synaplan_integration', 'Remove from AI search') }}
 				</NcButton>
 				<NcButton
 					variant="primary"
@@ -244,8 +244,8 @@
 					@click="uploadFile">
 					{{
 						inKnowledge
-							? t('synaplan_integration', 'Update in Knowledge')
-							: t('synaplan_integration', 'Add to Knowledge')
+							? t('synaplan_integration', 'Update')
+							: t('synaplan_integration', 'Make searchable')
 					}}
 				</NcButton>
 			</template>
@@ -311,8 +311,8 @@ const formattedElapsed = computed(() => {
 const stages = computed(() => [
 	t('synaplan_integration', 'Uploading file'),
 	t('synaplan_integration', 'Extracting text'),
-	t('synaplan_integration', 'Creating chunks'),
-	t('synaplan_integration', 'Generating embeddings'),
+	t('synaplan_integration', 'Splitting the text'),
+	t('synaplan_integration', 'Making it searchable'),
 ])
 
 const currentStageIndex = computed(() => {
@@ -459,7 +459,7 @@ async function uploadFile() {
 			failure.value = {
 				text: t(
 					'synaplan_integration',
-					'No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.',
+					'Synaplan found no text it could make searchable. The file may be empty or a scan. Check the file and try again.',
 				),
 			}
 			showError(failure.value.text)
@@ -484,7 +484,7 @@ function onClose() {
 	emit('close', uploadSuccess.value || removed.value ? true : null)
 }
 
-const dialogTitle = t('synaplan_integration', 'Add to AI Knowledge')
+const dialogTitle = t('synaplan_integration', 'Make searchable by AI')
 
 onMounted(() => {
 	loadGroups()

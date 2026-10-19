@@ -1,4 +1,4 @@
-.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
+.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi l10n build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
@@ -50,6 +50,9 @@ test-contract: openapi ## Check every call the app makes against the pinned Syna
 	composer run test:contract
 
 ## Build
+
+l10n: ## Write l10n/<locale>.js from l10n/<locale>.json after editing translations
+	node scripts/l10n-js.mjs
 
 build: ## Build frontend for production
 	npm run build
