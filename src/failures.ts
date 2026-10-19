@@ -12,7 +12,9 @@ export interface Failure {
 	settingsUrl?: string
 }
 
-const synaplanSettings = (): string => generateUrl('/settings/user/Synaplan')
+// The personal settings section is registered under the app id.
+const synaplanSettings = (): string =>
+	generateUrl('/settings/user/synaplan_integration')
 
 /**
  * The sentence for a failure code. A code the app does not know shows
