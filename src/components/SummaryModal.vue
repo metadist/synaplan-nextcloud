@@ -64,7 +64,7 @@
 		</div>
 
 		<template #actions>
-			<NcButton v-if="result" type="secondary" @click="copyToClipboard">
+			<NcButton v-if="result" variant="secondary" @click="copyToClipboard">
 				{{
 					copied
 						? t('synaplan_integration', 'Copied!')
@@ -73,11 +73,11 @@
 			</NcButton>
 			<NcButton
 				v-if="!loading && !result && !aiBlocked"
-				type="primary"
+				variant="primary"
 				@click="doSummarize">
 				{{ t('synaplan_integration', 'Summarize') }}
 			</NcButton>
-			<NcButton v-if="result" type="primary" @click="onClose">
+			<NcButton v-if="result" variant="primary" @click="onClose">
 				{{ t('synaplan_integration', 'Done') }}
 			</NcButton>
 		</template>

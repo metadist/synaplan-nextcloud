@@ -230,7 +230,7 @@
 									&& msg.media.loaded
 									&& !msg.media.failed
 								"
-								type="secondary"
+								variant="secondary"
 								:disabled="msg.media.saving"
 								@click="saveMedia(idx)">
 								{{
@@ -311,7 +311,7 @@
 					:disabled="loading || aiConsentBlocked"
 					@keydown.enter="sendMessage" />
 				<NcButton
-					type="primary"
+					variant="primary"
 					:disabled="loading || aiConsentBlocked || !inputMessage.trim()"
 					@click="sendMessage">
 					{{ t('synaplan_integration', 'Send') }}
