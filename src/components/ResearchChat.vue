@@ -373,6 +373,7 @@ const loading = ref(false)
 const streaming = ref(false)
 const loadingGroups = ref(false)
 const loadingModels = ref(false)
+let modelsLoaded: Promise<void> = Promise.resolve()
 const failure = ref<Failure | null>(null)
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
@@ -579,6 +580,12 @@ async function sendMessage() {
 
 	const { command, prompt } = parseCommand(text)
 
+	// Send works before the capabilities arrive; judge a command only after.
+	if (command) {
+		loading.value = true
+		await modelsLoaded
+		loading.value = false
+	}
 	if (command === 'pic' && !capabilities.value.image) {
 		failure.value = {
 			text: t(
@@ -783,13 +790,13 @@ function onAiBlockedChange(value: boolean) {
  */
 function onConsentGranted() {
 	loadGroups()
-	loadModels()
+	modelsLoaded = loadModels()
 	loadClientConfig()
 }
 
 onMounted(() => {
 	loadGroups()
-	loadModels()
+	modelsLoaded = loadModels()
 	loadClientConfig()
 })
 </script>
