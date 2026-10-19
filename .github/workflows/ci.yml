@@ -101,15 +101,7 @@ jobs:
       - run: npm ci
       - run: make package
 
-      - name: Check the tarball
-        run: |
-          tar -tzf synaplan_integration.tar.gz > contents.txt
-          for path in appinfo/info.xml appinfo/routes.php lib/AppInfo/Application.php js/ templates/; do
-            grep -Fxq "synaplan_integration/$path" contents.txt || { echo "missing: $path"; exit 1; }
-          done
-          if grep -qE "^synaplan_integration/(tests|node_modules|vendor|src)/" contents.txt; then
-            echo "development files in the tarball"; exit 1
-          fi
+      - run: scripts/check-tarball.sh
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

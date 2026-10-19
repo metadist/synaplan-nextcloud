@@ -1,0 +1,231 @@
+name: Release
+
+# A tag vX.Y.Z on a main commit with green CI builds the tarball, signs it,
+# attaches both to a GitHub release and publishes the release to the
+# Nextcloud App Store. A tag vX.Y.Z-rc.N stops at a draft GitHub release.
+# A pull request that touches the release path runs the same steps as a dry
+# run, signed with a throwaway key, and publishes nothing.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   APP_STORE_SIGNING_KEY  the app's private key, ~/.nextcloud/certificates/synaplan_integration.key
+#   APP_STORE_TOKEN        an API token of an App Store owner or co-maintainer of the app
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release-check.sh
+      - scripts/check-tarball.sh
+      - Makefile
+      - appinfo/info.xml
+      - package.json
+      - CHANGELOG.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_ID: synaplan_integration
+
+jobs:
+  require-green-ci:
+    name: Require green CI
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Confirm this commit is on main and CI passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SHA}" --jq .status)"
+          case "$status" in
+            identical|behind) ;;
+            *)
+              echo "::error::Refusing to release ${SHA}: it is not on main (compare status: ${status}). Tag a commit that is already on main."
+              exit 1
+              ;;
+          esac
+
+          # Only the latest CI run of a push to main counts: a green pull
+          # request run does not. Wait while that run is going; the tip of
+          # main may still be waiting for its run to appear.
+          deadline=$((SECONDS + 3000))
+          while true; do
+            latest="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&event=push&per_page=100" --jq '
+              [.workflow_runs[] | select(.name == "CI" and .head_branch == "main")]
+              | sort_by(.id) | last // empty')"
+            if [ -z "$latest" ]; then
+              if [ "$status" = "identical" ] && [ "$SECONDS" -lt "$deadline" ]; then
+                echo "No CI run for the push of ${SHA} to main yet; waiting."
+                sleep 30
+                continue
+              fi
+              echo "::error::Refusing to release ${SHA}: no CI run for its push to main. All Checks Passed must be green on that push first."
+              exit 1
+            fi
+            run_id="$(jq -r .id <<<"$latest")"
+            run_status="$(jq -r .status <<<"$latest")"
+            conclusion="$(jq -r .conclusion <<<"$latest")"
+            case "$run_status" in
+              completed)
+                if [ "$conclusion" = "success" ]; then
+                  echo "CI run ${run_id} succeeded for ${SHA}."
+                  exit 0
+                fi
+                echo "::error::Refusing to release ${SHA}: the CI run of its push to main (${run_id}) concluded ${conclusion}."
+                exit 1
+                ;;
+              *)
+                if [ "$SECONDS" -ge "$deadline" ]; then
+                  echo "::error::CI run ${run_id} for ${SHA} was still ${run_status} after 50 minutes. Tag again once All Checks Passed is green."
+                  exit 1
+                fi
+                echo "CI run ${run_id} for ${SHA} is ${run_status}; waiting."
+                sleep 30
+                ;;
+            esac
+          done
+
+  release:
+    name: ${{ github.event_name == 'push' && 'Release' || 'Release (dry run)' }}
+    needs: require-green-ci
+    if: >-
+      always() && (needs.require-green-ci.result == 'success'
+      || (github.event_name == 'pull_request' && needs.require-green-ci.result == 'skipped'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check the versions
+        id: version
+        env:
+          TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          scripts/release-check.sh ${TAG:+"$TAG"} | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: make package
+      - run: scripts/check-tarball.sh
+
+      # Signs as `make sign` does. The signature has to verify against the
+      # certificate the App Store holds for the app; a dry run makes its own.
+      - name: Sign the tarball
+        env:
+          SIGNING_KEY: ${{ secrets.APP_STORE_SIGNING_KEY }}
+          DRY_RUN: ${{ steps.version.outputs.dry_run }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/$APP_ID.key"
+          cert="$RUNNER_TEMP/$APP_ID.crt"
+          if [ "$DRY_RUN" = true ]; then
+            openssl req -x509 -newkey rsa:4096 -nodes -days 1 -subj "/CN=$APP_ID" \
+              -keyout "$key" -out "$cert" 2>/dev/null
+          else
+            if [ -z "$SIGNING_KEY" ]; then
+              echo "::error::The repository secret APP_STORE_SIGNING_KEY is missing."
+              exit 1
+            fi
+            printf '%s\n' "$SIGNING_KEY" > "$key"
+            curl -sfL --retry 3 https://apps.nextcloud.com/api/v1/apps.json \
+              | jq -r --arg id "$APP_ID" '.[] | select(.id == $id) | .certificate' > "$cert"
+            [ -s "$cert" ] || { echo "::error::The App Store has no certificate for $APP_ID."; exit 1; }
+          fi
+          openssl dgst -sha512 -sign "$key" "$APP_ID.tar.gz" | openssl base64 -A > "$APP_ID.tar.gz.sig"
+          rm -f "$key"
+          openssl base64 -d -A -in "$APP_ID.tar.gz.sig" -out "$RUNNER_TEMP/signature.bin"
+          openssl x509 -in "$cert" -pubkey -noout > "$RUNNER_TEMP/public.pem"
+          openssl dgst -sha512 -verify "$RUNNER_TEMP/public.pem" \
+            -signature "$RUNNER_TEMP/signature.bin" "$APP_ID.tar.gz"
+
+      - name: Write the release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            /^## / { if (found) exit; if ($2 == version || $2 == "[" version "]") { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the GitHub release
+        if: steps.version.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig" --clobber
+          elif [ "$PRERELEASE" = true ]; then
+            gh release create "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig" --verify-tag \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --draft --prerelease
+          else
+            gh release create "$TAG" "$APP_ID.tar.gz" "$APP_ID.tar.gz.sig" --verify-tag \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+
+      - name: Publish to the Nextcloud App Store
+        if: steps.version.outputs.dry_run == 'false' && steps.version.outputs.prerelease == 'false'
+        env:
+          APP_STORE_TOKEN: ${{ secrets.APP_STORE_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APP_STORE_TOKEN" ]; then
+            echo "::error::The repository secret APP_STORE_TOKEN is missing. The GitHub release exists; run this job again once the secret is stored."
+            exit 1
+          fi
+          download="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APP_ID}.tar.gz"
+          jq -n --arg download "$download" --rawfile signature "$APP_ID.tar.gz.sig" \
+            '{download: $download, signature: $signature, nightly: false}' > "$RUNNER_TEMP/release.json"
+          status="$(curl -s -o "$RUNNER_TEMP/answer.txt" -w '%{http_code}' \
+            -X POST https://apps.nextcloud.com/api/v1/apps/releases \
+            -H "Authorization: Token $APP_STORE_TOKEN" \
+            -H 'Content-Type: application/json' \
+            --data @"$RUNNER_TEMP/release.json")"
+          case "$status" in
+            200|201) echo "The App Store accepted $TAG (HTTP $status)." ;;
+            *)
+              echo "::error::The App Store refused $TAG (HTTP $status): $(head -c 500 "$RUNNER_TEMP/answer.txt")"
+              exit 1
+              ;;
+          esac
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          DRY_RUN: ${{ steps.version.outputs.dry_run }}
+        run: |
+          {
+            if [ "$DRY_RUN" = true ]; then
+              echo "Dry run for $VERSION: packaged, signed with a throwaway key and verified. Nothing was published."
+            elif [ "$PRERELEASE" = true ]; then
+              echo "Candidate ${GITHUB_REF_NAME}: draft GitHub release with the signed tarball. The App Store was not asked."
+            else
+              echo "Release $VERSION: GitHub release and App Store."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
