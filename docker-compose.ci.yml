@@ -1,0 +1,61 @@
+# Nextcloud for the e2e journeys (tests/e2e), in CI and locally, next to the
+# Synaplan test stack of the synaplan repo (docker-compose.test.yml, API and UI
+# on host port 8001). Build js/ first; the app is mounted from this checkout.
+#
+#   NC_IMAGE=nextcloud:33-apache docker compose -f docker-compose.ci.yml up -d --wait
+#   docker compose -f docker-compose.ci.yml exec -T -u www-data nextcloud sh /mnt/synaplan_integration/docker/dev-seed.sh
+#
+# The install hooks are the dev stack's: test people ada, bob, carol
+# (<name>-dev-pass), no organisation login. From the containers Synaplan is
+# http://host.docker.internal:8001; browsers open http://localhost:8001.
+
+services:
+  nextcloud:
+    image: ${NC_IMAGE:-nextcloud:35-apache@sha256:a588aa5353703b44106a6129adaaf7bf22521b7a4754f9f529b3228d6aa390c5}
+    ports:
+      - "${NC_PORT:-8081}:80"
+    environment:
+      MYSQL_HOST: nextcloud-db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: nextcloud
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: admin
+      # The login form only accepts a trusted Origin, and the browser sends it with the port.
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost localhost:${NC_PORT:-8081} 127.0.0.1
+      OVERWRITEHOST: localhost:${NC_PORT:-8081}
+      OVERWRITEPROTOCOL: http
+      OVERWRITECLIURL: http://localhost:${NC_PORT:-8081}
+      PHP_MEMORY_LIMIT: 1G
+      NC_OIDC: "0"
+      SYNAPLAN_URL: http://host.docker.internal:${SYNAPLAN_PORT:-8001}
+      SYNAPLAN_PUBLIC_URL: http://localhost:${SYNAPLAN_PORT:-8001}
+    volumes:
+      - ./:/mnt/synaplan_integration:ro
+      - ./docker/dev-hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro
+      - ./docker/dev-hooks/post-installation:/docker-entrypoint-hooks.d/post-installation:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost/status.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+
+  nextcloud-db:
+    image: mariadb:11.4@sha256:250e1609e93c0e6aecf64bfbab2d84d5e89d2481540fe77447ff6c855c3b1873
+    command: --transaction-isolation=READ-COMMITTED
+    environment:
+      MARIADB_ROOT_PASSWORD: nextcloud-root
+      MARIADB_DATABASE: nextcloud
+      MARIADB_USER: nextcloud
+      MARIADB_PASSWORD: nextcloud
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30

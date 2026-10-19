@@ -1,4 +1,4 @@
-.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi l10n build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell help
+.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi l10n build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell e2e-up test-e2e e2e-down help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
@@ -145,6 +145,36 @@ dev-logs: docker-compose.dev.yml ## Follow the Nextcloud container logs
 
 dev-shell: docker-compose.dev.yml ## Open a shell in the Nextcloud container as www-data
 	$(COMPOSE_DEV) exec -u www-data nextcloud bash
+
+## e2e journeys (Playwright)
+# A Nextcloud from docker-compose.ci.yml on E2E_NC_PORT next to the Synaplan
+# test stack of the synaplan checkout in SYNAPLAN_DIR, run from the Synaplan
+# image pinned in CI. E2E_SYNAPLAN_FILES adds compose files to the Synaplan
+# stack, e.g. one that drops a host port that is already taken.
+
+SYNAPLAN_DIR ?= ../synaplan
+E2E_NC_PORT ?= 8091
+export APP_IMAGE ?= ghcr.io/metadist/synaplan@$(shell grep -oE 'SYNAPLAN_IMAGE_DIGEST:[[:space:]]+sha256:[a-f0-9]+' .github/workflows/ci.yml | awk '{print $$2}')
+export NC_PORT := $(E2E_NC_PORT)
+export WSLENV := $(WSLENV):APP_IMAGE:NC_PORT
+COMPOSE_E2E := docker compose -p synaplan-nextcloud-e2e -f docker-compose.ci.yml
+COMPOSE_E2E_SYNAPLAN := docker compose -p synaplan-nextcloud-e2e-synaplan \
+	-f $(SYNAPLAN_DIR)/docker-compose.test.yml \
+	-f $(SYNAPLAN_DIR)/docker-compose.test.ci.yml \
+	-f tests/e2e/synaplan-test-stack.yml $(foreach file,$(E2E_SYNAPLAN_FILES),-f $(file))
+
+e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001, Nextcloud (NC_IMAGE) on E2E_NC_PORT
+	docker pull -q $(APP_IMAGE)
+	$(COMPOSE_E2E_SYNAPLAN) up -d --wait
+	$(COMPOSE_E2E) up -d --wait
+	$(COMPOSE_E2E) exec -T -u www-data nextcloud sh /mnt/synaplan_integration/docker/dev-seed.sh
+
+test-e2e: ## Run the e2e journeys against the stacks of e2e-up
+	NC_URL=http://localhost:$(E2E_NC_PORT) npx playwright test
+
+e2e-down: ## Stop the e2e stacks and delete their data
+	$(COMPOSE_E2E) down -v
+	$(COMPOSE_E2E_SYNAPLAN) down -v
 
 ## Help
 

@@ -103,6 +103,7 @@ make test                 # PHPUnit
 make test-contract        # Every call to Synaplan against the pinned Synaplan's OpenAPI spec (Docker)
 make typecheck            # vue-tsc
 make test-unit-js         # Vitest
+make test-e2e             # Playwright journeys (see End-to-end journeys)
 make build                # Production frontend build
 make help                 # Show all available commands
 
@@ -138,6 +139,27 @@ make dev-up        # copies docker-compose.dev.yml.example (gitignored) on the f
 `make dev-down` stops the stack and keeps the volumes; `make dev-reset` deletes
 them. `make dev-occ CMD="user:list"`, `make dev-logs` and `make dev-shell` help
 while it runs.
+
+### End-to-end journeys (Playwright)
+
+The journeys in `tests/e2e` click through a real Nextcloud next to the Synaplan
+test stack: connect an account, Summarize, Translate, Chat about this file,
+Make searchable by AI, save a generated image, disconnect on either side, and
+accounts created by the administrator. CI runs them on Nextcloud 33 and 35.
+
+```bash
+npx playwright install chromium   # once
+make e2e-up       # Synaplan test stack on :8001 (pinned image, files from ../synaplan), Nextcloud on :8091
+make test-e2e     # the journeys, in order, with one browser
+make e2e-down     # stop both stacks and delete their data
+```
+
+- `NC_IMAGE=nextcloud:33-apache make e2e-up` starts the floor; `E2E_NC_PORT`
+  moves Nextcloud, `SYNAPLAN_DIR` points at another synaplan checkout.
+- The setup resets the test people, so `make test-e2e` runs again on the same
+  stacks.
+- A host port of the Synaplan test stack already taken (3308, 11434, …): put a
+  compose file that drops it in `E2E_SYNAPLAN_FILES`.
 
 ## Release
 
