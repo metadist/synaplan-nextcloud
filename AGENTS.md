@@ -35,7 +35,10 @@ PHPStan, PHPUnit, the contract test, vue-tsc, Vitest, build and package. CI
 - A new call to Synaplan needs a line in `SynaplanContractTest::callEverything()`;
   the test checks it against the Synaplan pinned in `ci.yml`
   (`SYNAPLAN_SRC_CONTAINER=synaplan-backend make test-contract` tries a local one).
-- Every user-facing string goes through `t()` / `n()`.
+- Every user-facing string goes through `t()` / `n()` and is translated in
+  `l10n/{de,de_DE,es,fr,tr}.json` in the same change (`de` is informal, `de_DE`
+  formal); `make l10n` writes the matching `.js`. `tests/unit/l10n/` fails on a
+  missing or stale string, a lost placeholder, a banned word or a drifted `.js`.
 - Never commit `js/`, tarballs or anything from `.local/` (signing keys).
 
 ## Commits

@@ -40,7 +40,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'AI-powered document summarization, translation, knowledge base, and chat for Nextcloud.',
+							'AI summaries, translations, search in your files and chat for Nextcloud.',
 						)
 					}}
 				</p>
@@ -322,7 +322,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'Lets users enrich answers with their Synaplan memories. Requires the memory service (Qdrant) to be available in Synaplan.',
+							'Lets users enrich answers with their Synaplan memories. Synaplan\u2019s memory service must be available.',
 						)
 					}}
 				</p>
@@ -343,7 +343,7 @@
 							name="sp-mode"
 							type="radio"
 							:disabled="saving">
-							{{ t('synaplan_integration', 'Shared key') }}
+							{{ t('synaplan_integration', 'One shared account') }}
 						</NcCheckboxRadioSwitch>
 						<NcCheckboxRadioSwitch
 							v-model="mode"
@@ -354,7 +354,7 @@
 							{{
 								t(
 									'synaplan_integration',
-									'Create an account for each user',
+									'Accounts created by the administrator',
 								)
 							}}
 						</NcCheckboxRadioSwitch>
@@ -367,7 +367,7 @@
 							{{
 								t(
 									'synaplan_integration',
-									'Connect existing accounts',
+									'Connect your Synaplan account',
 								)
 							}}
 						</NcCheckboxRadioSwitch>
@@ -493,7 +493,7 @@
 					{{
 						t(
 							'synaplan_integration',
-							'Nextcloud users who have activated AI. Each has their own Synaplan account, knowledge base and usage.',
+							'Nextcloud users who have activated AI. Each has their own Synaplan account, files and usage.',
 						)
 					}}
 				</p>
@@ -553,10 +553,10 @@
 								<span v-if="u.kind" class="sp-kind-badge">
 									{{
 										u.kind === 'linked'
-											? t('synaplan_integration', 'Linked')
+											? t('synaplan_integration', 'Connected')
 											: t(
 													'synaplan_integration',
-													'Provisioned',
+													'Created for them',
 												)
 									}}
 								</span>

@@ -21,7 +21,7 @@ const SUPPORTED_MIMES = [
 
 export const chatAction: IFileAction = {
 	id: 'synaplan:knowledge',
-	displayName: () => t('synaplan_integration', 'Add to AI Knowledge'),
+	displayName: () => t('synaplan_integration', 'Make searchable by AI'),
 	iconSvgInline: () => DatabasePlusOutlineSvg,
 
 	enabled(...args: unknown[]) {

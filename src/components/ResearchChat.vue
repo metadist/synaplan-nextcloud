@@ -18,13 +18,13 @@
 			<div class="controls-bar">
 				<div class="control-group">
 					<label class="control-label">{{
-						t('synaplan_integration', 'Knowledge')
+						t('synaplan_integration', 'Knowledge folder')
 					}}</label>
 					<NcSelect
 						v-model="selectedGroup"
 						:options="groupOptions"
 						:placeholder="
-							t('synaplan_integration', 'No knowledge group')
+							t('synaplan_integration', 'No knowledge folder')
 						"
 						:clearable="true"
 						:loading="loadingGroups"
@@ -107,7 +107,7 @@
 				<span
 					v-if="selectedGroup"
 					class="status-chip on"
-					:title="t('synaplan_integration', 'Knowledge base')">
+					:title="t('synaplan_integration', 'Knowledge folder')">
 					<span class="chip-icon">&#128218;</span>
 					{{ selectedGroup }}
 				</span>
@@ -121,7 +121,7 @@
 				{{
 					t(
 						'synaplan_integration',
-						'No knowledge folders yet. Add documents to one via a file\u2019s menu → Synaplan → Add to AI Knowledge.',
+						'No knowledge folders yet. Right-click a file and choose Make searchable by AI.',
 					)
 				}}
 			</p>
@@ -133,7 +133,7 @@
 						{{
 							t(
 								'synaplan_integration',
-								'Ask questions about your "{group}" knowledge base.',
+								'Ask questions about the files in "{group}".',
 								{ group: selectedGroup },
 							)
 						}}
@@ -504,7 +504,7 @@ function startThinkingStages() {
 	stopThinkingStages()
 	const stages: string[] = [t('synaplan_integration', 'Sorting your request…')]
 	if (selectedGroup.value) {
-		stages.push(t('synaplan_integration', 'Searching the knowledge base…'))
+		stages.push(t('synaplan_integration', 'Searching your knowledge folder…'))
 	}
 	if (useMemories.value && memoryAvailable.value) {
 		stages.push(t('synaplan_integration', 'Recalling your memories…'))
