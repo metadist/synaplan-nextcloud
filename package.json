@@ -6,12 +6,13 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "eslint src/ tests/unit/",
-    "lint:fix": "eslint src/ tests/unit/ --fix",
-    "format": "prettier --write src/ tests/unit/ vitest.config.ts",
-    "format:check": "prettier --check src/ tests/unit/ vitest.config.ts",
-    "check:types": "vue-tsc --noEmit",
-    "test:unit": "vitest run"
+    "lint": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts",
+    "lint:fix": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts --fix",
+    "format": "prettier --write src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",
+    "format:check": "prettier --check src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",
+    "check:types": "vue-tsc --noEmit && vue-tsc --noEmit -p tests/e2e",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test"
   },
   "prettier": "@nextcloud/prettier-config",
   "overrides": {
@@ -33,6 +34,7 @@
     "@nextcloud/eslint-config": "^8.4.1",
     "@nextcloud/prettier-config": "^1.2.0",
     "@nextcloud/vite-config": "^2.3.0",
+    "@playwright/test": "1.64.0",
     "happy-dom": "21.0.1",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",

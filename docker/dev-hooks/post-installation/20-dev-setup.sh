@@ -26,9 +26,10 @@ occ config:system:set mail_from_address --value nextcloud
 occ config:system:set mail_domain --value example.org
 
 # The app talks to Synaplan inside Docker; people's browsers use the Vite UI.
+# The e2e stack (docker-compose.ci.yml) points both at the Synaplan test stack.
 occ config:app:set synaplan_integration active_env --value local
-occ config:app:set synaplan_integration synaplan_url_local --value http://backend
-occ config:app:set synaplan_integration synaplan_public_url_local --value http://localhost:5173
+occ config:app:set synaplan_integration synaplan_url_local --value "${SYNAPLAN_URL:-http://backend}"
+occ config:app:set synaplan_integration synaplan_public_url_local --value "${SYNAPLAN_PUBLIC_URL:-http://localhost:5173}"
 
 # The test people of the cloud journeys; ada and bob match the Keycloak users.
 for person in ada:Ada:ada@example.org bob:Bob:bob@example.org carol:Carol:carol@example.org; do
