@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Service\AdminAiUsersService;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -112,6 +114,28 @@ class AdminAiUsersServiceTest extends TestCase
             ->with('alice');
 
         $this->service->deactivate('alice');
+    }
+
+    /**
+     * @return iterable<string, array{?string}>
+     */
+    public static function kinds(): iterable
+    {
+        yield 'connected their account' => [UserAccountService::KIND_LINKED];
+        yield 'account created by the app' => [UserAccountService::KIND_PROVISIONED];
+        yield 'no key yet' => [null];
+    }
+
+    #[DataProvider('kinds')]
+    public function testDeactivateRevokesTheKeyInSynaplanForEveryone(?string $kind): void
+    {
+        $this->userAccounts->method('getLinkKind')->willReturn($kind);
+        $this->userAccounts->expects($this->never())->method('deactivateUser');
+        $platformLinks = $this->createMock(PlatformLinkService::class);
+        $platformLinks->expects($this->once())->method('disconnectUid')->with('alice');
+        $service = new AdminAiUsersService($this->config, $this->userManager, $this->userAccounts, $platformLinks);
+
+        $service->deactivate('alice');
     }
 
     public function testUsageWithoutAccountReturnsError(): void

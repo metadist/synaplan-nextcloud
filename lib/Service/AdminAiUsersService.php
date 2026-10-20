@@ -55,12 +55,13 @@ class AdminAiUsersService
     }
 
     /**
-     * Admin: deactivate AI for a user (withdraw consent + forget their key).
+     * Admin: deactivate AI for a user. Their key is revoked in Synaplan,
+     * whether they connected their own account or the app created it, then
+     * consent and key are forgotten here.
      */
     public function deactivate(string $uid): void
     {
-        if ($this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED
-            && $this->platformLinks !== null) {
+        if ($this->platformLinks !== null) {
             $this->platformLinks->disconnectUid($uid);
 
             return;
