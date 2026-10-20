@@ -50,6 +50,9 @@ folded in here.
 - A `/pic` or `/vid` typed right after opening the AI chat is no longer
   refused as "not available": the chat waits until it knows whether image and
   video generation are available.
+- **Deactivate** in the admin's AI Users panel revokes the person's key in
+  Synaplan for accounts the app created, too. Before, Nextcloud forgot the key
+  but it stayed valid in Synaplan.
 
 ### Upgrade notes
 - Going back to 1.6 after 1.7.0 is not supported: 1.6 cannot read the
