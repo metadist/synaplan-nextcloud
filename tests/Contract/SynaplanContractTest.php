@@ -66,8 +66,9 @@ final class SynaplanContractTest extends TestCase
         'per_user_accounts' => '1',
     ];
 
+    /** Ada activated AI, so her calls go out with her own key. */
     /** @var array<string, string> */
-    private array $userConfig = [];
+    private array $userConfig = ['ada|synaplan_user_api_key' => 'sk_ada'];
 
     public function testEveryCallIsAcceptedByThePinnedSynaplan(): void
     {

@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\AppInfo;
 
+use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\User\Events\BeforeUserDeletedEvent;
-use OCP\Util;
 
 class Application extends App implements IBootstrap
 {
@@ -28,16 +29,11 @@ class Application extends App implements IBootstrap
         // When a Nextcloud user is deleted, cascade-delete their Synaplan
         // account (per-user mode) so no orphaned external data remains.
         $context->registerEventListener(BeforeUserDeletedEvent::class, UserDeletedListener::class);
+        $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);
     }
 
     public function boot(IBootContext $context): void
     {
-        // Load file actions script in the Files app
-        Util::addScript(self::APP_ID, 'synaplan_integration-files-init');
-
-        // Floating in-page chat launcher (bottom-right button -> chat window)
-        Util::addScript(self::APP_ID, 'synaplan_integration-chat-launcher');
-
         // Register top-level navigation entry
         $context->getAppContainer()->get(INavigationManager::class)->add(function () use ($context) {
             $urlGenerator = $context->getAppContainer()->get(IURLGenerator::class);

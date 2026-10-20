@@ -183,14 +183,15 @@ class ChatControllerTest extends TestCase
         $this->assertSame(404, $response->getStatus());
     }
 
-    public function testChatApiError(): void
+    public function testChatApiErrorKeepsTheExceptionInTheLog(): void
     {
         $this->synaplanClient->method('chat')
-            ->willThrowException(new \RuntimeException('Timeout'));
+            ->willThrowException(new \RuntimeException('Timeout at http://backend/v1/chat/completions'));
+        $this->logger->expects($this->once())->method('error');
 
         $response = $this->controller->chat('Hello');
 
         $this->assertSame(500, $response->getStatus());
-        $this->assertStringContainsString('Timeout', $response->getData()['error']);
+        $this->assertSame(['success' => false, 'error' => 'unexpected'], $response->getData());
     }
 }

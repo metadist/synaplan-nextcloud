@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Http\SseProxyResponse;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
@@ -28,6 +29,8 @@ use Psr\Log\LoggerInterface;
  */
 class ChatController extends Controller
 {
+    use RespondsToFailures;
+
     /** Max text to include as context (50 KB). */
     private const MAX_CONTEXT_SIZE = 50 * 1024;
 
@@ -87,21 +90,8 @@ class ChatController extends Controller
                 'response' => $answer,
                 'deepLink' => $this->synaplanClient->getPublicBaseUrl(),
             ]);
-        } catch (NotFoundException $e) {
-            return new JSONResponse(
-                ['success' => false, 'error' => 'File not found'],
-                Http::STATUS_NOT_FOUND,
-            );
         } catch (\Exception $e) {
-            $this->logger->error('Chat failed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return new JSONResponse(
-                ['success' => false, 'error' => $e->getMessage()],
-                Http::STATUS_INTERNAL_SERVER_ERROR,
-            );
+            return $this->failed($e, 'Chat failed');
         }
     }
 
@@ -150,25 +140,13 @@ class ChatController extends Controller
 
             return new SseProxyResponse(
                 $this->synaplanClient->getBaseUrl() . '/v1/chat/completions',
-                $this->synaplanClient->getApiKey(),
+                $this->synaplanClient->requireApiKey(),
                 (string) json_encode($payload),
                 $this->logger,
-            );
-        } catch (NotFoundException $e) {
-            return new JSONResponse(
-                ['success' => false, 'error' => 'File not found'],
-                Http::STATUS_NOT_FOUND,
+                fn () => $this->synaplanClient->keyRefused(),
             );
         } catch (\Exception $e) {
-            $this->logger->error('Chat stream failed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return new JSONResponse(
-                ['success' => false, 'error' => $e->getMessage()],
-                Http::STATUS_INTERNAL_SERVER_ERROR,
-            );
+            return $this->failed($e, 'Chat stream failed');
         }
     }
 

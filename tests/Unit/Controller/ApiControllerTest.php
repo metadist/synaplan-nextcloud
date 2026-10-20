@@ -155,8 +155,8 @@ class ApiControllerTest extends TestCase
 
         $response = $this->controller->summarize(42);
 
-        $this->assertSame(500, $response->getStatus());
-        $this->assertStringContainsString('Unsupported file type', $response->getData()['error']);
+        $this->assertSame(415, $response->getStatus());
+        $this->assertSame('unsupported_type', $response->getData()['error']);
     }
 
     public function testSummarizeFileTooLarge(): void
@@ -165,8 +165,8 @@ class ApiControllerTest extends TestCase
 
         $response = $this->controller->summarize(42);
 
-        $this->assertSame(500, $response->getStatus());
-        $this->assertStringContainsString('too large', $response->getData()['error']);
+        $this->assertSame(413, $response->getStatus());
+        $this->assertSame('file_too_large', $response->getData()['error']);
     }
 
     public function testSummarizeApiError(): void
@@ -179,7 +179,7 @@ class ApiControllerTest extends TestCase
         $response = $this->controller->summarize(42);
 
         $this->assertSame(500, $response->getStatus());
-        $this->assertSame('API timeout', $response->getData()['error']);
+        $this->assertSame(['success' => false, 'error' => 'unexpected'], $response->getData());
     }
 
     // ── Translate ────────────────────────────────────────────────
@@ -231,7 +231,7 @@ class ApiControllerTest extends TestCase
         $response = $this->controller->translate(42, 'es');
 
         $this->assertSame(500, $response->getStatus());
-        $this->assertStringContainsString('Rate limited', $response->getData()['error']);
+        $this->assertSame(['success' => false, 'error' => 'unexpected'], $response->getData());
     }
 
     // ── Upload to Knowledge ─────────────────────────────────────
@@ -278,6 +278,34 @@ class ApiControllerTest extends TestCase
         $this->assertSame('TESTGROUP', $data['groupKey']);
         $this->assertSame(1, $data['chunksCreated']);
         $this->assertTrue($data['vectorized']);
+    }
+
+    public function testAFileSynaplanRefusesIsAFailureWithSynaplansReason(): void
+    {
+        $user = $this->createMock(IUser::class);
+        $user->method('getUID')->willReturn('testuser');
+        $this->userSession->method('getUser')->willReturn($user);
+        $file = $this->createMock(File::class);
+        $file->method('getContent')->willReturn('Hello world');
+        $file->method('getName')->willReturn('test.txt');
+        $file->method('getSize')->willReturn(11);
+        $userFolder = $this->createMock(Folder::class);
+        $userFolder->method('getFirstNodeById')->willReturn($file);
+        $this->rootFolder->method('getUserFolder')->willReturn($userFolder);
+        $this->synaplanClient->method('uploadFile')->willReturn([
+            'success' => false,
+            'files' => [],
+            'errors' => [['filename' => 'test.txt', 'error' => 'Storage limit reached. Delete files or upgrade your plan.']],
+        ]);
+
+        $response = $this->controller->uploadToKnowledge(42, 'DOCS');
+
+        $this->assertSame(422, $response->getStatus());
+        $this->assertSame([
+            'success' => false,
+            'error' => 'synaplan_rejected',
+            'message' => 'Storage limit reached. Delete files or upgrade your plan.',
+        ], $response->getData());
     }
 
     public function testUploadToKnowledgeFileNotFound(): void

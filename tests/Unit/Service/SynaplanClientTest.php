@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -12,6 +13,7 @@ use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\IConfig;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -412,12 +414,179 @@ class SynaplanClientTest extends TestCase
 
         $this->httpClient->expects($this->once())
             ->method('get')
-            ->willThrowException(new \Exception('401 Unauthorized'));
+            ->willThrowException(new \Exception('401 Unauthorized', 401));
 
         $client = $this->makeClient($config);
 
-        $this->expectException(\Exception::class);
-        $client->healthCheck();
+        try {
+            $client->healthCheck();
+            self::fail('A refused linked key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame('not_connected', $e->failure->code);
+        }
+    }
+
+    public function testWithoutALinkedKeyNothingIsSent(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->never())->method('post');
+
+        try {
+            $this->makeClient($this->modeConfig('link'))->summarize('Notes');
+            self::fail('Summarize without a key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testTranslateWithoutAKeyAsksSynaplanNothing(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->never())->method('get');
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->expectExceptionObject(FailureException::notConnected());
+        $this->makeClient($this->modeConfig('link'))->translate('Notes', 'de');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function directCalls(): iterable
+    {
+        yield 'upload' => ['upload'];
+        yield 'media' => ['media'];
+        yield 'download' => ['download'];
+    }
+
+    #[DataProvider('directCalls')]
+    public function testAKeyRefusedOnADirectCallAsksALinkedPersonToConnectAgain(string $call): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn('sk_revoked');
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->once())->method('clearLinkPrefs');
+        $refused = new \Exception('Client error: `POST http://backend/api/v1/files/upload` resulted in a `401 Unauthorized` response', 401);
+        $this->httpClient->method('post')->willThrowException($refused);
+        $this->httpClient->method('get')->willThrowException($refused);
+        $client = $this->makeClient($this->modeConfig('link'));
+
+        try {
+            match ($call) {
+                'upload' => $client->uploadFile('notes.txt', 'Notes', 'DOCS'),
+                'media' => $client->generateMedia('A cat', 'image'),
+                default => $client->downloadFile('/api/v1/files/uploads/7/cat.png'),
+            };
+            self::fail('A refused key must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([409, 'not_connected'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{\Exception}>
+     */
+    public static function failuresThatMention401(): iterable
+    {
+        yield 'a 404 for a path with 401' => [new \Exception(
+            'Client error: `GET http://backend/api/v1/files/uploads/401/cat.png` resulted in a `404 Not Found` response',
+            404,
+        )];
+        yield 'a connection failure on port 4010' => [new \Exception(
+            'cURL error 7: Failed to connect to backend port 4010: Connection refused',
+        )];
+    }
+
+    #[DataProvider('failuresThatMention401')]
+    public function testOnlyA401ForgetsTheLinkedKey(\Exception $failure): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn('sk_linked');
+        $this->userAccounts->expects($this->never())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->never())->method('clearLinkPrefs');
+        $this->httpClient->method('get')->willThrowException($failure);
+        $this->httpClient->method('post')->willThrowException($failure);
+        $client = $this->makeClient($this->modeConfig('link'));
+
+        foreach ([
+            fn () => $client->downloadFile('/api/v1/files/uploads/401/cat.png'),
+            fn () => $client->uploadFile('notes.txt', 'Notes', 'DOCS'),
+            fn () => $client->summarize('Notes'),
+        ] as $call) {
+            $caught = null;
+            try {
+                $call();
+            } catch (\Exception $e) {
+                $caught = $e;
+            }
+            self::assertSame($failure, $caught);
+        }
+    }
+
+    public function testWithoutAKeyAProvisionedPersonIsAskedToActivateFirst(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->userAccounts->method('hasConsentForCurrentUser')->willReturn(false);
+
+        $this->expectExceptionObject(FailureException::consentRequired());
+        $this->makeClient($this->modeConfig('provision'))->requireApiKey();
+    }
+
+    public function testAnActivatedPersonWithoutAKeyIsToldTheAccountIsUnavailable(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->userAccounts->method('hasConsentForCurrentUser')->willReturn(true);
+
+        try {
+            $this->makeClient($this->modeConfig('provision'))->requireApiKey();
+            self::fail('A missing key after consent must fail.');
+        } catch (FailureException $e) {
+            self::assertSame([502, 'account_unavailable'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testTheHealthCheckNeedsNoKey(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->httpClient->expects($this->once())->method('get')->willReturn($this->json(['status' => 'ok']));
+
+        $this->assertSame('ok', $this->makeClient($this->modeConfig('link'))->healthCheck()['status']);
+    }
+
+    public function testAKeyRefusedInAStreamAsksALinkedPersonToConnectAgain(): void
+    {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->expects($this->once())->method('clearCurrentUserApiKey');
+        $this->userAccounts->expects($this->once())->method('clearLinkPrefs');
+
+        $this->assertSame('not_connected', $this->makeClient($this->modeConfig('link'))->keyRefused()->code);
+    }
+
+    public function testAKeyRefusedInAStreamIsTheAdministratorsMatterInSharedMode(): void
+    {
+        $this->userAccounts->expects($this->never())->method('clearCurrentUserApiKey');
+
+        $this->assertSame('synaplan_key_rejected', $this->synaplanClient->keyRefused()->code);
+    }
+
+    private function modeConfig(string $mode): IConfig
+    {
+        $config = $this->createMock(IConfig::class);
+        $config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => match ($key) {
+                'mode' => $mode,
+                'synaplan_url' => 'http://localhost:8000',
+                'api_key' => 'sk_admin',
+                default => $default,
+            },
+        );
+
+        return $config;
     }
 
     public function testProvisionMode401StillRetriesOnce(): void
@@ -447,7 +616,7 @@ class SynaplanClientTest extends TestCase
             ->willReturnCallback(function () use (&$calls, $ok): IResponse {
                 ++$calls;
                 if ($calls === 1) {
-                    throw new \Exception('401 Unauthorized');
+                    throw new \Exception('401 Unauthorized', 401);
                 }
 
                 return $ok;

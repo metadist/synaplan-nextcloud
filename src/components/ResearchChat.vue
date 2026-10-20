@@ -260,9 +260,7 @@
 			</div>
 
 			<!-- Error -->
-			<NcNoteCard v-if="error" type="error">
-				{{ error }}
-			</NcNoteCard>
+			<FailureNote :failure="failure" />
 
 			<!-- Input -->
 			<div class="chat-input">
@@ -323,16 +321,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue'
-import axios, { isAxiosError } from '@nextcloud/axios'
+import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
+import FailureNote from './FailureNote.vue'
+import { streamChat } from '../chat/stream'
+import { describeFailure, failureFromError, type Failure } from '../failures'
 
 interface MediaInfo {
 	url: string
@@ -373,7 +373,8 @@ const loading = ref(false)
 const streaming = ref(false)
 const loadingGroups = ref(false)
 const loadingModels = ref(false)
-const error = ref('')
+let modelsLoaded: Promise<void> = Promise.resolve()
+const failure = ref<Failure | null>(null)
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -579,25 +580,35 @@ async function sendMessage() {
 
 	const { command, prompt } = parseCommand(text)
 
+	// Send works before the capabilities arrive; judge a command only after.
+	if (command) {
+		loading.value = true
+		await modelsLoaded
+		loading.value = false
+	}
 	if (command === 'pic' && !capabilities.value.image) {
-		error.value = t(
-			'synaplan_integration',
-			'Image generation is not available. No image models are configured.',
-		)
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Image generation is not available. No image models are configured.',
+			),
+		}
 		return
 	}
 	if (command === 'vid' && !capabilities.value.video) {
-		error.value = t(
-			'synaplan_integration',
-			'Video generation is not available. No video models are configured.',
-		)
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Video generation is not available. No video models are configured.',
+			),
+		}
 		return
 	}
 
 	messages.value.push({ role: 'user', text })
 	inputMessage.value = ''
 	loading.value = true
-	error.value = ''
+	failure.value = null
 	await scrollToBottom()
 
 	if (command) {
@@ -657,34 +668,19 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 				},
 			})
 		} else {
-			error.value =
-				data.error ?? t('synaplan_integration', 'Media generation failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
+		failure.value = failureFromError(err)
 	} finally {
 		loadingText.value = t('synaplan_integration', 'Thinking...')
 	}
 }
 
 /**
- *
- * @param text
- */
-/**
- * Read Nextcloud's CSRF request token from the document head (the same source
- * the Nextcloud auth helper uses) so plain fetch() calls pass CSRF checks.
- */
-function getCsrfToken(): string {
-	const head = document.getElementsByTagName('head')[0]
-	return head?.getAttribute('data-requesttoken') ?? ''
-}
-
-/**
  * Stream a chat answer token-by-token from the SSE proxy, appending deltas to a
- * live assistant message. Falls back to the blocking endpoint on any failure.
+ * live assistant message. Falls back to the blocking endpoint when no answer
+ * could be streamed.
  *
  * @param text The user's question
  */
@@ -719,77 +715,14 @@ async function handleChatMessage(text: string) {
 	}
 
 	try {
-		const response = await fetch(`${baseUrl}/api/v1/chat/stream`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Accept: 'text/event-stream',
-				requesttoken: getCsrfToken(),
-			},
-			body: JSON.stringify(payload),
-		})
-
-		if (!response.ok || !response.body) {
-			await handleChatMessageBlocking(payload)
-			return
-		}
-
-		const reader = response.body.getReader()
-		const decoder = new TextDecoder()
-		let buffer = ''
-		let streamError = ''
-
-		for (;;) {
-			const { value, done } = await reader.read()
-			if (done) {
-				break
-			}
-			buffer += decoder.decode(value, { stream: true })
-
-			const events = buffer.split('\n\n')
-			buffer = events.pop() ?? ''
-
-			for (const event of events) {
-				const dataLine = event
-					.split('\n')
-					.find((line) => line.startsWith('data:'))
-				if (!dataLine) {
-					continue
-				}
-				const data = dataLine.slice(5).trim()
-				if (data === '' || data === '[DONE]') {
-					continue
-				}
-				try {
-					const json = JSON.parse(data)
-					if (json.error) {
-						streamError = json.error.message || ''
-						continue
-					}
-					const delta = json.choices?.[0]?.delta?.content
-					if (typeof delta === 'string' && delta.length > 0) {
-						appendDelta(
-							delta,
-							typeof json.model === 'string' ? json.model : undefined,
-						)
-					}
-				} catch {
-					// Ignore keep-alives and partial frames.
-				}
-			}
-		}
-
-		if (assistantIndex === -1) {
-			if (streamError) {
-				error.value = streamError
-			} else {
-				await handleChatMessageBlocking(payload)
-			}
-		} else if (streamError) {
-			error.value = streamError
-		}
-	} catch {
-		if (assistantIndex === -1) {
+		const outcome = await streamChat(
+			`${baseUrl}/api/v1/chat/stream`,
+			payload,
+			appendDelta,
+		)
+		if (outcome.kind === 'failed') {
+			failure.value = describeFailure(outcome.code, outcome.message)
+		} else if (outcome.kind === 'unavailable' && assistantIndex === -1) {
 			await handleChatMessageBlocking(payload)
 		}
 	} finally {
@@ -810,12 +743,10 @@ async function handleChatMessageBlocking(payload: Record<string, unknown>) {
 		if (data.success) {
 			messages.value.push({ role: 'assistant', text: data.response })
 		} else {
-			error.value = data.error || t('synaplan_integration', 'Request failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
+		failure.value = failureFromError(err)
 	}
 }
 
@@ -828,7 +759,7 @@ async function saveMedia(messageIdx: number) {
 	if (!msg?.media || msg.media.saved || msg.media.saving) return
 
 	msg.media.saving = true
-	error.value = ''
+	failure.value = null
 
 	try {
 		const { data } = await axios.post(`${baseUrl}/api/v1/media/save`, {
@@ -840,12 +771,10 @@ async function saveMedia(messageIdx: number) {
 			msg.media.saved = true
 			msg.media.savedPath = data.path
 		} else {
-			error.value = data.error ?? t('synaplan_integration', 'Save failed')
+			failure.value = describeFailure(data.error, data.message)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Save failed')
+		failure.value = failureFromError(err)
 	} finally {
 		msg.media.saving = false
 	}
@@ -861,13 +790,13 @@ function onAiBlockedChange(value: boolean) {
  */
 function onConsentGranted() {
 	loadGroups()
-	loadModels()
+	modelsLoaded = loadModels()
 	loadClientConfig()
 }
 
 onMounted(() => {
 	loadGroups()
-	loadModels()
+	modelsLoaded = loadModels()
 	loadClientConfig()
 })
 </script>

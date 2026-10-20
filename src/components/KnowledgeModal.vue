@@ -207,9 +207,7 @@
 				</div>
 
 				<!-- Error -->
-				<NcNoteCard v-if="error" type="error">
-					{{ error }}
-				</NcNoteCard>
+				<FailureNote :failure="failure" />
 
 				<!-- File info -->
 				<div class="file-info">
@@ -257,7 +255,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import axios, { isAxiosError } from '@nextcloud/axios'
+import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import { showError } from '@nextcloud/dialogs'
@@ -267,6 +265,8 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
+import FailureNote from './FailureNote.vue'
+import { describeFailure, failureFromError, type Failure } from '../failures'
 
 const props = defineProps<{
 	fileId: number
@@ -281,7 +281,7 @@ const opened = ref(true)
 const aiBlocked = ref(false)
 const loading = ref(false)
 const loadingGroups = ref(false)
-const error = ref('')
+const failure = ref<Failure | null>(null)
 const selectedGroup = ref('')
 const groupOptions = ref<string[]>([])
 const uploadSuccess = ref(false)
@@ -397,7 +397,7 @@ async function removeFromKnowledge() {
 	if (removing.value || loading.value) return
 
 	removing.value = true
-	error.value = ''
+	failure.value = null
 	try {
 		const { data } = await axios.delete(
 			`${baseUrl}/api/v1/knowledge/${props.fileId}`,
@@ -407,14 +407,12 @@ async function removeFromKnowledge() {
 			inKnowledge.value = false
 			isStale.value = false
 		} else {
-			error.value = data.error || t('synaplan_integration', 'Remove failed')
-			showError(error.value)
+			failure.value = describeFailure(data.error, data.message)
+			showError(failure.value.text)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
-		showError(error.value)
+		failure.value = failureFromError(err)
+		showError(failure.value.text)
 	} finally {
 		removing.value = false
 	}
@@ -440,7 +438,7 @@ async function uploadFile() {
 	if (!selectedGroup.value || loading.value) return
 
 	loading.value = true
-	error.value = ''
+	failure.value = null
 	startTimer()
 
 	try {
@@ -458,20 +456,20 @@ async function uploadFile() {
 		} else if (data.success) {
 			// The server accepted the file but stored zero chunks. Surface this
 			// as a failure instead of a misleading green success screen.
-			error.value = t(
-				'synaplan_integration',
-				'No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.',
-			)
-			showError(error.value)
+			failure.value = {
+				text: t(
+					'synaplan_integration',
+					'No text could be indexed (0 chunks created). The file may be empty or image-only, or the embedding service may be unavailable. Please check the document and try again.',
+				),
+			}
+			showError(failure.value.text)
 		} else {
-			error.value = data.error || t('synaplan_integration', 'Upload failed')
-			showError(error.value)
+			failure.value = describeFailure(data.error, data.message)
+			showError(failure.value.text)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
-		showError(error.value)
+		failure.value = failureFromError(err)
+		showError(failure.value.text)
 	} finally {
 		stopTimer()
 		loading.value = false

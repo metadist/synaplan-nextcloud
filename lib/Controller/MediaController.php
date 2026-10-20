@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -23,6 +24,8 @@ use Psr\Log\LoggerInterface;
  */
 class MediaController extends Controller
 {
+    use RespondsToFailures;
+
     private const SYNAPLAN_FOLDER = 'Synaplan';
 
     /**
@@ -99,15 +102,7 @@ class MediaController extends Controller
                 'model' => $result['model'] ?? 'unknown',
             ]);
         } catch (\Exception $e) {
-            $this->logger->error('Media generation failed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return new JSONResponse(
-                ['success' => false, 'error' => $e->getMessage()],
-                Http::STATUS_INTERNAL_SERVER_ERROR,
-            );
+            return $this->failed($e, 'Media generation failed');
         }
     }
 
@@ -179,15 +174,7 @@ class MediaController extends Controller
                 'folder' => $targetFolderPath,
             ]);
         } catch (\Exception $e) {
-            $this->logger->error('Media save failed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return new JSONResponse(
-                ['success' => false, 'error' => 'Failed to save file: ' . $e->getMessage()],
-                Http::STATUS_INTERNAL_SERVER_ERROR,
-            );
+            return $this->failed($e, 'Media save failed');
         }
     }
 
@@ -223,15 +210,7 @@ class MediaController extends Controller
 
             return new DataDownloadResponse($content, $filename, $mimeType);
         } catch (\Exception $e) {
-            $this->logger->error('Media proxy failed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return new JSONResponse(
-                ['error' => 'Failed to proxy file'],
-                Http::STATUS_INTERNAL_SERVER_ERROR,
-            );
+            return $this->failed($e, 'Media proxy failed');
         }
     }
 

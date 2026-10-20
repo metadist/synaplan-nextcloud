@@ -58,9 +58,7 @@
 			</div>
 
 			<!-- Error -->
-			<NcNoteCard v-if="error" type="error">
-				{{ error }}
-			</NcNoteCard>
+			<FailureNote :failure="failure" />
 		</div>
 
 		<template #actions>
@@ -86,16 +84,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import axios, { isAxiosError } from '@nextcloud/axios'
+import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import { showError } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
+import FailureNote from './FailureNote.vue'
+import { describeFailure, failureFromError, type Failure } from '../failures'
 
 const props = defineProps<{
 	fileId: number
@@ -109,7 +108,7 @@ const emit = defineEmits<{
 const opened = ref(true)
 const loading = ref(false)
 const result = ref('')
-const error = ref('')
+const failure = ref<Failure | null>(null)
 const copied = ref(false)
 const aiBlocked = ref(false)
 
@@ -174,7 +173,7 @@ onMounted(() => {
  */
 async function doSummarize() {
 	loading.value = true
-	error.value = ''
+	failure.value = null
 	result.value = ''
 
 	try {
@@ -190,15 +189,12 @@ async function doSummarize() {
 		if (data.success) {
 			result.value = data.summary
 		} else {
-			error.value =
-				data.error || t('synaplan_integration', 'Summarization failed')
-			showError(error.value)
+			failure.value = describeFailure(data.error, data.message)
+			showError(failure.value.text)
 		}
 	} catch (err: unknown) {
-		error.value = isAxiosError(err)
-			? err.response?.data?.error || err.message
-			: t('synaplan_integration', 'Unknown error')
-		showError(error.value)
+		failure.value = failureFromError(err)
+		showError(failure.value.text)
 	} finally {
 		loading.value = false
 	}
