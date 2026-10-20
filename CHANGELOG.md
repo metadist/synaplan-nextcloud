@@ -6,15 +6,63 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 1.6.1 – Unreleased
+## 1.7.0 – 2026-10-19
+
+The first release in the App Store since 1.5.0. It also brings everything
+listed under 1.6.0, which was never published there, and the planned 1.6.1,
+folded in here.
+
+### Added
+- **Five languages.** German in the informal (`de`) and the formal (`de_DE`)
+  form, Spanish, French and Turkish, next to English. The formal German of
+  earlier versions moves to `de_DE`.
+- **Honest answers when something fails.** Every Files action and the chat say
+  in one sentence what went wrong and what to do, for example
+  "Connect your Synaplan account first." with a link to the settings, or
+  "Synaplan cannot be reached. Try again in a minute, or ask your
+  administrator." No error code and no exception message reach the screen;
+  they go to the Nextcloud log.
 
 ### Changed
-- **Nextcloud 33 to 35.** Nextcloud 35 joins the supported range. Nextcloud 30
-  to 32 no longer get maintenance releases; installations there keep 1.6.0,
-  which the App Store still offers them.
+- **Keys are stored encrypted.** Each person's Synaplan key and the admin keys
+  are now sensitive values that Nextcloud encrypts. Keys stored in plain text
+  by earlier versions are encrypted the first time they are used. A key that
+  no longer decrypts counts as no key: a linked person sees Connect again.
+- **Translate uses Synaplan's translation mode**, so it translates the whole
+  text instead of writing a long summary in the target language. Against a
+  Synaplan without that mode it works as before.
+- **The core's words.** "Make searchable by AI" replaces "Add to AI
+  Knowledge", "knowledge folder" replaces "knowledge group", and the
+  connection modes are "One shared account", "Accounts created by the
+  administrator" and "Connect your Synaplan account".
+- **Only signed-in pages load the app.** The login page and public share
+  pages no longer load the chat button or the Files actions.
+- **Nextcloud 33 to 35** (planned for 1.6.1). Nextcloud 35 joins the supported
+  range. Nextcloud 30 to 32 keep 1.5.0, which the App Store offers them.
 - Controllers declare who may call each route with PHP attributes instead of
-  the docblock annotations Nextcloud deprecated. Access is unchanged, and a
-  test now pins it for every route.
+  the docblock annotations Nextcloud deprecated (planned for 1.6.1). Access is
+  unchanged, and a test pins it for every route.
+
+### Fixed
+- Only a refused key (HTTP 401) makes the app forget a person's key. A 404 for
+  a path that contains "401", or a connection error, no longer disconnects
+  them.
+- A `/pic` or `/vid` typed right after opening the AI chat is no longer
+  refused as "not available": the chat waits until it knows whether image and
+  video generation are available.
+- **Deactivate** in the admin's AI Users panel revokes the person's key in
+  Synaplan for accounts the app created, too. Before, Nextcloud forgot the key
+  but it stayed valid in Synaplan.
+
+### Upgrade notes
+- Going back to 1.6 after 1.7.0 is not supported: 1.6 cannot read the
+  encrypted admin key. If you do, enter the admin key again.
+
+### Development
+- Releases come from CI: a tag on a green `main` commit builds, signs and
+  publishes them.
+- CI clicks through the main journeys on Nextcloud 33 and 35 before every
+  merge.
 
 ## 1.6.0 – 2026-09-15
 

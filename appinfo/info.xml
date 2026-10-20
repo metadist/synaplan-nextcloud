@@ -3,20 +3,22 @@
 	  xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>synaplan_integration</id>
 	<name>Synaplan Integration</name>
-	<summary>AI-powered document summarization, translation, knowledge base, and chat</summary>
+	<summary>Summaries, translations, chat and AI search for your files, powered by Synaplan</summary>
 	<description><![CDATA[
-Bring Synaplan's AI capabilities directly into Nextcloud:
+Bring Synaplan's AI into Nextcloud Files:
 
-- **Summarize** documents with one click
-- **Translate** files to multiple languages
-- **Add to Knowledge** — vectorize files into the AI knowledge base
-- **Research Chat** — AI assistant with knowledge group and model selection, optional personal memories, and live status (model, language, image/video capabilities)
-- **Configurable answer language** — set a default language and optionally follow each user's Nextcloud interface language
-- **Connect an existing Synaplan account** — users sign in once and Nextcloud AI actions run as them
+- **Summarize** a document with one click
+- **Translate** a file into another language
+- **Chat about this file**: ask questions about one document
+- **Make searchable by AI**: the AI finds the file when you ask a question, in the chat or in Synaplan
+- **AI chat** with a knowledge folder and model of your choice, optional personal memories, and live status (model, language, images and videos)
+- **Answer language**: a default language, or each person's Nextcloud language
+- **Connect your Synaplan account**: people sign in once, and the AI actions run as them
+- **Five languages**: English, German (informal and formal), Spanish, French and Turkish
 
-Requires a running Synaplan instance. Shared-key, per-user provision, or account-link mode.
+Requires a running Synaplan instance. Three ways to connect: one shared account, accounts created by the administrator, or each person connects their own Synaplan account.
 	]]></description>
-	<version>1.6.1</version>
+	<version>1.7.0</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>
