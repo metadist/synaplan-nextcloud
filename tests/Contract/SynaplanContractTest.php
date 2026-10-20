@@ -51,6 +51,11 @@ final class SynaplanContractTest extends TestCase
         'file' => ['url' => '/api/v1/files/uploads/7/cat.png', 'type' => 'image', 'mimeType' => 'image/png'],
     ];
 
+    /** Lets translate() take the translation mode, so its request is checked too. */
+    private const CAPABILITIES = [
+        'summary' => ['types' => ['abstractive', 'extractive', 'bullet-points', 'translation']],
+    ];
+
     /** @var list<array{method: string, path: string, body: array<string, mixed>, multipart: bool}> */
     private array $calls = [];
 
@@ -109,6 +114,18 @@ final class SynaplanContractTest extends TestCase
         );
 
         self::assertNotEmpty($selected, 'callEverything() must exercise a selected model.');
+    }
+
+    public function testTheTranslationRequestIsChecked(): void
+    {
+        $this->callEverything();
+        $translations = array_filter(
+            $this->calls,
+            static fn (array $call): bool => $call['path'] === '/api/v1/summary/generate'
+                && ($call['body']['summaryType'] ?? null) === 'translation',
+        );
+
+        self::assertNotEmpty($translations, 'callEverything() must exercise the translation mode.');
     }
 
     public function testNestedItemFieldsAreChecked(): void
@@ -192,6 +209,7 @@ final class SynaplanContractTest extends TestCase
         $scenarios = [
             fn () => $client->healthCheck(),
             fn () => $client->summarize('A long text.'),
+            fn () => $client->translate('A long text.', 'de'),
             fn () => $client->createChat('Contract'),
             fn () => $client->searchRagContext('What changed?', 'Contracts'),
             fn () => $client->chat([['role' => 'user', 'content' => 'What changed?']], 'gpt-oss-120b'),
@@ -296,7 +314,9 @@ final class SynaplanContractTest extends TestCase
 
         $response = $this->createStub(IResponse::class);
         $response->method('getStatusCode')->willReturn(200);
-        $response->method('getBody')->willReturn((string) json_encode(self::RESPONSE));
+        $response->method('getBody')->willReturn((string) json_encode(
+            $path === '/api/v1/config/capabilities' ? self::CAPABILITIES : self::RESPONSE,
+        ));
 
         return $response;
     }

@@ -162,9 +162,6 @@ class ApiController extends Controller
     /**
      * Translate a file.
      *
-     * Uses Synaplan's summarization endpoint with abstractive/long
-     * settings to produce a full translation.
-     *
      * @param int    $fileId         Nextcloud file ID
      * @param string $targetLanguage ISO language code (en, de, fr, es, it)
      */
@@ -180,12 +177,7 @@ class ApiController extends Controller
 
             $text = $this->extractFileText($fileId);
 
-            $result = $this->synaplanClient->summarize(
-                $text,
-                'abstractive',
-                'long',
-                $targetLanguage,
-            );
+            $result = $this->synaplanClient->translate($text, $targetLanguage);
 
             return new JSONResponse([
                 'success' => true,
