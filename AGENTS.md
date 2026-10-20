@@ -46,3 +46,12 @@ PHPStan, PHPUnit, the contract test, vue-tsc, Vitest, build and package. CI
 - Conventional Commits on a feature branch, merged through a pull request;
   never push to `main`.
 - No AI attribution.
+
+## Releases
+
+- A `vX.Y.Z` tag on a `main` commit with green CI releases through
+  `.github/workflows/release.yml` (README, section Release); `vX.Y.Z-rc.N`
+  stops at a draft GitHub release. `scripts/release-check.sh` shows locally
+  whether `info.xml`, `package.json` and `CHANGELOG.md` agree.
+- The signing key lives only in the repository secret and on the owner's
+  machine; never sign in a pull request job with it.

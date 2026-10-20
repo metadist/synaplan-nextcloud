@@ -163,13 +163,34 @@ make e2e-down     # stop both stacks and delete their data
 
 ## Release
 
+Releases come from CI (`.github/workflows/release.yml`):
+
+1. A pull request sets the version in `appinfo/info.xml` and `package.json`
+   and dates its `CHANGELOG.md` section (`## 1.7.0 – 2026-10-20`). The
+   workflow's dry run checks that the three agree, packages, and signs with a
+   throwaway key.
+2. After the merge, and once **All Checks Passed** is green on `main`, tag the
+   merge commit: `git tag v1.7.0 && git push origin v1.7.0`.
+3. The workflow refuses a tag that is not on `main` or whose CI run failed,
+   and an `info.xml` the App Store schema rejects (`scripts/check-info-xml.sh`).
+   It packages, signs, verifies the signature against the certificate the App
+   Store holds for the app, attaches the tarball and its signature to a GitHub
+   release and publishes the release to the App Store.
+
+`v1.7.0-rc.1` stops at a draft GitHub release, for a test install before the
+release. Running the workflow again for a tag reuses the files its release
+already holds, so the App Store's signature keeps matching. The workflow
+needs two repository secrets: `APP_STORE_SIGNING_KEY`
+(the app's private key) and `APP_STORE_TOKEN` (an App Store API token of an
+owner or co-maintainer).
+
+By hand, with the key in `~/.nextcloud/certificates/`:
+
 ```bash
 make package              # Build unsigned tarball
 make sign                 # Build + sign (requires certificate)
 make appstore             # Build, sign, and show upload instructions
 ```
-
-See `release-work/RELEASE-PLAN.md` for the full release process (gitignored, local only).
 
 ## License
 
