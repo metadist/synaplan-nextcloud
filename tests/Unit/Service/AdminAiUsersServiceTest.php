@@ -41,9 +41,7 @@ class AdminAiUsersServiceTest extends TestCase
         $this->config->method('getUserValue')->willReturnCallback(
             function (string $uid, string $app, string $key, string $default = '') {
                 $store = [
-                    'alice|synaplan_user_api_key' => 'sk_alice',
                     'alice|ai_consent_at' => '2026-07-09T20:00:00+00:00',
-                    'bob|synaplan_user_api_key' => '',
                     'bob|ai_consent_at' => '',
                 ];
 
@@ -60,6 +58,9 @@ class AdminAiUsersServiceTest extends TestCase
 
         $this->userAccounts->method('getSynaplanUserId')->willReturnCallback(
             fn (string $uid): ?int => $uid === 'alice' ? 501 : null
+        );
+        $this->userAccounts->method('getStoredApiKey')->willReturnCallback(
+            fn (string $uid): string => $uid === 'alice' ? 'sk_alice' : ''
         );
 
         $users = $this->service->listActivatedUsers();

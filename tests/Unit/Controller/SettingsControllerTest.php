@@ -7,6 +7,8 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Controller\SettingsController;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\SynaplanConfig;
+use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\IConfig;
 use OCP\IRequest;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -14,6 +16,8 @@ use PHPUnit\Framework\TestCase;
 
 class SettingsControllerTest extends TestCase
 {
+    use KeyStorageStubs;
+
     private IRequest&MockObject $request;
     private IConfig&MockObject $config;
     private SynaplanClient&MockObject $synaplanClient;
@@ -25,10 +29,13 @@ class SettingsControllerTest extends TestCase
         $this->config = $this->createMock(IConfig::class);
         $this->synaplanClient = $this->createMock(SynaplanClient::class);
 
+        $keys = $this->keyStorageFrom($this->config);
         $this->controller = new SettingsController(
             $this->request,
             $this->config,
             $this->synaplanClient,
+            new SynaplanConfig($this->config, $keys),
+            $keys,
         );
     }
 

@@ -37,14 +37,13 @@ class AdminAiUsersService
         $out = [];
         foreach ($uids as $uid) {
             $user = $this->userManager->get($uid);
-            $key = $this->config->getUserValue($uid, Application::APP_ID, 'synaplan_user_api_key', '');
 
             $out[] = [
                 'uid' => $uid,
                 'displayName' => $user !== null ? $user->getDisplayName() : $uid,
                 'email' => $user !== null ? (string) $user->getEMailAddress() : '',
                 'synaplanUserId' => $this->userAccounts->getSynaplanUserId($uid),
-                'hasKey' => $key !== '',
+                'hasKey' => $this->userAccounts->getStoredApiKey($uid) !== '',
                 'consentAt' => $this->config->getUserValue($uid, Application::APP_ID, 'ai_consent_at', ''),
                 'kind' => $this->userAccounts->getLinkKind($uid),
             ];

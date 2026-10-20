@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
@@ -20,6 +21,8 @@ use Psr\Log\LoggerInterface;
 
 class SynaplanClientTest extends TestCase
 {
+    use KeyStorageStubs;
+
     private IClientService&MockObject $clientService;
     private IClient&MockObject $httpClient;
     private IConfig&MockObject $config;
@@ -53,7 +56,7 @@ class SynaplanClientTest extends TestCase
         return new SynaplanClient(
             $this->clientService,
             $this->logger,
-            new SynaplanConfig($config),
+            new SynaplanConfig($config, $this->keyStorageFrom($config)),
             $this->userAccounts,
         );
     }
