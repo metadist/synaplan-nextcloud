@@ -282,9 +282,9 @@ Shipped since this guide first listed them as planned:
   the copy up to date in one click.
 - **AI users panel** — Administration settings → Synaplan → **AI Users** lists
   the people who turned AI on, with their Synaplan account and usage.
-  **Deactivate** turns AI off for one person: a linked person’s key is revoked
-  in Synaplan; for a provisioned person Nextcloud forgets the key, which stays
-  valid in Synaplan until you revoke it there.
+  **Deactivate** turns AI off for one person and revokes their key in
+  Synaplan, whether they connected their account or the app created it. The
+  Synaplan account stays; activating AI again gives the person a new key.
 - **Scope enforcement** — Synaplan enforces the scopes of per-user keys (§2).
 
 Planned, **not yet implemented**:
