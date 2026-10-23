@@ -104,6 +104,14 @@ class PlatformLinkService
             'link_instance_secret',
             $this->crypto->encrypt($secret)
         );
+        try {
+            $this->announceDelivery($this->defaultDeliveryUrl());
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not tell Synaplan where to reach this Nextcloud: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         $this->logger->info('Registered Nextcloud instance with Synaplan ({status})', [
             'app' => Application::APP_ID,
@@ -149,6 +157,107 @@ class PlatformLinkService
 
             return ['error' => 'unreachable'];
         }
+    }
+
+    /**
+     * The address Synaplan's servers call. An empty setting means this
+     * server. A browser address of localhost is the dev stack, which Synaplan
+     * reaches as http://nextcloud.
+     */
+    public function defaultDeliveryUrl(): string
+    {
+        $configured = trim((string) $this->config->getAppValue(Application::APP_ID, 'delivery_url', ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+        $absolute = $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.inbound.receive');
+        $host = strtolower((string) parse_url($absolute, PHP_URL_HOST));
+        if (in_array($host, ['localhost', '127.0.0.1'], true)) {
+            $path = (string) parse_url($absolute, PHP_URL_PATH);
+
+            return 'http://nextcloud' . $path;
+        }
+
+        return $absolute;
+    }
+
+    /**
+     * Tell Synaplan where to call and that this app accepts copies.
+     */
+    public function announceDelivery(string $deliveryUrl): void
+    {
+        $this->request('PATCH', '/api/v1/platform-links/instances/self', [
+            'delivery_url' => $deliveryUrl,
+            'app_capabilities' => ['deliveries'],
+        ], $this->instanceHeaders());
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function notifyKeys(): array
+    {
+        $decoded = $this->request('GET', '/api/v1/platform-links/instances/self', null, $this->instanceHeaders());
+        $keys = $decoded['notify_keys'] ?? [];
+
+        return is_array($keys) ? array_values(array_filter($keys, 'is_array')) : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function claimDelivery(string $id): array
+    {
+        return $this->request(
+            'POST',
+            '/api/v1/platform-links/deliveries/' . rawurlencode($id) . '/claim',
+            null,
+            $this->instanceHeaders(),
+            false,
+            true,
+        );
+    }
+
+    public function downloadDelivery(string $downloadPath): ?string
+    {
+        if (!str_starts_with($downloadPath, '/api/') || str_contains($downloadPath, '..') || str_contains($downloadPath, '://')) {
+            return null;
+        }
+        $client = $this->clientService->newClient();
+        try {
+            $response = $client->get($this->synaplanConfig->getBaseUrl() . $downloadPath, [
+                'headers' => $this->instanceHeaders(),
+                'timeout' => 30,
+                'nextcloud' => ['allow_local_address' => true],
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not download a Synaplan copy: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+        if ((int) $response->getStatusCode() !== 200) {
+            return null;
+        }
+
+        return $response->getBody();
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    public function reportDelivery(string $id, array $result): void
+    {
+        $this->request(
+            'POST',
+            '/api/v1/platform-links/deliveries/' . rawurlencode($id) . '/result',
+            $result,
+            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            false,
+            true,
+        );
     }
 
     public function forgetRegistration(): void
@@ -247,6 +356,18 @@ class PlatformLinkService
         ], true);
     }
 
+    /**
+     * @return array<string, string>
+     */
+    private function instanceHeaders(): array
+    {
+        return [
+            'Accept' => 'application/json',
+            'X-Instance-Id' => $this->synaplanConfig->getLinkInstanceId(),
+            'X-Instance-Secret' => $this->decryptSecret(),
+        ];
+    }
+
     private function decryptSecret(): string
     {
         $cipher = $this->synaplanConfig->getLinkInstanceSecretCipher();
@@ -273,9 +394,11 @@ class PlatformLinkService
     /**
      * @param array<string, mixed>|null $body
      * @param array<string, string> $headers
+     * @param bool $keepErrors return the decoded body of a 4xx instead of throwing,
+     *                         with `status_code` set, so a refused claim can be told apart
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false): array
+    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
@@ -296,6 +419,7 @@ class PlatformLinkService
         try {
             $response = match (strtoupper($method)) {
                 'POST' => $client->post($url, $options),
+                'PATCH' => $client->patch($url, $options),
                 'DELETE' => $client->delete($url, $options),
                 default => $client->get($url, $options),
             };
@@ -309,6 +433,10 @@ class PlatformLinkService
         }
 
         $status = (int) $response->getStatusCode();
+        $decoded = json_decode($response->getBody(), true);
+        if ($keepErrors && $status >= 400) {
+            return ['status_code' => $status] + (is_array($decoded) ? $decoded : []);
+        }
         if ($status === 404) {
             if ($notFoundOk) {
                 return [];
@@ -331,7 +459,6 @@ class PlatformLinkService
             );
         }
 
-        $decoded = json_decode($response->getBody(), true);
         if (!is_array($decoded)) {
             throw new PlatformLinkException(
                 'Invalid JSON response from Synaplan.',

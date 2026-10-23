@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Controller;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Service\KeyStorage;
+use OCA\SynaplanIntegration\Service\NotifyKeyCache;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
@@ -30,6 +31,7 @@ class SettingsController extends Controller
         private SynaplanConfig $synaplanConfig,
         private KeyStorage $keys,
         private ?PlatformLinkService $platformLinks = null,
+        private ?NotifyKeyCache $notifyKeys = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -98,6 +100,7 @@ class SettingsController extends Controller
             'link_registered' => $this->synaplanConfig->getLinkInstanceId() !== '',
             'link_instance_id' => $this->synaplanConfig->getLinkInstanceId(),
             'link_instance' => $this->platformLinks?->instanceStatus(),
+            'delivery_url' => (string) $this->config->getAppValue(Application::APP_ID, 'delivery_url', ''),
         ]);
     }
 
@@ -123,6 +126,7 @@ class SettingsController extends Controller
         ?bool $link_auto_provision = null,
         ?string $synaplan_public_url = null,
         ?string $synaplan_public_url_local = null,
+        ?string $delivery_url = null,
     ): JSONResponse {
         // Nextcloud may not extract JSON body params for PUT requests; always
         // re-read the raw body so we can also pick up the language/memory flags
@@ -169,6 +173,9 @@ class SettingsController extends Controller
                 }
                 if ($synaplan_public_url_local === null && array_key_exists('synaplan_public_url_local', $decoded)) {
                     $synaplan_public_url_local = trim((string) $decoded['synaplan_public_url_local']);
+                }
+                if ($delivery_url === null && array_key_exists('delivery_url', $decoded)) {
+                    $delivery_url = trim((string) $decoded['delivery_url']);
                 }
             }
         }
@@ -257,7 +264,38 @@ class SettingsController extends Controller
             );
         }
 
-        return new JSONResponse(['success' => true]);
+        $deliveryError = false;
+        if ($delivery_url !== null) {
+            $this->config->setAppValue(Application::APP_ID, 'delivery_url', $delivery_url);
+            $deliveryError = !$this->announceDelivery($delivery_url);
+        }
+
+        return new JSONResponse([
+            'success' => true,
+            'delivery_error' => $deliveryError,
+        ]);
+    }
+
+    /**
+     * An empty address means this server. A failure here does not undo the save.
+     */
+    private function announceDelivery(string $deliveryUrl): bool
+    {
+        if ($this->platformLinks === null) {
+            return true;
+        }
+        $url = $deliveryUrl !== '' ? $deliveryUrl : $this->platformLinks->defaultDeliveryUrl();
+        if ($url === '') {
+            return true;
+        }
+        try {
+            $this->platformLinks->announceDelivery($url);
+            $this->notifyKeys?->refresh();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -274,6 +312,7 @@ class SettingsController extends Controller
 
         try {
             $result = $this->platformLinks->registerInstance();
+            $this->notifyKeys?->refresh();
 
             return new JSONResponse(['success' => true, ...$result]);
         } catch (PlatformLinkException $e) {

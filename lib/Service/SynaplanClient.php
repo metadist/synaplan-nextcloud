@@ -479,6 +479,24 @@ class SynaplanClient
      * @return string Raw binary content
      * @throws \Exception on download failure
      */
+    /**
+     * Recent files in the signed-in person's Synaplan, newest first.
+     *
+     * @return array<string, mixed>
+     */
+    public function listRecentFiles(): array
+    {
+        return $this->request('GET', '/api/v1/files');
+    }
+
+    /**
+     * The bytes of one file the person owns in Synaplan.
+     */
+    public function downloadStoredFile(int $id): string
+    {
+        return $this->downloadFile('/api/v1/files/' . $id . '/download');
+    }
+
     public function downloadFile(string $relativePath): string
     {
         $client = $this->clientService->newClient();

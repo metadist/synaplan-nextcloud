@@ -390,6 +390,21 @@ class UserAccountService
     }
 
     /**
+     * Synaplan removed this link. Drop the stored key for whoever holds it.
+     */
+    public function revokeLinkedKey(string $linkId): void
+    {
+        if ($linkId === '') {
+            return;
+        }
+        foreach ($this->config->getUsersForUserValue(Application::APP_ID, self::LINK_ID_PREF, $linkId) as $uid) {
+            if ($uid !== '') {
+                $this->deactivateUser($uid);
+            }
+        }
+    }
+
+    /**
      * Admin action: deactivate AI for a specific user — withdraw their consent
      * and forget their cached key. The Synaplan account itself is left intact
      * (an admin can delete it server-side); the next time the user activates AI

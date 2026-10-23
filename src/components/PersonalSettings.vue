@@ -50,6 +50,39 @@
 				</template>
 			</template>
 		</NcSettingsSection>
+
+		<NcSettingsSection
+			:name="t('synaplan_integration', 'Folder for files from Synaplan')">
+			<p class="sp-hint">
+				{{
+					t(
+						'synaplan_integration',
+						'Copies land in this folder. Leave empty to use the Synaplan folder.',
+					)
+				}}
+			</p>
+			<NcTextField
+				id="synaplan-copy-folder"
+				v-model="copyFolder"
+				:disabled="savingFolder"
+				:label="t('synaplan_integration', 'Folder for files from Synaplan')"
+				:label-visible="false" />
+			<div class="sp-actions">
+				<span
+					role="button"
+					tabindex="0"
+					class="sp-btn-primary"
+					@click="!savingFolder && saveFolder()"
+					@keydown.enter="!savingFolder && saveFolder()"
+					@keydown.space.prevent="!savingFolder && saveFolder()">
+					{{
+						savingFolder
+							? t('synaplan_integration', 'Saving...')
+							: t('synaplan_integration', 'Save')
+					}}
+				</span>
+			</div>
+		</NcSettingsSection>
 	</div>
 </template>
 
@@ -60,6 +93,7 @@ import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 
 interface LinkStatus {
 	mode?: string
@@ -73,6 +107,8 @@ const startUrl = generateUrl('/apps/synaplan_integration/link/start')
 
 const loading = ref(true)
 const busy = ref(false)
+const savingFolder = ref(false)
+const copyFolder = ref('')
 const status = ref<LinkStatus>({})
 const banner = ref('')
 const bannerType = ref<'success' | 'error' | 'warning'>('success')
@@ -141,6 +177,50 @@ function formatDate(iso: string): string {
 
 /**
  * Load link status from the server.
+ */
+/**
+ * The folder Synaplan's copies are written into.
+ */
+async function loadFolder() {
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/preferences`)
+		copyFolder.value = data.copy_folder || ''
+	} catch {
+		banner.value = t(
+			'synaplan_integration',
+			'Could not load Synaplan connection.',
+		)
+		bannerType.value = 'error'
+	}
+}
+
+/**
+ * Remember the folder. An empty value uses the Synaplan folder.
+ */
+async function saveFolder() {
+	savingFolder.value = true
+	try {
+		const { data } = await axios.put(`${baseUrl}/api/v1/preferences`, {
+			copy_folder: copyFolder.value,
+		})
+		if (data.success) {
+			copyFolder.value = data.copy_folder || ''
+			banner.value = t('synaplan_integration', 'Settings saved successfully.')
+			bannerType.value = 'success'
+		} else {
+			banner.value = t('synaplan_integration', 'Could not save that folder.')
+			bannerType.value = 'error'
+		}
+	} catch {
+		banner.value = t('synaplan_integration', 'Could not save that folder.')
+		bannerType.value = 'error'
+	} finally {
+		savingFolder.value = false
+	}
+}
+
+/**
+ *
  */
 async function loadStatus() {
 	loading.value = true
@@ -217,6 +297,7 @@ function applyQueryBanner() {
 onMounted(async () => {
 	applyQueryBanner()
 	await loadStatus()
+	await loadFolder()
 })
 </script>
 
