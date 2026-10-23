@@ -8,7 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
-use OCA\SynaplanIntegration\Service\SeenNotifications;
+use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
@@ -33,7 +33,7 @@ class InboundController extends Controller
         IRequest $request,
         private SynaplanConfig $synaplanConfig,
         private NotifyKeyCache $keys,
-        private SeenNotifications $seen,
+        private SeenNotificationStore $seen,
         private CopyDelivery $copies,
         private UserAccountService $accounts,
         private ICacheFactory $cacheFactory,

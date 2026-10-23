@@ -26,6 +26,14 @@
 					</NcButton>
 				</li>
 			</ul>
+			<NcButton
+				v-if="page < pages"
+				class="more"
+				variant="secondary"
+				:disabled="loading"
+				@click="load(true)">
+				{{ t('synaplan_integration', 'Show more') }}
+			</NcButton>
 			<p v-if="copied" class="hint">
 				{{ copied }}
 			</p>
@@ -67,6 +75,8 @@ const opened = ref(true)
 const loading = ref(true)
 const copyingId = ref<number | null>(null)
 const files = ref<ListedFile[]>([])
+const page = ref(1)
+const pages = ref(1)
 const failure = ref<Failure | null>(null)
 const copied = ref('')
 const baseUrl = generateUrl('/apps/synaplan_integration')
@@ -80,14 +90,26 @@ function onClose() {
 }
 
 /**
- * Recent files, generated ones first.
+ * Recent files, generated ones first. Further pages append.
+ *
+ * @param {boolean} more true to fetch the next page
  */
-async function load() {
+async function load(more = false) {
+	const requested = more ? page.value + 1 : 1
 	loading.value = true
-	failure.value = null
+	if (!more) {
+		failure.value = null
+	}
 	try {
-		const { data } = await axios.get(`${baseUrl}/api/v1/from-synaplan`)
-		files.value = Array.isArray(data.files) ? data.files : []
+		const { data } = await axios.get(`${baseUrl}/api/v1/from-synaplan`, {
+			params: { page: requested },
+		})
+		const incoming: ListedFile[] = Array.isArray(data.files) ? data.files : []
+		const combined = more ? [...files.value, ...incoming] : incoming
+		combined.sort((a, b) => Number(b.generated) - Number(a.generated))
+		files.value = combined
+		page.value = typeof data.page === 'number' ? data.page : requested
+		pages.value = typeof data.pages === 'number' ? data.pages : 1
 	} catch (error: unknown) {
 		failure.value = failureFromError(error)
 	} finally {
@@ -114,10 +136,14 @@ async function copy(file: ListedFile) {
 			folder: props.folder,
 		})
 		if (data.success) {
+			const folder =
+				data.folder === 'Files'
+					? t('synaplan_integration', 'Files')
+					: data.folder
 			copied.value = t(
 				'synaplan_integration',
 				'Synaplan copied {name} to {folder}.',
-				{ name: data.name, folder: data.folder },
+				{ name: data.name, folder },
 			)
 		} else {
 			copied.value = ''
@@ -142,6 +168,11 @@ onMounted(load)
 
 .hint {
 	margin: 0 0 12px;
+	color: var(--color-main-text, #222);
+}
+
+.more {
+	margin-top: 12px;
 	color: var(--color-main-text, #222);
 }
 

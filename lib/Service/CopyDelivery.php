@@ -130,13 +130,20 @@ class CopyDelivery
         $relative = $userFolder->getRelativePath($file->getPath()) ?? $file->getName();
         $relative = ltrim((string) $relative, '/');
         $this->rememberOwnWrite($uid, (int) $file->getId());
-        $this->notify($uid, $file->getName(), dirname($relative) === '.' ? '' : dirname($relative), (int) $file->getId());
+        $openUrl = $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $file->getId()]);
+        $this->notify(
+            $uid,
+            $file->getName(),
+            dirname($relative) === '.' ? '' : dirname($relative),
+            (int) $file->getId(),
+            $openUrl,
+        );
 
         return [
             'status' => 'delivered',
             'remote_path' => '/' . $relative,
             'remote_id' => (string) $file->getId(),
-            'open_url' => $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $file->getId()]),
+            'open_url' => $openUrl,
         ];
     }
 
@@ -158,10 +165,6 @@ class CopyDelivery
             }
             throw new NotFoundException('The folder Synaplan named is not in this account.');
         }
-        if ($kind === 'personal_folder') {
-            return $userFolder;
-        }
-
         try {
             $root = self::cleanFolder((string) $this->config->getUserValue($uid, Application::APP_ID, self::COPY_FOLDER, ''));
         } catch (\InvalidArgumentException) {
@@ -243,7 +246,7 @@ class CopyDelivery
         return 'own_' . hash('sha256', $uid) . '_' . $fileId;
     }
 
-    private function notify(string $uid, string $name, string $folder, int $fileId): void
+    private function notify(string $uid, string $name, string $folder, int $fileId, string $link): void
     {
         try {
             $notification = $this->notifications->createNotification();
@@ -251,7 +254,7 @@ class CopyDelivery
                 ->setUser($uid)
                 ->setDateTime(new \DateTime())
                 ->setObject('file', (string) $fileId)
-                ->setSubject('copied', ['name' => $name, 'folder' => $folder]);
+                ->setSubject('copied', ['name' => $name, 'folder' => $folder, 'link' => $link]);
             $this->notifications->notify($notification);
         } catch (\Throwable $e) {
             $this->logger->info('Could not notify {uid} about a Synaplan copy: {message}', [

@@ -23,11 +23,12 @@ class LibraryImport
     }
 
     /**
-     * @return list<array{id: int, name: string, generated: bool}>
+     * @return array{files: list<array{id: int, name: string, generated: bool}>, page: int, pages: int}
      */
-    public function list(): array
+    public function list(int $page = 1): array
     {
-        $decoded = $this->client->listRecentFiles();
+        $page = max(1, $page);
+        $decoded = $this->client->listRecentFiles($page);
         $rows = is_array($decoded['files'] ?? null) ? $decoded['files'] : [];
         $files = [];
         foreach ($rows as $row) {
@@ -48,7 +49,13 @@ class LibraryImport
             return ($a['generated'] === $b['generated']) ? 0 : ($a['generated'] ? -1 : 1);
         });
 
-        return $files;
+        $pages = is_array($decoded['pagination'] ?? null) ? (int) ($decoded['pagination']['pages'] ?? 1) : 1;
+
+        return [
+            'files' => $files,
+            'page' => $page,
+            'pages' => max(1, $pages),
+        ];
     }
 
     /**

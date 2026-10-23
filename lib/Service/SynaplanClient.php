@@ -484,9 +484,12 @@ class SynaplanClient
      *
      * @return array<string, mixed>
      */
-    public function listRecentFiles(): array
+    public function listRecentFiles(int $page = 1): array
     {
-        return $this->request('GET', '/api/v1/files');
+        return $this->request('GET', '/api/v1/files', null, true, [
+            'page' => max(1, $page),
+            'limit' => 50,
+        ]);
     }
 
     /**
@@ -666,13 +669,17 @@ class SynaplanClient
 
     /**
      * @param bool $requiresKey false for public routes, which work without an account
+     * @param array<string, scalar> $query
      * @return array<string, mixed>
      * @throws \Exception on HTTP or decode error
      */
-    private function request(string $method, string $path, ?array $body = null, bool $requiresKey = true): array
+    private function request(string $method, string $path, ?array $body = null, bool $requiresKey = true, array $query = []): array
     {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . $path;
+        if ($query !== []) {
+            $url .= '?' . http_build_query($query);
+        }
 
         $options = [
             'headers' => [

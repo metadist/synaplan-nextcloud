@@ -8,15 +8,13 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\IConfig;
 
 /**
- * Synaplan's notify keys, refreshed on a schedule: when none are stored, on
- * admin save, and hourly. A notification never triggers a refresh, so a
- * forged key id cannot make this Nextcloud call Synaplan.
+ * Synaplan's notify keys, refreshed when this Nextcloud registers, when an
+ * administrator saves the address, and hourly. A notification never triggers
+ * a refresh, so a forged key id cannot make this Nextcloud call Synaplan.
  */
 class NotifyKeyCache
 {
     private const KEYS = 'notify_keys';
-    private const FETCHED_AT = 'notify_keys_at';
-    private const EMPTY_RETRY_SECONDS = 300;
 
     public function __construct(
         private IConfig $config,
@@ -35,21 +33,8 @@ class NotifyKeyCache
         return is_array($decoded) ? array_values(array_filter($decoded, 'is_array')) : [];
     }
 
-    public function refreshIfEmpty(): void
-    {
-        if ($this->keys() !== []) {
-            return;
-        }
-        $fetchedAt = (int) $this->config->getAppValue(Application::APP_ID, self::FETCHED_AT, '0');
-        if ($fetchedAt > 0 && time() - $fetchedAt < self::EMPTY_RETRY_SECONDS) {
-            return;
-        }
-        $this->refresh();
-    }
-
     public function refresh(): void
     {
-        $this->config->setAppValue(Application::APP_ID, self::FETCHED_AT, (string) time());
         if ($this->config->getAppValue(Application::APP_ID, 'link_instance_id', '') === '') {
             return;
         }

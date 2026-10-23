@@ -34,13 +34,13 @@ class FromSynaplanController extends Controller
     }
 
     #[NoAdminRequired]
-    public function list(): JSONResponse
+    public function list(int $page = 1): JSONResponse
     {
         if ($this->uid() === null) {
             return new JSONResponse(['success' => false, 'error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
         }
         try {
-            return new JSONResponse(['files' => $this->imports->list()]);
+            return new JSONResponse($this->imports->list(max(1, $page)));
         } catch (\Throwable $e) {
             return $this->failed($e, 'Could not list Synaplan files');
         }

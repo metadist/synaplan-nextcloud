@@ -412,6 +412,10 @@ class PlatformLinkService
                 'allow_local_address' => true,
             ],
         ];
+        if ($keepErrors) {
+            // A refused claim is an answer (409, 410), not a transport failure.
+            $options['http_errors'] = false;
+        }
         if ($body !== null) {
             $options['body'] = json_encode($body);
         }

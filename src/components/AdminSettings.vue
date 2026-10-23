@@ -477,6 +477,13 @@
 						<NcTextField
 							id="synaplan-delivery-url"
 							v-model="deliveryUrl"
+							:label="
+								t(
+									'synaplan_integration',
+									'Address Synaplan uses to reach this Nextcloud',
+								)
+							"
+							:label-visible="false"
 							:disabled="saving"
 							:style="{ width: '100%' }" />
 					</div>

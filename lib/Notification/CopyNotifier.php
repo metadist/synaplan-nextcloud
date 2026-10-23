@@ -40,11 +40,16 @@ class CopyNotifier implements INotifier
         }
         $parameters = $notification->getSubjectParameters();
         $name = is_string($parameters['name'] ?? null) ? $parameters['name'] : '';
-        $folder = is_string($parameters['folder'] ?? null) && $parameters['folder'] !== ''
-            ? $parameters['folder']
-            : 'Synaplan';
+        $folder = is_string($parameters['folder'] ?? null) ? $parameters['folder'] : '';
         $l = $this->l10nFactory->get(Application::APP_ID, $languageCode);
+        if ($folder === '') {
+            $folder = (string) $l->t('Files');
+        }
         $notification->setParsedSubject($this->sentence($l, $name, $folder));
+        $link = is_string($parameters['link'] ?? null) ? $parameters['link'] : '';
+        if ($link !== '') {
+            $notification->setLink($link);
+        }
         $notification->setIcon($this->urls->getAbsoluteURL($this->urls->imagePath(Application::APP_ID, 'app.svg')));
 
         return $notification;

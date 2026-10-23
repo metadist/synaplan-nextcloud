@@ -8,7 +8,7 @@ use OCA\SynaplanIntegration\Controller\InboundController;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
-use OCA\SynaplanIntegration\Service\SeenNotifications;
+use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCacheFactory;
@@ -52,7 +52,7 @@ final class InboundControllerTest extends TestCase
             $this->createMock(IRequest::class),
             $config,
             $this->keys,
-            new SeenNotifications(new ArrayCacheFactory()),
+            new MemorySeenNotifications(),
             $this->copies,
             $this->accounts,
             new ArrayCacheFactory(),
@@ -175,7 +175,7 @@ final class InboundControllerTest extends TestCase
             $this->createMock(IRequest::class),
             $config,
             $this->keys,
-            new SeenNotifications(new ArrayCacheFactory()),
+            new MemorySeenNotifications(),
             $this->copies,
             $this->accounts,
             new ArrayCacheFactory(),
@@ -184,5 +184,25 @@ final class InboundControllerTest extends TestCase
         );
 
         return (string) json_encode($body);
+    }
+}
+
+/**
+ * The same ten-minute memory the database store provides, without a database.
+ */
+final class MemorySeenNotifications implements SeenNotificationStore
+{
+    /** @var array<string, true> */
+    private array $seen = [];
+
+    public function alreadySeen(string $type, string $id): bool
+    {
+        $key = $type . '|' . $id;
+        if (isset($this->seen[$key])) {
+            return true;
+        }
+        $this->seen[$key] = true;
+
+        return false;
     }
 }
