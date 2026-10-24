@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- **Where Synaplan is** shows one pair at a time: the address this Nextcloud calls, and the address a person opens in the browser. Live and local each keep their own pair. Inside Docker the server address is `http://backend` and the browser address is `http://localhost:5173`.
 - **Translate no longer returns a summary.** It asks Synaplan to translate the file. When that Synaplan does not offer translation, the action says so. The answer no longer includes summary details.
 
 ### Added
