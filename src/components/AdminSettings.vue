@@ -61,7 +61,7 @@
 						'Configure the connection to your Synaplan instance.',
 					)
 				">
-				<!-- Active environment switch (dev convenience) -->
+				<!-- The radio switches which saved pair is on screen. Both pairs are kept. -->
 				<div class="sp-field">
 					<strong>{{
 						t('synaplan_integration', 'Active environment')
@@ -70,7 +70,7 @@
 						{{
 							t(
 								'synaplan_integration',
-								'Flip the whole app between your live and local Synaplan backend. Each environment keeps its own URL and API key.',
+								'Each choice keeps its own addresses and key. Only the selected one is used.',
 							)
 						}}
 					</p>
@@ -97,34 +97,65 @@
 							activeEnv === 'local'
 								? t(
 										'synaplan_integration',
-										'The app is using the local backend.',
+										'Nextcloud is calling the local Synaplan.',
 									)
 								: t(
 										'synaplan_integration',
-										'The app is using the live backend.',
+										'Nextcloud is calling the live Synaplan.',
 									)
 						}}
 					</p>
 				</div>
 
-				<h3 class="sp-subhead">
-					{{ t('synaplan_integration', 'Live (production)') }}
-				</h3>
 				<div class="sp-field">
-					<strong>{{ t('synaplan_integration', 'Synaplan URL') }}</strong>
+					<strong>{{
+						t('synaplan_integration', 'Address this Nextcloud calls')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							activeEnv === 'local'
+								? t(
+										'synaplan_integration',
+										'Inside Docker, this Nextcloud calls Synaplan at http://backend.',
+									)
+								: t(
+										'synaplan_integration',
+										'The address of your Synaplan, for example https://synaplan.example.com.',
+									)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							:id="serverUrlFieldId"
+							v-model="serverUrlActive"
+							:placeholder="serverUrlPlaceholder"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
+				<div class="sp-field">
+					<strong>{{
+						t(
+							'synaplan_integration',
+							'Address people open in the browser',
+						)
+					}}</strong>
 					<p class="sp-hint">
 						{{
 							t(
 								'synaplan_integration',
-								'The URL of your Synaplan instance.',
+								'Leave empty when people open the same address. Inside Docker, people open http://localhost:5173.',
 							)
 						}}
 					</p>
 					<div :style="inputWrapStyle">
 						<NcTextField
-							id="synaplan-url"
-							v-model="synaplanUrl"
-							placeholder="https://synaplan.example.com"
+							id="synaplan-public-url"
+							v-model="synaplanPublicUrlActive"
+							:placeholder="publicUrlPlaceholder"
 							:disabled="saving"
 							:style="{ width: '100%' }" />
 					</div>
@@ -139,74 +170,17 @@
 					</p>
 					<div :style="inputWrapStyle">
 						<NcTextField
-							id="synaplan-api-key"
-							v-model="apiKey"
-							:placeholder="apiKeyMasked || 'sk_...'"
-							type="password"
-							:disabled="saving"
-							:style="{ width: '100%' }" />
-					</div>
-					<div v-if="apiKeySet && !apiKey" :style="{ height: '16px' }" />
-					<p v-if="apiKeySet && !apiKey" class="sp-status">
-						{{
-							t(
-								'synaplan_integration',
-								'API key is configured. Enter a new value to replace it.',
-							)
-						}}
-					</p>
-				</div>
-
-				<h3 class="sp-subhead">
-					{{ t('synaplan_integration', 'Local (development)') }}
-				</h3>
-				<div class="sp-field">
-					<strong>{{
-						t('synaplan_integration', 'Local Synaplan URL')
-					}}</strong>
-					<p class="sp-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'Your local Synaplan dev backend, e.g. http://localhost:8000.',
-							)
-						}}
-					</p>
-					<div :style="inputWrapStyle">
-						<NcTextField
-							id="synaplan-url-local"
-							v-model="synaplanUrlLocal"
-							placeholder="http://localhost:8000"
-							:disabled="saving"
-							:style="{ width: '100%' }" />
-					</div>
-				</div>
-
-				<div :style="{ height: '20px' }" />
-
-				<div class="sp-field">
-					<strong>{{ t('synaplan_integration', 'Local API Key') }}</strong>
-					<p class="sp-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'API key for your local Synaplan dev backend.',
-							)
-						}}
-					</p>
-					<div :style="inputWrapStyle">
-						<NcTextField
-							id="synaplan-api-key-local"
-							v-model="apiKeyLocal"
-							:placeholder="apiKeyLocalMasked || 'sk_...'"
+							:id="apiKeyFieldId"
+							v-model="apiKeyActive"
+							:placeholder="apiKeyActiveMasked || 'sk_...'"
 							type="password"
 							:disabled="saving"
 							:style="{ width: '100%' }" />
 					</div>
 					<div
-						v-if="apiKeyLocalSet && !apiKeyLocal"
+						v-if="apiKeyActiveSet && !apiKeyActive"
 						:style="{ height: '16px' }" />
-					<p v-if="apiKeyLocalSet && !apiKeyLocal" class="sp-status">
+					<p v-if="apiKeyActiveSet && !apiKeyActive" class="sp-status">
 						{{
 							t(
 								'synaplan_integration',
@@ -434,30 +408,6 @@
 					{{ t('synaplan_integration', 'Not registered yet.') }}
 				</p>
 				<div :style="{ height: '16px' }" />
-				<div class="sp-field">
-					<strong>{{
-						t(
-							'synaplan_integration',
-							'Address people open in the browser',
-						)
-					}}</strong>
-					<p class="sp-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'Leave empty when it is the same as the Synaplan URL. In Docker, set this to http://localhost:5173 and the API URL to http://backend.',
-							)
-						}}
-					</p>
-					<div :style="inputWrapStyle">
-						<NcTextField
-							id="synaplan-public-url"
-							v-model="synaplanPublicUrlActive"
-							:placeholder="publicUrlPlaceholder"
-							:disabled="saving"
-							:style="{ width: '100%' }" />
-					</div>
-				</div>
 				<div class="sp-field">
 					<strong>{{
 						t(
@@ -701,9 +651,9 @@
 
 			<NcSettingsSection :name="t('synaplan_integration', 'Quick Links')">
 				<ul class="sp-links">
-					<li v-if="synaplanUrl">
+					<li v-if="openSynaplanHref">
 						<a
-							:href="synaplanUrl"
+							:href="openSynaplanHref"
 							target="_blank"
 							rel="noopener noreferrer"
 							class="sp-link">
@@ -817,6 +767,54 @@ const synaplanPublicUrlActive = computed({
 		}
 	},
 })
+
+const serverUrlFieldId = computed(() =>
+	activeEnv.value === 'local' ? 'synaplan-url-local' : 'synaplan-url',
+)
+
+const serverUrlPlaceholder = computed(() =>
+	activeEnv.value === 'local' ? 'http://backend' : 'https://synaplan.example.com',
+)
+
+const apiKeyFieldId = computed(() =>
+	activeEnv.value === 'local' ? 'synaplan-api-key-local' : 'synaplan-api-key',
+)
+
+const serverUrlActive = computed({
+	get: () =>
+		activeEnv.value === 'local' ? synaplanUrlLocal.value : synaplanUrl.value,
+	set: (value: string) => {
+		if (activeEnv.value === 'local') {
+			synaplanUrlLocal.value = value
+		} else {
+			synaplanUrl.value = value
+		}
+	},
+})
+
+const apiKeyActive = computed({
+	get: () => (activeEnv.value === 'local' ? apiKeyLocal.value : apiKey.value),
+	set: (value: string) => {
+		if (activeEnv.value === 'local') {
+			apiKeyLocal.value = value
+		} else {
+			apiKey.value = value
+		}
+	},
+})
+
+const apiKeyActiveSet = computed(() =>
+	activeEnv.value === 'local' ? apiKeyLocalSet.value : apiKeySet.value,
+)
+
+const apiKeyActiveMasked = computed(() =>
+	activeEnv.value === 'local' ? apiKeyLocalMasked.value : apiKeyMasked.value,
+)
+
+/** The address a browser can open: the public one when set, otherwise the one Nextcloud calls. */
+const openSynaplanHref = computed(
+	() => synaplanPublicUrlActive.value.trim() || serverUrlActive.value.trim(),
+)
 
 const apiKeyHint = computed(() =>
 	mode.value === 'link'

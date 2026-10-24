@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Where Synaplan is** shows one pair at a time: the address this Nextcloud calls, and the address a person opens in the browser. Live and local each keep their own pair. Inside Docker the server address is `http://backend` and the browser address is `http://localhost:5173`.
+
 ### Added
 - Synaplan can copy a file into this Nextcloud. It lands in the Synaplan folder, or in the folder a person chooses in their personal settings. A notification names the file and the folder.
 - **New → From Synaplan** lists the person's files in Synaplan, with generated files first, and copies the chosen file into the folder that is open.
