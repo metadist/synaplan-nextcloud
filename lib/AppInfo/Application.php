@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\AppInfo;
 
+use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
+use OCA\SynaplanIntegration\Notification\CopyNotifier;
+use OCA\SynaplanIntegration\Service\SeenNotificationStore;
+use OCA\SynaplanIntegration\Service\SeenNotifications;
+use OCP\BackgroundJob\IJobList;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -30,10 +35,18 @@ class Application extends App implements IBootstrap
         // account (per-user mode) so no orphaned external data remains.
         $context->registerEventListener(BeforeUserDeletedEvent::class, UserDeletedListener::class);
         $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);
+        $context->registerNotifierService(CopyNotifier::class);
+        $context->registerServiceAlias(SeenNotificationStore::class, SeenNotifications::class);
     }
 
     public function boot(IBootContext $context): void
     {
+        $context->injectFn(function (IJobList $jobs): void {
+            if (!$jobs->has(RefreshNotifyKeysJob::class, null)) {
+                $jobs->add(RefreshNotifyKeysJob::class);
+            }
+        });
+
         // Register top-level navigation entry
         $context->getAppContainer()->get(INavigationManager::class)->add(function () use ($context) {
             $urlGenerator = $context->getAppContainer()->get(IURLGenerator::class);

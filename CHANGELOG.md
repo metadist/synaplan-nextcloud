@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Synaplan can copy a file into this Nextcloud. It lands in the Synaplan folder, or in the folder a person chooses in their personal settings. A notification names the file and the folder.
+- **New → From Synaplan** lists the person's files in Synaplan, with generated files first, and copies the chosen file into the folder that is open.
+
 ## 1.7.0 – 2026-10-19
 
 The first release in the App Store since 1.5.0. It also brings everything

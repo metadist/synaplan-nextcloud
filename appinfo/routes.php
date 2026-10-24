@@ -39,6 +39,13 @@ return [
 		['name' => 'link#disconnect', 'url' => '/link/disconnect', 'verb' => 'POST'],
 		['name' => 'link#status', 'url' => '/api/v1/link/status', 'verb' => 'GET'],
 
+		// Copies Synaplan pushes, and the folder a person wants them in
+		['name' => 'inbound#receive', 'url' => '/api/v1/inbound', 'verb' => 'POST'],
+		['name' => 'preferences#get', 'url' => '/api/v1/preferences', 'verb' => 'GET'],
+		['name' => 'preferences#save', 'url' => '/api/v1/preferences', 'verb' => 'PUT'],
+		['name' => 'fromSynaplan#list', 'url' => '/api/v1/from-synaplan', 'verb' => 'GET'],
+		['name' => 'fromSynaplan#copy', 'url' => '/api/v1/from-synaplan', 'verb' => 'POST'],
+
 		// Admin control panel: activated AI users (admin-only)
 		['name' => 'adminAiUsers#list', 'url' => '/api/v1/admin/ai-users', 'verb' => 'GET'],
 		['name' => 'adminAiUsers#usage', 'url' => '/api/v1/admin/ai-users/{uid}/usage', 'verb' => 'GET'],

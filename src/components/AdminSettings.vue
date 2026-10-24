@@ -458,6 +458,36 @@
 							:style="{ width: '100%' }" />
 					</div>
 				</div>
+				<div class="sp-field">
+					<strong>{{
+						t(
+							'synaplan_integration',
+							'Address Synaplan uses to reach this Nextcloud',
+						)
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Leave empty on a normal server. On the local Docker install, Synaplan reaches Nextcloud at http://nextcloud.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-delivery-url"
+							v-model="deliveryUrl"
+							:label="
+								t(
+									'synaplan_integration',
+									'Address Synaplan uses to reach this Nextcloud',
+								)
+							"
+							:label-visible="false"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
 				<div :style="{ display: 'flex', gap: '16px', margin: '12px 0' }">
 					<span
 						v-if="!linkRegistered"
@@ -758,6 +788,7 @@ const mode = ref<'shared' | 'provision' | 'link'>('shared')
 const linkAutoProvision = ref(false)
 const linkRegistered = ref(false)
 const linkInstanceId = ref('')
+const deliveryUrl = ref('')
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
@@ -975,6 +1006,7 @@ async function loadSettings() {
 		linkRegistered.value = data.link_registered === true
 		linkInstanceId.value = data.link_instance_id || ''
 		linkInstance.value = data.link_instance || null
+		deliveryUrl.value = data.delivery_url || ''
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
@@ -987,7 +1019,7 @@ async function save() {
 	saving.value = true
 	message.value = ''
 	try {
-		await axios.put(`${baseUrl}/api/v1/settings`, {
+		const { data } = await axios.put(`${baseUrl}/api/v1/settings`, {
 			active_env: activeEnv.value,
 			synaplan_url: synaplanUrl.value,
 			api_key: apiKey.value,
@@ -1001,6 +1033,7 @@ async function save() {
 			mode: mode.value,
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
+			...(mode.value === 'link' ? { delivery_url: deliveryUrl.value } : {}),
 		})
 		if (apiKey.value) {
 			apiKeySet.value = true
@@ -1009,6 +1042,17 @@ async function save() {
 		if (apiKeyLocal.value) {
 			apiKeyLocalSet.value = true
 			apiKeyLocal.value = ''
+		}
+		if (data.delivery_error) {
+			showMessage(
+				t(
+					'synaplan_integration',
+					'Saved. Synaplan could not be told where to reach this Nextcloud. Try again.',
+				),
+				'warning',
+			)
+			await loadSettings()
+			return
 		}
 		showMessage(t('synaplan_integration', 'Settings saved successfully.'))
 		await loadSettings()

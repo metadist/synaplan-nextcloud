@@ -479,6 +479,27 @@ class SynaplanClient
      * @return string Raw binary content
      * @throws \Exception on download failure
      */
+    /**
+     * Recent files in the signed-in person's Synaplan, newest first.
+     *
+     * @return array<string, mixed>
+     */
+    public function listRecentFiles(int $page = 1): array
+    {
+        return $this->request('GET', '/api/v1/files', null, true, [
+            'page' => max(1, $page),
+            'limit' => 50,
+        ]);
+    }
+
+    /**
+     * The bytes of one file the person owns in Synaplan.
+     */
+    public function downloadStoredFile(int $id): string
+    {
+        return $this->downloadFile('/api/v1/files/' . $id . '/download');
+    }
+
     public function downloadFile(string $relativePath): string
     {
         $client = $this->clientService->newClient();
@@ -648,13 +669,17 @@ class SynaplanClient
 
     /**
      * @param bool $requiresKey false for public routes, which work without an account
+     * @param array<string, scalar> $query
      * @return array<string, mixed>
      * @throws \Exception on HTTP or decode error
      */
-    private function request(string $method, string $path, ?array $body = null, bool $requiresKey = true): array
+    private function request(string $method, string $path, ?array $body = null, bool $requiresKey = true, array $query = []): array
     {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . $path;
+        if ($query !== []) {
+            $url .= '?' . http_build_query($query);
+        }
 
         $options = [
             'headers' => [

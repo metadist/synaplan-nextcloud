@@ -68,6 +68,13 @@ final class OpenApiContract
         $contentType = $multipart ? 'multipart/form-data' : 'application/json';
         $schema = $this->resolve($operation['requestBody']['content'][$contentType]['schema'] ?? []);
         if ($body !== [] && $schema === []) {
+            // Synaplan reads this body (status, remote_path, remote_id, open_url,
+            // error_code) but the 5.5.4 spec does not describe it. Drop this
+            // branch once a requestBody schema lands.
+            if ($method === 'POST' && preg_match('#^/api/v1/platform-links/deliveries/\{[^}/]+\}/result$#', $template) === 1) {
+                return $this->deliveryResultViolations($method, $template, $body);
+            }
+
             return ["$method $template: sends a $contentType body the spec does not describe"];
         }
 
@@ -152,6 +159,29 @@ final class OpenApiContract
         ) {
             $this->checkObject($method, $template, $where, $schema, $value, $violations);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function deliveryResultViolations(string $method, string $template, array $body): array
+    {
+        $allowed = ['status', 'remote_path', 'remote_id', 'open_url', 'error_code'];
+        $violations = [];
+        foreach ($body as $field => $value) {
+            if (!in_array($field, $allowed, true)) {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        $status = $body['status'] ?? null;
+        if ($status !== null && !in_array($status, ['delivered', 'failed'], true)) {
+            $rendered = is_scalar($status) ? (string) $status : 'invalid';
+            $violations[] = "$method $template: 'status' = '$rendered' is not one of delivered, failed";
+        }
+
+        return $violations;
     }
 
     /**
