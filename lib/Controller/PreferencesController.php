@@ -97,20 +97,8 @@ class PreferencesController extends Controller
         if ($copy_folder === null) {
             $copy_folder = isset($decoded['copy_folder']) ? (string) $decoded['copy_folder'] : '';
         }
-        if (is_array($decoded['read_scope'] ?? null)) {
-            $mode = (string) ($decoded['read_scope']['mode'] ?? '');
-            $folders = [];
-            foreach (is_array($decoded['read_scope']['folders'] ?? null) ? $decoded['read_scope']['folders'] : [] as $folder) {
-                if (!is_array($folder)) {
-                    continue;
-                }
-                $folders[] = [
-                    'id' => (string) ($folder['id'] ?? ''),
-                    'path' => (string) ($folder['path'] ?? ''),
-                ];
-            }
-            $this->scope->save($uid, $mode, $folders);
-        }
+        // Validate everything this save carries before anything is stored:
+        // a rejected folder must not leave a wider read setting behind.
         try {
             $folder = CopyDelivery::cleanFolder($copy_folder);
         } catch (\InvalidArgumentException) {
@@ -118,6 +106,20 @@ class PreferencesController extends Controller
                 ['success' => false, 'error' => 'Could not save that folder.'],
                 Http::STATUS_BAD_REQUEST,
             );
+        }
+        if (is_array($decoded['read_scope'] ?? null)) {
+            $mode = (string) ($decoded['read_scope']['mode'] ?? '');
+            $folders = [];
+            foreach (is_array($decoded['read_scope']['folders'] ?? null) ? $decoded['read_scope']['folders'] : [] as $named) {
+                if (!is_array($named)) {
+                    continue;
+                }
+                $folders[] = [
+                    'id' => (string) ($named['id'] ?? ''),
+                    'path' => (string) ($named['path'] ?? ''),
+                ];
+            }
+            $this->scope->save($uid, $mode, $folders);
         }
         $this->config->setUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, $folder);
 

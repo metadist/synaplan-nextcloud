@@ -9,7 +9,8 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 
 /**
- * Finishes a folder read that did not fit in the notification request.
+ * Finishes a folder read that did not fit in the notification request. The
+ * uploads still owed travel in this job's arguments.
  */
 class PickupJob extends QueuedJob
 {
@@ -22,9 +23,13 @@ class PickupJob extends QueuedJob
 
     protected function run(mixed $argument): void
     {
-        $id = is_array($argument) ? (string) ($argument['id'] ?? '') : '';
+        if (!is_array($argument)) {
+            return;
+        }
+        $id = (string) ($argument['id'] ?? '');
+        unset($argument['id']);
         if ($id !== '') {
-            $this->reads->finish($id);
+            $this->reads->finish($id, $argument);
         }
     }
 }

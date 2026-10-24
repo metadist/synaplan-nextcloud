@@ -286,6 +286,7 @@ class PlatformLinkService
         string $bytes,
         string $name,
         string $mime,
+        int $timeoutSeconds = 120,
     ): array {
         $client = $this->clientService->newClient();
         $path = '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/files';
@@ -298,7 +299,7 @@ class PlatformLinkService
                     ['name' => 'version', 'contents' => $version],
                     ['name' => 'file', 'contents' => $bytes, 'filename' => $name, 'headers' => ['Content-Type' => $mime]],
                 ],
-                'timeout' => 120,
+                'timeout' => max(1, $timeoutSeconds),
                 'http_errors' => false,
                 'nextcloud' => ['allow_local_address' => true],
             ],
@@ -324,11 +325,14 @@ class PlatformLinkService
     }
 
     /**
+     * True when Synaplan took the setting. Its copy is what a run checks
+     * before asking, so a false answer has to be retried, not dropped.
+     *
      * @param list<array{id: string, path: string}> $folders
      */
-    public function reportReadScope(string $uid, string $mode, array $folders): void
+    public function reportReadScope(string $uid, string $mode, array $folders): bool
     {
-        $this->request(
+        $result = $this->request(
             'PUT',
             '/api/v1/platform-links/read-scope',
             ['external_id' => $uid, 'mode' => $mode, 'folders' => $folders],
@@ -336,6 +340,8 @@ class PlatformLinkService
             false,
             true,
         );
+
+        return !isset($result['status_code']) || (int) $result['status_code'] === 200;
     }
 
     /**

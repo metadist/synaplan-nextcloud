@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\BackgroundJob\PickupJob;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
-use OCP\ICache;
-use OCP\ICacheFactory;
 use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
@@ -19,8 +18,10 @@ use Psr\Log\LoggerInterface;
  * The app side of a folder read: claim it, check the person's own setting,
  * list the folder, send what was asked for, and report.
  *
- * A read that is still going after {@see self::BUDGET_SECONDS} continues in
- * {@see \OCA\SynaplanIntegration\BackgroundJob\PickupJob}.
+ * The whole answer has {@see self::BUDGET_SECONDS} inside the notification
+ * request, claim and listing included. What is left goes to
+ * {@see PickupJob} with everything it needs in its own arguments, so the
+ * read finishes even when nothing else remembers it.
  */
 class FolderRead
 {
@@ -31,7 +32,6 @@ class FolderRead
         private ReadScope $scope,
         private IRootFolder $rootFolder,
         private IUserManager $users,
-        private ICacheFactory $cacheFactory,
         private IJobList $jobs,
         private LoggerInterface $logger,
     ) {
@@ -40,7 +40,7 @@ class FolderRead
     public function handle(string $id, int $budgetSeconds = self::BUDGET_SECONDS): void
     {
         try {
-            $this->start($id, $budgetSeconds);
+            $this->start($id, microtime(true) + max(1, $budgetSeconds));
         } catch (\Throwable $e) {
             $this->logger->warning('A folder read could not be answered: {message}', [
                 'app' => Application::APP_ID,
@@ -50,15 +50,13 @@ class FolderRead
     }
 
     /**
-     * Uploads left over from a read that did not finish in the request.
+     * Uploads left over from a read that did not finish in the request. The
+     * job carries them; there is no other copy.
+     *
+     * @param array<string, mixed> $pending
      */
-    public function finish(string $id): void
+    public function finish(string $id, array $pending): void
     {
-        $pending = $this->cache()->get('pickup-' . $id);
-        $this->cache()->remove('pickup-' . $id);
-        if (!is_array($pending)) {
-            return;
-        }
         $uid = (string) ($pending['uid'] ?? '');
         $left = is_array($pending['left'] ?? null) ? $pending['left'] : [];
         $sent = (int) ($pending['sent'] ?? 0);
@@ -75,7 +73,7 @@ class FolderRead
             if (!is_array($item)) {
                 continue;
             }
-            $outcome = $this->uploadOne($id, $userFolder, $item);
+            $outcome = $this->uploadOne($id, $uid, $userFolder, $item, 120);
             if ($outcome === null) {
                 $sent++;
             } else {
@@ -85,7 +83,7 @@ class FolderRead
         $this->close($id, $listed, $sent, $skipped);
     }
 
-    private function start(string $id, int $budgetSeconds): void
+    private function start(string $id, float $deadline): void
     {
         $claim = $this->links->claimPickup($id);
         if (isset($claim['status_code']) && (int) $claim['status_code'] !== 200) {
@@ -159,15 +157,15 @@ class FolderRead
             }
         }
 
-        $started = microtime(true);
         $sent = 0;
         $left = [];
         foreach ($upload as $item) {
-            if (microtime(true) - $started > $budgetSeconds) {
+            $remaining = (int) floor($deadline - microtime(true));
+            if ($remaining <= 1) {
                 $left[] = $item;
                 continue;
             }
-            $outcome = $this->uploadOne($id, $userFolder, $item);
+            $outcome = $this->uploadOne($id, $uid, $userFolder, $item, $remaining);
             if ($outcome === null) {
                 $sent++;
             } else {
@@ -175,14 +173,14 @@ class FolderRead
             }
         }
         if ($left !== []) {
-            $this->cache()->set('pickup-' . $id, [
+            $this->jobs->add(PickupJob::class, [
+                'id' => $id,
                 'uid' => $uid,
                 'left' => $left,
                 'sent' => $sent,
                 'listed' => count($items),
                 'skipped' => $skipped,
-            ], 900);
-            $this->jobs->add(\OCA\SynaplanIntegration\BackgroundJob\PickupJob::class, ['id' => $id]);
+            ]);
 
             return;
         }
@@ -190,29 +188,44 @@ class FolderRead
     }
 
     /**
+     * Send one listed file. The person's setting and the file's version are
+     * checked again here, at the moment of reading: both may have changed
+     * since the listing, above all while a background job was waiting.
+     *
      * @param array{id: string, version: string} $item
      * @return array{id: string, name: string, reason: string}|null null when the file was stored
      */
-    private function uploadOne(string $pickupId, Folder $userFolder, array $item): ?array
+    private function uploadOne(string $pickupId, string $uid, Folder $userFolder, array $item, int $timeoutSeconds): ?array
     {
         $nodes = $userFolder->getById((int) $item['id']);
         $node = $nodes[0] ?? null;
         if (!$node instanceof File) {
             return ['id' => $item['id'], 'name' => $item['id'], 'reason' => 'unreadable'];
         }
+        if (!$this->scope->mayRead($uid, $this->parentFolder($userFolder, $node))) {
+            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'outside_scope'];
+        }
+        if ((string) $node->getEtag() !== $item['version']) {
+            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'changed_since_listing'];
+        }
         try {
             $bytes = $node->getContent();
         } catch (\Throwable) {
             return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'unreadable'];
         }
-        $stored = $this->links->uploadPickupFile(
-            $pickupId,
-            $item['id'],
-            $item['version'],
-            $bytes,
-            $node->getName(),
-            $node->getMimeType(),
-        );
+        try {
+            $stored = $this->links->uploadPickupFile(
+                $pickupId,
+                $item['id'],
+                $item['version'],
+                $bytes,
+                $node->getName(),
+                $node->getMimeType(),
+                max(1, $timeoutSeconds),
+            );
+        } catch (\Throwable) {
+            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'unreachable'];
+        }
         if (($stored['status_code'] ?? 0) === 200) {
             return null;
         }
@@ -222,6 +235,15 @@ class FolderRead
             'name' => $node->getName(),
             'reason' => (string) ($stored['error'] ?? 'unreadable'),
         ];
+    }
+
+    private function parentFolder(Folder $userFolder, File $file): string
+    {
+        $relative = $userFolder->getRelativePath($file->getPath());
+        $relative = is_string($relative) ? trim($relative, '/') : $file->getName();
+        $parent = str_contains($relative, '/') ? dirname($relative) : '';
+
+        return $parent === '.' ? '' : $parent;
     }
 
     /**
@@ -271,6 +293,10 @@ class FolderRead
     }
 
     /**
+     * The folder a selector names. An empty path is the person's files; a
+     * path that cannot be cleaned (`Invoices//2026`, `Invoices/../HR`) is
+     * refused, never read as the whole home folder.
+     *
      * @param array<string, mixed> $selector
      */
     private function folder(Folder $userFolder, array $selector): ?Folder
@@ -282,9 +308,13 @@ class FolderRead
 
             return $node instanceof Folder ? $node : null;
         }
-        $path = ReadScope::clean((string) ($selector['folder_path'] ?? ''));
-        if ($path === '') {
+        $raw = trim((string) ($selector['folder_path'] ?? ''));
+        if ($raw === '') {
             return $userFolder;
+        }
+        $path = ReadScope::clean($raw);
+        if ($path === '') {
+            return null;
         }
         try {
             $node = $userFolder->get($path);
@@ -347,10 +377,5 @@ class FolderRead
         }
 
         return time() - (int) $match[1] * ['h' => 3600, 'd' => 86400, 'w' => 604800][$match[2]];
-    }
-
-    private function cache(): ICache
-    {
-        return $this->cacheFactory->createDistributed(Application::APP_ID);
     }
 }

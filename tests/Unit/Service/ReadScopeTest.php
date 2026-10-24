@@ -43,6 +43,19 @@ final class ReadScopeTest extends TestCase
         self::assertCount(1, $scope->get('ada')['folders']);
     }
 
+    public function testNamingAnAlreadyNamedFolderUnderWatchedOpensIt(): void
+    {
+        $scope = $this->scope();
+        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '3', 'path' => 'Invoices']]);
+        self::assertFalse($scope->mayRead('ada', 'Invoices'));
+
+        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+    }
+
     public function testAllFilesMayBeRead(): void
     {
         $scope = $this->scope();

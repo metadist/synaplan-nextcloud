@@ -360,7 +360,10 @@ async function addFolder() {
  * Store the choice and the named folders, and tell Synaplan.
  */
 async function saveScope() {
-	if (readFolders.value.length > readFolderCap.value) {
+	if (
+		readMode.value === 'allowed'
+		&& readFolders.value.length > readFolderCap.value
+	) {
 		banner.value = t(
 			'synaplan_integration',
 			'Synaplan may already read as many folders as your administrator allows.',

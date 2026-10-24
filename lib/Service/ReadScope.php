@@ -14,6 +14,7 @@ use OCP\IConfig;
 class ReadScope
 {
     public const PREF = 'read_scope';
+    public const PENDING = 'read_scope_pending';
     public const CAP = 'read_folder_cap';
     public const DEFAULT_CAP = 20;
 
@@ -73,6 +74,14 @@ class ReadScope
         $scope = $this->get($uid);
         foreach ($scope['folders'] as $folder) {
             if ($folder['path'] === $path) {
+                // Already named, but the folder menu promises this folder may
+                // be read now: under "Only what I watch" that promise takes
+                // the mode switch too, or nothing changes.
+                if ($scope['mode'] === self::MODE_WATCHED) {
+                    $scope['mode'] = self::MODE_ALLOWED;
+                    $this->store($uid, $scope);
+                }
+
                 return null;
             }
         }
@@ -156,6 +165,21 @@ class ReadScope
     }
 
     /**
+     * Send the saved setting again after a report failed. True when Synaplan
+     * holds it now.
+     */
+    public function republish(string $uid): bool
+    {
+        $scope = $this->get($uid);
+        if (!$this->report($uid, $scope)) {
+            return false;
+        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
+
+        return true;
+    }
+
+    /**
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
     private function store(string $uid, array $scope): void
@@ -166,10 +190,25 @@ class ReadScope
             self::PREF,
             (string) json_encode($scope, JSON_UNESCAPED_SLASHES),
         );
+        if ($this->report($uid, $scope)) {
+            $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
+        } else {
+            // The setting here is what a read checks, but Synaplan refuses a
+            // run from its copy before it asks. Keep the debt where the hourly
+            // job finds it instead of dropping it.
+            $this->config->setUserValue($uid, Application::APP_ID, self::PENDING, '1');
+        }
+    }
+
+    /**
+     * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
+     */
+    private function report(string $uid, array $scope): bool
+    {
         try {
-            $this->links->reportReadScope($uid, $scope['mode'], $scope['folders']);
+            return $this->links->reportReadScope($uid, $scope['mode'], $scope['folders']);
         } catch (\Throwable) {
-            // The setting here is what a read checks. Synaplan's copy can catch up.
+            return false;
         }
     }
 }
