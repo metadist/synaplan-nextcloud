@@ -119,6 +119,9 @@ in `../synaplan`), then:
 make dev-up        # copies docker-compose.dev.yml.example (gitignored) on the first run
 ```
 
+The first run builds the frontend when `js/` is missing (that directory is not in
+git). A later `make dev-up` leaves an existing build alone.
+
 - Nextcloud: http://localhost:8081 — `admin` / `admin`; the test people `ada`,
   `bob` and `carol` (password `<name>-dev-pass`). Ada has the folders the
   journeys use; `Incoming-DE` (edit) and `Specs` (read) are shared with Bob.
