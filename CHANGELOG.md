@@ -6,13 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **What Synaplan may read.** In personal settings a person chooses only what they watch, folders they name, or all of their files. A folder's menu can add that folder. A folder read from Synaplan lists those files and sends the ones that were asked for.
+- Synaplan can copy a file into this Nextcloud. It lands in the Synaplan folder, or in the folder a person chooses in their personal settings. A notification names the file and the folder.
+- **New → From Synaplan** lists the person's files in Synaplan, with generated files first, and copies the chosen file into the folder that is open.
+
 ### Changed
 - **Where Synaplan is** shows one pair at a time: the address this Nextcloud calls, and the address a person opens in the browser. Live and local each keep their own pair. Inside Docker the server address is `http://backend` and the browser address is `http://localhost:5173`.
 - **Translate no longer returns a summary.** It asks Synaplan to translate the file. When that Synaplan does not offer translation, the action says so. The answer no longer includes summary details.
-
-### Added
-- Synaplan can copy a file into this Nextcloud. It lands in the Synaplan folder, or in the folder a person chooses in their personal settings. A notification names the file and the folder.
-- **New → From Synaplan** lists the person's files in Synaplan, with generated files first, and copies the chosen file into the folder that is open.
 
 ## 1.7.0 – 2026-10-19
 

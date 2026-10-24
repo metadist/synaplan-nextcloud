@@ -15,6 +15,8 @@ export interface NodeCompat {
 	basename: string
 	mime?: string
 	permissions: number
+	type?: string
+	path?: string
 }
 
 /**

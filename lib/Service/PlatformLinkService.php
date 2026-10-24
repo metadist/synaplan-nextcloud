@@ -188,7 +188,7 @@ class PlatformLinkService
     {
         $this->request('PATCH', '/api/v1/platform-links/instances/self', [
             'delivery_url' => $deliveryUrl,
-            'app_capabilities' => ['deliveries'],
+            'app_capabilities' => ['deliveries', 'pickups', 'read_scope'],
         ], $this->instanceHeaders());
     }
 
@@ -243,6 +243,105 @@ class PlatformLinkService
         }
 
         return $response->getBody();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function claimPickup(string $id): array
+    {
+        return $this->request(
+            'POST',
+            '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/claim',
+            null,
+            $this->instanceHeaders(),
+            false,
+            true,
+        );
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @return array<string, mixed>
+     */
+    public function submitPickupListing(string $id, array $items): array
+    {
+        return $this->request(
+            'POST',
+            '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/listing',
+            ['items' => $items],
+            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            false,
+            true,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function uploadPickupFile(
+        string $id,
+        string $remoteId,
+        string $version,
+        string $bytes,
+        string $name,
+        string $mime,
+        int $timeoutSeconds = 120,
+    ): array {
+        $client = $this->clientService->newClient();
+        $path = '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/files';
+        $response = $client->post(
+            $this->synaplanConfig->getBaseUrl() . $path,
+            [
+                'headers' => $this->instanceHeaders(),
+                'multipart' => [
+                    ['name' => 'id', 'contents' => $remoteId],
+                    ['name' => 'version', 'contents' => $version],
+                    ['name' => 'file', 'contents' => $bytes, 'filename' => $name, 'headers' => ['Content-Type' => $mime]],
+                ],
+                'timeout' => max(1, $timeoutSeconds),
+                'http_errors' => false,
+                'nextcloud' => ['allow_local_address' => true],
+            ],
+        );
+        $decoded = json_decode($response->getBody(), true);
+
+        return ['status_code' => (int) $response->getStatusCode()] + (is_array($decoded) ? $decoded : []);
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    public function reportPickupResult(string $id, array $result): void
+    {
+        $this->request(
+            'POST',
+            '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/result',
+            $result,
+            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            false,
+            true,
+        );
+    }
+
+    /**
+     * True when Synaplan took the setting. Its copy is what a run checks
+     * before asking, so a false answer has to be retried, not dropped.
+     *
+     * @param list<array{id: string, path: string}> $folders
+     */
+    public function reportReadScope(string $uid, string $mode, array $folders): bool
+    {
+        $result = $this->request(
+            'PUT',
+            '/api/v1/platform-links/read-scope',
+            ['external_id' => $uid, 'mode' => $mode, 'folders' => $folders],
+            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            false,
+            true,
+        );
+
+        return !isset($result['status_code']) || (int) $result['status_code'] === 200;
     }
 
     /**
@@ -423,6 +522,7 @@ class PlatformLinkService
         try {
             $response = match (strtoupper($method)) {
                 'POST' => $client->post($url, $options),
+                'PUT' => $client->put($url, $options),
                 'PATCH' => $client->patch($url, $options),
                 'DELETE' => $client->delete($url, $options),
                 default => $client->get($url, $options),

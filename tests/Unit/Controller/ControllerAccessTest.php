@@ -44,6 +44,7 @@ final class ControllerAccessTest extends TestCase
         'media#proxy' => ['NoAdminRequired', 'NoCSRFRequired'],
         'media#save' => ['NoAdminRequired'],
         'page#research' => ['NoAdminRequired', 'NoCSRFRequired'],
+        'preferences#allowFolder' => ['NoAdminRequired'],
         'preferences#get' => ['NoAdminRequired'],
         'preferences#save' => ['NoAdminRequired'],
         'settings#forgetInstance' => [],
