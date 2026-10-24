@@ -125,6 +125,11 @@ docker-compose.dev.yml: docker-compose.dev.yml.example
 	cp $< $@
 
 dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network)
+	@if [ ! -f js/synaplan_integration-files-init.mjs ]; then \
+		echo "Building the frontend (js/ is missing)…"; \
+		test -d node_modules || npm install; \
+		$(MAKE) build; \
+	fi
 	$(COMPOSE_DEV) up -d --wait
 	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
 	@echo ""
