@@ -16,7 +16,7 @@ concurrency:
 env:
   # The Synaplan the app is tested against; scripts/synaplan-openapi.sh reads
   # it from here and Renovate bumps it (renovate.json5).
-  SYNAPLAN_IMAGE_DIGEST: sha256:fd9acafaf6c5295b862f7b56b46f64c9d6ddd53643b333d20907f68b2ec9f773
+  SYNAPLAN_IMAGE_DIGEST: sha256:e5db958294dd7fa8b74595748bf544a16f0ad26be8d78171a1df24506da7ef70
 
 jobs:
   php:
