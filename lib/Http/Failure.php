@@ -25,6 +25,7 @@ final class Failure
     public const UNSUPPORTED_TYPE = 'unsupported_type';
     public const FILE_EMPTY = 'file_empty';
     public const NO_TEXT = 'no_text';
+    public const TRANSLATION_UNAVAILABLE = 'translation_unavailable';
     public const SYNAPLAN_UNREACHABLE = 'synaplan_unreachable';
     public const SYNAPLAN_ERROR = 'synaplan_error';
     public const SYNAPLAN_KEY_REJECTED = 'synaplan_key_rejected';

@@ -194,6 +194,17 @@ class ApiControllerTest extends TestCase
             ->willReturn([
                 'success' => true,
                 'summary' => 'Hallo Welt',
+                'metadata' => [
+                    'summary_length' => 2,
+                    'compression_ratio' => 1,
+                    'model' => 'test-model',
+                    'provider' => 'test',
+                    'configuration' => [
+                        'summary_type' => 'translation',
+                        'focus_areas' => ['main-ideas', 'key-facts'],
+                        'output_language' => 'de',
+                    ],
+                ],
             ]);
         $this->synaplanClient->expects($this->never())->method('summarize');
 
@@ -202,6 +213,11 @@ class ApiControllerTest extends TestCase
 
         $this->assertTrue($data['success']);
         $this->assertSame('Hallo Welt', $data['translation']);
+        $this->assertSame([
+            'target_language' => 'de',
+            'model' => 'test-model',
+            'provider' => 'test',
+        ], $data['metadata']);
         $this->assertSame(200, $response->getStatus());
     }
 

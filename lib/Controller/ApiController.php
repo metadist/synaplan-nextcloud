@@ -172,11 +172,31 @@ class ApiController extends Controller
             return new JSONResponse([
                 'success' => true,
                 'translation' => $result['summary'] ?? '',
-                'metadata' => $result['metadata'] ?? null,
+                'metadata' => $this->translationMetadata($result, $targetLanguage),
             ]);
         } catch (\Exception $e) {
             return $this->failed($e, 'Translation failed');
         }
+    }
+
+    /**
+     * What the browser may show about a translation. Synaplan's own details
+     * describe a summary (type, focus, compression) and stay on the server.
+     *
+     * @param array<string, mixed> $result
+     * @return array<string, string>
+     */
+    private function translationMetadata(array $result, string $targetLanguage): array
+    {
+        $metadata = is_array($result['metadata'] ?? null) ? $result['metadata'] : [];
+        $out = ['target_language' => $targetLanguage];
+        foreach (['model', 'provider'] as $key) {
+            if (is_string($metadata[$key] ?? null) && $metadata[$key] !== '') {
+                $out[$key] = $metadata[$key];
+            }
+        }
+
+        return $out;
     }
 
     /**
