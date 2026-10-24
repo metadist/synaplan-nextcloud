@@ -197,6 +197,7 @@
 		"Synaplan AI chat": "Synaplan-KI-Chat",
 		"Synaplan cannot be reached. Try again in a minute, or ask your administrator.": "Synaplan ist nicht erreichbar. Versuche es in einer Minute erneut oder frag deine Administration.",
 		"Synaplan cannot read this kind of file.": "Synaplan kann diese Art von Datei nicht lesen.",
+		"This Synaplan cannot translate a file. Ask your administrator.": "Dieses Synaplan kann keine Datei übersetzen. Frag deine Administration.",
 		"Synaplan copied {name} to {folder}.": "Synaplan hat {name} nach {folder} kopiert.",
 		"Synaplan could not finish this. Try again in a minute, or ask your administrator.": "Synaplan konnte das nicht abschließen. Versuche es in einer Minute erneut oder frag deine Administration.",
 		"Synaplan could not set up your account. Ask your administrator.": "Synaplan konnte dein Konto nicht einrichten. Frag deine Administration.",

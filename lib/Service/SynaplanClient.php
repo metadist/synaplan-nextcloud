@@ -69,19 +69,20 @@ class SynaplanClient
     /**
      * Translate a whole document into one language.
      *
-     * A Synaplan that lists the summary type `translation` translates the
-     * document as it is. An older one does not know that type, so the request
-     * stays what earlier app releases sent: a long summary in the target
-     * language.
+     * The request is always Synaplan's translation mode. A Synaplan that
+     * answered and does not list that mode is refused here: a summary in the
+     * target language is not a translation. When the capability list cannot
+     * be read, the translation request is still sent.
      *
      * @return array{success?: bool, summary?: string, metadata?: array<string, mixed>}
+     * @throws FailureException when this Synaplan cannot translate, or the person has no key
      * @throws \Exception on API error
      */
     public function translate(string $text, string $targetLanguage): array
     {
         $this->requireApiKey();
-        if (!$this->supportsSummaryType('translation')) {
-            return $this->summarize($text, 'abstractive', 'long', $targetLanguage);
+        if ($this->knownSummaryTypesMiss('translation')) {
+            throw FailureException::translationUnavailable();
         }
 
         return $this->request('POST', '/api/v1/summary/generate', [
@@ -571,12 +572,16 @@ class SynaplanClient
         return $this->synaplanConfig->getAdminApiKey();
     }
 
-    private function supportsSummaryType(string $type): bool
+    /**
+     * True when Synaplan answered and its summary types do not include $type.
+     * An unreadable answer is not a refusal: the request is still sent.
+     */
+    private function knownSummaryTypesMiss(string $type): bool
     {
         $summary = $this->capabilities()['summary'] ?? null;
         $types = is_array($summary) ? ($summary['types'] ?? null) : null;
 
-        return is_array($types) && in_array($type, $types, true);
+        return is_array($types) && !in_array($type, $types, true);
     }
 
     /**

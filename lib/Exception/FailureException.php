@@ -79,6 +79,14 @@ final class FailureException extends \RuntimeException
         );
     }
 
+    public static function translationUnavailable(): self
+    {
+        return new self(
+            new Failure(Http::STATUS_UNPROCESSABLE_ENTITY, Failure::TRANSLATION_UNAVAILABLE),
+            'Connected Synaplan does not list translation',
+        );
+    }
+
     public static function invalidSynaplanAnswer(): self
     {
         return new self(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_ERROR), 'Invalid JSON response from Synaplan API');

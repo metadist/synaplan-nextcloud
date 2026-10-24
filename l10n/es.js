@@ -198,6 +198,7 @@ OC.L10N.register(
     "Synaplan AI chat" : "Chat de IA de Synaplan",
     "Synaplan cannot be reached. Try again in a minute, or ask your administrator." : "No se puede acceder a Synaplan. Inténtalo de nuevo dentro de un minuto o consulta a tu administrador.",
     "Synaplan cannot read this kind of file." : "Synaplan no puede leer este tipo de archivo.",
+    "This Synaplan cannot translate a file. Ask your administrator." : "Este Synaplan no puede traducir un archivo. Consulta a tu administrador.",
     "Synaplan copied {name} to {folder}." : "Synaplan copió {name} en {folder}.",
     "Synaplan could not finish this. Try again in a minute, or ask your administrator." : "Synaplan no pudo terminarlo. Inténtalo de nuevo dentro de un minuto o consulta a tu administrador.",
     "Synaplan could not set up your account. Ask your administrator." : "Synaplan no pudo configurar tu cuenta. Consulta a tu administrador.",
