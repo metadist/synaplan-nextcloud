@@ -83,6 +83,81 @@
 				</span>
 			</div>
 		</NcSettingsSection>
+
+		<NcSettingsSection
+			:name="
+				t(
+					'synaplan_integration',
+					'What may Synaplan read in your Nextcloud?',
+				)
+			">
+			<NcCheckboxRadioSwitch
+				v-model="readMode"
+				value="watched"
+				type="radio"
+				name="sp-read-scope">
+				{{ t('synaplan_integration', 'Only what I watch') }}
+			</NcCheckboxRadioSwitch>
+			<NcCheckboxRadioSwitch
+				v-model="readMode"
+				value="allowed"
+				type="radio"
+				name="sp-read-scope">
+				{{ t('synaplan_integration', 'Also folders I allow') }}
+			</NcCheckboxRadioSwitch>
+			<ul v-if="readMode === 'allowed'" class="sp-read-folders">
+				<li v-for="folder in readFolders" :key="folder.path">
+					<span>{{ folder.path }}</span>
+					<span
+						role="button"
+						tabindex="0"
+						class="sp-btn-danger"
+						@click="removeFolder(folder.path)"
+						@keydown.enter="removeFolder(folder.path)">
+						{{ t('synaplan_integration', 'Remove') }}
+					</span>
+				</li>
+			</ul>
+			<div v-if="readMode === 'allowed'" class="sp-actions">
+				<span
+					role="button"
+					tabindex="0"
+					class="sp-btn-primary"
+					@click="addFolder()"
+					@keydown.enter="addFolder()">
+					{{ t('synaplan_integration', 'Add a folder') }}
+				</span>
+			</div>
+			<NcCheckboxRadioSwitch
+				v-model="readMode"
+				value="all"
+				type="radio"
+				name="sp-read-scope">
+				{{ t('synaplan_integration', 'All my files') }}
+			</NcCheckboxRadioSwitch>
+			<p v-if="readMode === 'all'" class="sp-hint">
+				{{
+					t(
+						'synaplan_integration',
+						'Synaplan can read every file you can open.',
+					)
+				}}
+			</p>
+			<div class="sp-actions">
+				<span
+					role="button"
+					tabindex="0"
+					class="sp-btn-primary"
+					@click="!savingScope && saveScope()"
+					@keydown.enter="!savingScope && saveScope()">
+					{{
+						savingScope
+							? t('synaplan_integration', 'Saving...')
+							: t('synaplan_integration', 'Save')
+					}}
+				</span>
+			</div>
+		</NcSettingsSection>
 	</div>
 </template>
 
@@ -91,9 +166,16 @@ import { computed, onMounted, ref } from 'vue'
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { FilePickerType, getFilePickerBuilder } from '@nextcloud/dialogs'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+
+interface ReadFolder {
+	id: string
+	path: string
+}
 
 interface LinkStatus {
 	mode?: string
@@ -108,7 +190,11 @@ const startUrl = generateUrl('/apps/synaplan_integration/link/start')
 const loading = ref(true)
 const busy = ref(false)
 const savingFolder = ref(false)
+const savingScope = ref(false)
 const copyFolder = ref('')
+const readMode = ref<'watched' | 'allowed' | 'all'>('watched')
+const readFolders = ref<ReadFolder[]>([])
+const readFolderCap = ref(20)
 const status = ref<LinkStatus>({})
 const banner = ref('')
 const bannerType = ref<'success' | 'error' | 'warning'>('success')
@@ -185,6 +271,18 @@ async function loadFolder() {
 	try {
 		const { data } = await axios.get(`${baseUrl}/api/v1/preferences`)
 		copyFolder.value = data.copy_folder || ''
+		const scope = data.read_scope
+		if (
+			scope?.mode === 'watched'
+			|| scope?.mode === 'allowed'
+			|| scope?.mode === 'all'
+		) {
+			readMode.value = scope.mode
+		}
+		readFolders.value = Array.isArray(scope?.folders) ? scope.folders : []
+		if (typeof data.read_folder_cap === 'number') {
+			readFolderCap.value = data.read_folder_cap
+		}
 	} catch {
 		banner.value = t(
 			'synaplan_integration',
@@ -222,6 +320,73 @@ async function saveFolder() {
 /**
  *
  */
+/**
+ * Drop one named folder from the list. Saving stores the change.
+ * @param path Folder the person named
+ */
+function removeFolder(path: string) {
+	readFolders.value = readFolders.value.filter((folder) => folder.path !== path)
+}
+
+/**
+ * Ask the person to choose a folder and add it to the list.
+ */
+async function addFolder() {
+	try {
+		const picked = await getFilePickerBuilder(
+			t('synaplan_integration', 'Add a folder'),
+		)
+			.setMultiSelect(false)
+			.setType(FilePickerType.Choose)
+			.allowDirectories(true)
+			.setCanPick((node) => node.type === 'folder')
+			.build()
+			.pick()
+		const path = String(picked).replace(/^\/+/, '')
+		if (!path || readFolders.value.some((folder) => folder.path === path)) {
+			return
+		}
+		readFolders.value = [...readFolders.value, { id: '', path }]
+		readMode.value = 'allowed'
+	} catch {
+		// The person closed the picker.
+	}
+}
+
+/**
+ * Store the choice and the named folders, and tell Synaplan.
+ */
+async function saveScope() {
+	if (readFolders.value.length > readFolderCap.value) {
+		banner.value = t(
+			'synaplan_integration',
+			'Synaplan may already read as many folders as your administrator allows.',
+		)
+		bannerType.value = 'error'
+		return
+	}
+	savingScope.value = true
+	try {
+		const { data } = await axios.put(`${baseUrl}/api/v1/preferences`, {
+			copy_folder: copyFolder.value,
+			read_scope: { mode: readMode.value, folders: readFolders.value },
+		})
+		if (data.success) {
+			readFolders.value = data.read_scope?.folders || readFolders.value
+			banner.value = t('synaplan_integration', 'Settings saved successfully.')
+			bannerType.value = 'success'
+		} else {
+			banner.value = t('synaplan_integration', 'Could not save that folder.')
+			bannerType.value = 'error'
+		}
+	} catch {
+		banner.value = t('synaplan_integration', 'Could not save that folder.')
+		bannerType.value = 'error'
+	} finally {
+		savingScope.value = false
+	}
+}
+
 async function loadStatus() {
 	loading.value = true
 	try {
@@ -315,6 +480,20 @@ onMounted(async () => {
 
 .sp-hint {
 	color: var(--color-text-maxcontrast, #767676);
+}
+
+.sp-read-folders {
+	list-style: none;
+	margin: 8px 0 12px;
+	padding: 0;
+}
+
+.sp-read-folders li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 8px;
 }
 
 .sp-connected-row {

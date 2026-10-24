@@ -101,6 +101,11 @@ class SettingsController extends Controller
             'link_instance_id' => $this->synaplanConfig->getLinkInstanceId(),
             'link_instance' => $this->platformLinks?->instanceStatus(),
             'delivery_url' => (string) $this->config->getAppValue(Application::APP_ID, 'delivery_url', ''),
+            'read_folder_cap' => max(1, min(500, (int) $this->config->getAppValue(
+                Application::APP_ID,
+                'read_folder_cap',
+                '20',
+            ))),
         ]);
     }
 
@@ -176,6 +181,10 @@ class SettingsController extends Controller
                 }
                 if ($delivery_url === null && array_key_exists('delivery_url', $decoded)) {
                     $delivery_url = trim((string) $decoded['delivery_url']);
+                }
+                if (isset($decoded['read_folder_cap'])) {
+                    $cap = max(1, min(500, (int) $decoded['read_folder_cap']));
+                    $this->config->setAppValue(Application::APP_ID, 'read_folder_cap', (string) $cap);
                 }
             }
         }

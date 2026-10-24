@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
@@ -35,6 +36,7 @@ class InboundController extends Controller
         private NotifyKeyCache $keys,
         private SeenNotificationStore $seen,
         private CopyDelivery $copies,
+        private FolderRead $reads,
         private UserAccountService $accounts,
         private ICacheFactory $cacheFactory,
         private ITimeFactory $time,
@@ -67,8 +69,7 @@ class InboundController extends Controller
         return match ($type) {
             'delivery' => $this->delivered($this->copies->handle($id)),
             'identity_revoked' => $this->revoked($id),
-            // A folder read answers later, through its own calls (CF3.8).
-            'pickup' => new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED),
+            'pickup' => $this->read($id),
             default => new JSONResponse([], Http::STATUS_NO_CONTENT),
         };
     }
@@ -109,6 +110,13 @@ class InboundController extends Controller
             : Http::STATUS_OK;
 
         return new JSONResponse($result['body'], $status);
+    }
+
+    private function read(string $id): JSONResponse
+    {
+        $this->reads->handle($id);
+
+        return new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED);
     }
 
     private function revoked(string $linkId): JSONResponse

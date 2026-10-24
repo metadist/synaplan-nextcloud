@@ -192,6 +192,30 @@
 
 				<div :style="{ height: '20px' }" />
 
+				<div class="sp-field">
+					<strong>{{
+						t('synaplan_integration', 'Folders one person may allow')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'How many folders one person may name for Synaplan to read.',
+							)
+						}}
+					</p>
+					<div :style="inputWrapStyle">
+						<NcTextField
+							id="synaplan-read-folder-cap"
+							v-model="readFolderCap"
+							type="number"
+							:disabled="saving"
+							:style="{ width: '100%' }" />
+					</div>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
 				<!-- Buttons -->
 				<div
 					:style="{ display: 'flex', gap: '16px', margin: '12px 0 32px' }">
@@ -739,6 +763,7 @@ const linkAutoProvision = ref(false)
 const linkRegistered = ref(false)
 const linkInstanceId = ref('')
 const deliveryUrl = ref('')
+const readFolderCap = ref('20')
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
@@ -1005,6 +1030,7 @@ async function loadSettings() {
 		linkInstanceId.value = data.link_instance_id || ''
 		linkInstance.value = data.link_instance || null
 		deliveryUrl.value = data.delivery_url || ''
+		readFolderCap.value = String(data.read_folder_cap || 20)
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
@@ -1031,6 +1057,7 @@ async function save() {
 			mode: mode.value,
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
+			read_folder_cap: Number(readFolderCap.value) || 20,
 			...(mode.value === 'link' ? { delivery_url: deliveryUrl.value } : {}),
 		})
 		if (apiKey.value) {

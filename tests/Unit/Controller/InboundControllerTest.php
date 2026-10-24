@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\InboundController;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
@@ -25,6 +26,7 @@ final class InboundControllerTest extends TestCase
 
     private NotifyKeyCache&MockObject $keys;
     private CopyDelivery&MockObject $copies;
+    private FolderRead&MockObject $reads;
     private UserAccountService&MockObject $accounts;
     private InboundController $controller;
 
@@ -43,6 +45,7 @@ final class InboundControllerTest extends TestCase
         $this->keys = $this->createMock(NotifyKeyCache::class);
         $this->keys->method('keys')->willReturn([['publicKey' => $fixture['public_key']]]);
         $this->copies = $this->createMock(CopyDelivery::class);
+        $this->reads = $this->createMock(FolderRead::class);
         $this->accounts = $this->createMock(UserAccountService::class);
 
         $time = $this->createMock(ITimeFactory::class);
@@ -54,6 +57,7 @@ final class InboundControllerTest extends TestCase
             $this->keys,
             new MemorySeenNotifications(),
             $this->copies,
+            $this->reads,
             $this->accounts,
             new ArrayCacheFactory(),
             $time,
@@ -126,9 +130,10 @@ final class InboundControllerTest extends TestCase
         self::assertSame(Http::STATUS_NO_CONTENT, $response->getStatus());
     }
 
-    public function testPickupIsAcceptedWithoutAClaim(): void
+    public function testPickupIsReadAndAccepted(): void
     {
         $this->copies->expects($this->never())->method('handle');
+        $this->reads->expects($this->once())->method('handle')->with('15');
 
         $body = $this->signed([
             'type' => 'pickup',
@@ -177,6 +182,7 @@ final class InboundControllerTest extends TestCase
             $this->keys,
             new MemorySeenNotifications(),
             $this->copies,
+            $this->reads,
             $this->accounts,
             new ArrayCacheFactory(),
             $time,
