@@ -53,9 +53,10 @@ class ChatController extends Controller
      * @param string|null $groupKey    RAG group key for knowledge base context
      * @param string|null $model       Provider model id (null = the account's chat model)
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
+     * @param list<mixed> $history Earlier turns of this Research Chat. Ignored for a file.
      */
     #[NoAdminRequired]
-    public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false): JSONResponse
+    public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false, array $history = []): JSONResponse
     {
         // Parse JSON body as fallback
         if ($message === '') {
@@ -68,6 +69,7 @@ class ChatController extends Controller
                     $groupKey = isset($decoded['groupKey']) ? trim((string) $decoded['groupKey']) : $groupKey;
                     $model = isset($decoded['model']) ? trim((string) $decoded['model']) : $model;
                     $useMemories = isset($decoded['useMemories']) ? (bool) $decoded['useMemories'] : $useMemories;
+                    $history = isset($decoded['history']) && is_array($decoded['history']) ? $decoded['history'] : $history;
                 }
             }
         }
@@ -81,7 +83,7 @@ class ChatController extends Controller
 
         try {
             $answer = $this->synaplanClient->chat(
-                $this->messages($message, $fileId, $groupKey, $useMemories),
+                $this->messages($message, $fileId, $groupKey, $useMemories, $history),
                 $model,
             );
 
@@ -107,9 +109,10 @@ class ChatController extends Controller
      * @param string|null $groupKey    RAG group key for knowledge base context
      * @param string|null $model       Provider model id/name (null = user default)
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
+     * @param list<mixed> $history Earlier turns of this Research Chat. Ignored for a file.
      */
     #[NoAdminRequired]
-    public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false): Response
+    public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false, array $history = []): Response
     {
         if ($message === '') {
             $body = file_get_contents('php://input');
@@ -121,6 +124,7 @@ class ChatController extends Controller
                     $groupKey = isset($decoded['groupKey']) ? trim((string) $decoded['groupKey']) : $groupKey;
                     $model = isset($decoded['model']) ? trim((string) $decoded['model']) : $model;
                     $useMemories = isset($decoded['useMemories']) ? (bool) $decoded['useMemories'] : $useMemories;
+                    $history = isset($decoded['history']) && is_array($decoded['history']) ? $decoded['history'] : $history;
                 }
             }
         }
@@ -133,7 +137,7 @@ class ChatController extends Controller
         }
 
         try {
-            $payload = ['messages' => $this->messages($message, $fileId, $groupKey, $useMemories), 'stream' => true];
+            $payload = ['messages' => $this->messages($message, $fileId, $groupKey, $useMemories, $history), 'stream' => true];
             if ($model !== null && $model !== '') {
                 $payload['model'] = $model;
             }
@@ -153,10 +157,12 @@ class ChatController extends Controller
     /**
      * The system prompt and the question with its file, folder and memory context.
      *
+     * @param list<mixed> $history
+     *
      * @return list<array{role: string, content: string}>
      * @throws NotFoundException when the file is not the user's
      */
-    private function messages(string $message, ?int $fileId, ?string $groupKey, bool $useMemories): array
+    private function messages(string $message, ?int $fileId, ?string $groupKey, bool $useMemories, array $history = []): array
     {
         $context = $fileId !== null ? $this->getFileInfo($fileId)['content'] : '';
 
@@ -175,10 +181,27 @@ class ChatController extends Controller
                 . 'Question: ' . $message
             : $message;
 
-        return [
+        $turns = [
             ['role' => 'system', 'content' => $this->buildSystemPrompt($memoryContext)],
-            ['role' => 'user', 'content' => $userContent],
         ];
+        // A file action is one question about that file. Research Chat sends
+        // the earlier wording so the next answer stays in the same thread.
+        if ($fileId === null) {
+            foreach (array_slice($history, -8) as $turn) {
+                if (!is_array($turn)) {
+                    continue;
+                }
+                $role = ($turn['role'] ?? '') === 'assistant' ? 'assistant' : (($turn['role'] ?? '') === 'user' ? 'user' : '');
+                $text = trim((string) ($turn['text'] ?? ''));
+                if ($role === '' || $text === '') {
+                    continue;
+                }
+                $turns[] = ['role' => $role, 'content' => mb_substr($text, 0, 2000)];
+            }
+        }
+        $turns[] = ['role' => 'user', 'content' => $userContent];
+
+        return $turns;
     }
 
     /**

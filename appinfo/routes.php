@@ -56,6 +56,12 @@ return [
 		['name' => 'chat#chat', 'url' => '/api/v1/chat', 'verb' => 'POST'],
 		['name' => 'chat#chatStream', 'url' => '/api/v1/chat/stream', 'verb' => 'POST'],
 
+		// Research Chat threads (not used by the one-shot file actions)
+		['name' => 'researchHistory#list', 'url' => '/api/v1/research/conversations', 'verb' => 'GET'],
+		['name' => 'researchHistory#open', 'url' => '/api/v1/research/conversations/{id}', 'verb' => 'GET'],
+		['name' => 'researchHistory#save', 'url' => '/api/v1/research/conversations/{id}', 'verb' => 'PUT'],
+		['name' => 'researchHistory#remove', 'url' => '/api/v1/research/conversations/{id}', 'verb' => 'DELETE'],
+
 		// Media generation API
 		['name' => 'media#generate', 'url' => '/api/v1/media/generate', 'verb' => 'POST'],
 		['name' => 'media#save', 'url' => '/api/v1/media/save', 'verb' => 'POST'],

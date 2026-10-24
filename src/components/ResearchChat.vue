@@ -8,6 +8,35 @@
 				</p>
 			</div>
 
+			<div v-if="conversations.length > 0" class="conversation-bar">
+				<label class="control-label" for="research-conversations">{{
+					t('synaplan_integration', 'Conversations')
+				}}</label>
+				<NcSelect
+					input-id="research-conversations"
+					:model-value="currentConversation"
+					:options="conversations"
+					label="title"
+					:placeholder="t('synaplan_integration', 'New conversation')"
+					:clearable="false"
+					:disabled="loading"
+					class="conversation-select"
+					@update:model-value="onPickConversation" />
+				<NcButton
+					variant="secondary"
+					:disabled="loading"
+					@click="startConversation">
+					{{ t('synaplan_integration', 'New conversation') }}
+				</NcButton>
+				<NcButton
+					v-if="messages.length > 0"
+					variant="tertiary"
+					:disabled="loading"
+					@click="removeConversation">
+					{{ t('synaplan_integration', 'Remove this conversation') }}
+				</NcButton>
+			</div>
+
 			<!-- One-time "Activate AI" consent (per-user mode only). Until the
 			     user activates AI, no account is created and sending is blocked. -->
 			<AiConsentGate
@@ -377,6 +406,21 @@ let modelsLoaded: Promise<void> = Promise.resolve()
 const failure = ref<Failure | null>(null)
 const inputMessage = ref('')
 const messages = ref<ChatMessage[]>([])
+interface Conversation {
+	id: string
+	title: string
+	updated?: number
+}
+const conversations = ref<Conversation[]>([])
+
+/** A short id the server will accept for one Research Chat thread. */
+function newConversationId(): string {
+	const bytes = new Uint8Array(8)
+	crypto.getRandomValues(bytes)
+	return `c${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+const currentId = ref(newConversationId())
 const messagesContainer = ref<HTMLElement | null>(null)
 const loadingText = ref(t('synaplan_integration', 'Thinking...'))
 
@@ -619,6 +663,7 @@ async function sendMessage() {
 
 	loading.value = false
 	await scrollToBottom()
+	await persistConversation()
 }
 
 /**
@@ -688,6 +733,14 @@ async function handleChatMessage(text: string) {
 	startThinkingStages()
 
 	const payload: Record<string, unknown> = { message: text }
+	const prior = messages.value
+		.slice(0, -1)
+		.filter((turn) => turn.text)
+		.slice(-8)
+		.map((turn) => ({ role: turn.role, text: turn.text }))
+	if (prior.length > 0) {
+		payload.history = prior
+	}
 	if (selectedGroup.value) {
 		payload.groupKey = selectedGroup.value
 	}
@@ -794,10 +847,138 @@ function onConsentGranted() {
 	loadClientConfig()
 }
 
+const currentConversation = computed(
+	() => conversations.value.find((item) => item.id === currentId.value) ?? null,
+)
+
+/** Leave the current thread in the list and start a blank one. */
+function startConversation() {
+	currentId.value = newConversationId()
+	messages.value = []
+	failure.value = null
+}
+
+/**
+ * @param {Conversation | null} value The conversation chosen in the list
+ */
+function onPickConversation(value: Conversation | null) {
+	if (value && value.id !== currentId.value) {
+		openConversation(value.id)
+	}
+}
+
+/** Load this person's threads and reopen the latest one. */
+async function loadConversations() {
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/research/conversations`)
+		if (!data.success || !Array.isArray(data.conversations)) {
+			return
+		}
+		conversations.value = data.conversations
+		if (conversations.value.length > 0 && messages.value.length === 0) {
+			await openConversation(conversations.value[0].id)
+		}
+	} catch {
+		// The composer still works when the list cannot be loaded.
+	}
+}
+
+/**
+ * @param {string} id Conversation to show
+ */
+async function openConversation(id: string) {
+	try {
+		const { data } = await axios.get(
+			`${baseUrl}/api/v1/research/conversations/${id}`,
+		)
+		if (!data.success || !data.conversation) {
+			return
+		}
+		currentId.value = data.conversation.id
+		messages.value = (data.conversation.messages ?? []).map(
+			(turn: {
+				role: 'user' | 'assistant'
+				text: string
+				model?: string
+			}) => ({
+				role: turn.role,
+				text: turn.text,
+				model: turn.model,
+			}),
+		)
+		failure.value = null
+		await scrollToBottom()
+	} catch {
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Could not open this conversation. Try again.',
+			),
+		}
+	}
+}
+
+/** Write the wording on screen so it is still here after a reload. */
+async function persistConversation() {
+	if (messages.value.length === 0) {
+		return
+	}
+	try {
+		const { data } = await axios.put(
+			`${baseUrl}/api/v1/research/conversations/${currentId.value}`,
+			{
+				messages: messages.value.map((turn) => ({
+					role: turn.role,
+					text: turn.text,
+					model: turn.model,
+				})),
+			},
+		)
+		if (!data.success || !data.conversation) {
+			return
+		}
+		const saved = data.conversation as Conversation
+		const rest = conversations.value.filter((item) => item.id !== saved.id)
+		conversations.value = [saved, ...rest]
+	} catch {
+		if (!failure.value) {
+			failure.value = {
+				text: t(
+					'synaplan_integration',
+					'Could not save this conversation. Try again.',
+				),
+			}
+		}
+	}
+}
+
+/** Drop the open thread and show the next one, or a blank composer. */
+async function removeConversation() {
+	const id = currentId.value
+	try {
+		await axios.delete(`${baseUrl}/api/v1/research/conversations/${id}`)
+	} catch {
+		failure.value = {
+			text: t(
+				'synaplan_integration',
+				'Could not remove this conversation. Try again.',
+			),
+		}
+		return
+	}
+	conversations.value = conversations.value.filter((item) => item.id !== id)
+	if (conversations.value[0]) {
+		await openConversation(conversations.value[0].id)
+		return
+	}
+	startConversation()
+}
+
 onMounted(() => {
 	loadGroups()
 	modelsLoaded = loadModels()
 	loadClientConfig()
+	loadConversations()
 })
 </script>
 
@@ -843,6 +1024,20 @@ onMounted(() => {
 	color: var(--color-text-maxcontrast, #767676);
 	margin: 4px 0 0;
 	font-size: 0.9em;
+}
+
+.conversation-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	flex-shrink: 0;
+}
+
+.conversation-select {
+	flex: 1 1 12rem;
+	min-width: 0;
 }
 
 /* Controls bar */
