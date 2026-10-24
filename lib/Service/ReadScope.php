@@ -112,7 +112,13 @@ class ReadScope
 
     /**
      * The person's own rule, not the copy Synaplan stored. A person who
-     * chose nothing allowed nothing. Watched folders arrive with watches.
+     * chose nothing allowed nothing.
+     *
+     * "Only what I watch" names the folders a watch brings. This app has no
+     * watches yet (they are a later step), so that choice allows nothing for
+     * now: it fails closed and never falls back to the named folders. Naming
+     * a folder — here or through the folder's own menu — is what opens a
+     * folder in the meantime.
      */
     public function mayRead(string $uid, string $folder): bool
     {

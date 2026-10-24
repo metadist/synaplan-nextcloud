@@ -113,7 +113,8 @@
 						tabindex="0"
 						class="sp-btn-danger"
 						@click="removeFolder(folder.path)"
-						@keydown.enter="removeFolder(folder.path)">
+						@keydown.enter="removeFolder(folder.path)"
+						@keydown.space.prevent="removeFolder(folder.path)">
 						{{ t('synaplan_integration', 'Remove') }}
 					</span>
 				</li>
@@ -124,7 +125,8 @@
 					tabindex="0"
 					class="sp-btn-primary"
 					@click="addFolder()"
-					@keydown.enter="addFolder()">
+					@keydown.enter="addFolder()"
+					@keydown.space.prevent="addFolder()">
 					{{ t('synaplan_integration', 'Add a folder') }}
 				</span>
 			</div>
@@ -149,7 +151,8 @@
 					tabindex="0"
 					class="sp-btn-primary"
 					@click="!savingScope && saveScope()"
-					@keydown.enter="!savingScope && saveScope()">
+					@keydown.enter="!savingScope && saveScope()"
+					@keydown.space.prevent="!savingScope && saveScope()">
 					{{
 						savingScope
 							? t('synaplan_integration', 'Saving...')
