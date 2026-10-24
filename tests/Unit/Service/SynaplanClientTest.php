@@ -147,27 +147,21 @@ class SynaplanClientTest extends TestCase
         $this->assertSame('Hallo Welt', $this->synaplanClient->translate('Hello world', 'de')['summary']);
     }
 
-    public function testTranslateKeepsTheLongSummaryOnASynaplanWithoutTranslationMode(): void
+    public function testTranslateRefusesASynaplanThatDoesNotListTranslation(): void
     {
         $this->httpClient->method('get')
             ->willReturn($this->capabilities(['abstractive', 'extractive', 'bullet-points']));
-        $this->httpClient->expects($this->once())
-            ->method('post')
-            ->with(
-                'http://localhost:8000/api/v1/summary/generate',
-                $this->callback(fn (array $options): bool => json_decode($options['body'], true) === [
-                    'text' => 'Hello world',
-                    'summaryType' => 'abstractive',
-                    'length' => 'long',
-                    'outputLanguage' => 'fr',
-                ]),
-            )
-            ->willReturn($this->json(['success' => true, 'summary' => 'Bonjour le monde']));
+        $this->httpClient->expects($this->never())->method('post');
 
-        $this->assertSame('Bonjour le monde', $this->synaplanClient->translate('Hello world', 'fr')['summary']);
+        try {
+            $this->synaplanClient->translate('Hello world', 'fr');
+            self::fail('A Synaplan without translation must not be asked for a summary.');
+        } catch (FailureException $e) {
+            self::assertSame([422, 'translation_unavailable'], [$e->failure->status, $e->failure->code]);
+        }
     }
 
-    public function testTranslateKeepsTheLongSummaryWhenCapabilitiesCannotBeRead(): void
+    public function testTranslateStillAsksForATranslationWhenCapabilitiesCannotBeRead(): void
     {
         $this->httpClient->method('get')->willThrowException(new \Exception('Connection refused'));
         $this->logger->expects($this->once())
@@ -177,7 +171,7 @@ class SynaplanClientTest extends TestCase
             ->method('post')
             ->with(
                 $this->anything(),
-                $this->callback(fn (array $options): bool => json_decode($options['body'], true)['summaryType'] === 'abstractive'),
+                $this->callback(fn (array $options): bool => json_decode($options['body'], true)['summaryType'] === 'translation'),
             )
             ->willReturn($this->json(['success' => true, 'summary' => 'Hola mundo']));
 

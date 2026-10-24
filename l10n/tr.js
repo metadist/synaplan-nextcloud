@@ -197,6 +197,7 @@ OC.L10N.register(
     "Synaplan AI chat" : "Synaplan yapay zekâ sohbeti",
     "Synaplan cannot be reached. Try again in a minute, or ask your administrator." : "Synaplan'a ulaşılamıyor. Bir dakika sonra tekrar deneyin veya yöneticinize danışın.",
     "Synaplan cannot read this kind of file." : "Synaplan bu tür dosyaları okuyamaz.",
+    "This Synaplan cannot translate a file. Ask your administrator." : "Bu Synaplan bir dosyayı çeviremiyor. Yöneticinize danışın.",
     "Synaplan copied {name} to {folder}." : "Synaplan, {name} dosyasını {folder} klasörüne kopyaladı.",
     "Synaplan could not finish this. Try again in a minute, or ask your administrator." : "Synaplan bunu tamamlayamadı. Bir dakika sonra tekrar deneyin veya yöneticinize danışın.",
     "Synaplan could not set up your account. Ask your administrator." : "Synaplan hesabınızı oluşturamadı. Yöneticinize danışın.",

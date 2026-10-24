@@ -113,6 +113,13 @@ export function describeFailure(code?: string, message?: string): Failure {
 					'Synaplan found no text in this file. It may be a scan or protected by a password.',
 				),
 			}
+		case 'translation_unavailable':
+			return {
+				text: t(
+					'synaplan_integration',
+					'This Synaplan cannot translate a file. Ask your administrator.',
+				),
+			}
 	}
 	if (message) {
 		return { text: message }
