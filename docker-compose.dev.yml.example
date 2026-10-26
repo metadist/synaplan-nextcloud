@@ -17,7 +17,7 @@
 # /var/www/html look non-empty and the official image skips copying files.
 
 x-nextcloud: &nextcloud
-  image: ${NC_IMAGE:-nextcloud:35-apache@sha256:a588aa5353703b44106a6129adaaf7bf22521b7a4754f9f529b3228d6aa390c5}
+  image: ${NC_IMAGE:-nextcloud:35-apache@sha256:89af7ee7a96ff5e9668280566209268ae6b2d02327f6ef6d56f6d68228cf9431}
   volumes:
     - nextcloud_data:/var/www/html
     - ./:/mnt/synaplan_integration
@@ -73,7 +73,7 @@ services:
 
   # Private network only: the Synaplan network already has a service called `db`.
   nextcloud-db:
-    image: mariadb:11.4@sha256:250e1609e93c0e6aecf64bfbab2d84d5e89d2481540fe77447ff6c855c3b1873
+    image: mariadb:11.8@sha256:f16d7a344413e519dff518f27bdb221388f84b0d274c97c4fb5f2cb0dc1b34fa
     container_name: synaplan-nextcloud-dev-db
     command: --transaction-isolation=READ-COMMITTED
     environment:
