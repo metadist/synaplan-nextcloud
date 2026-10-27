@@ -208,16 +208,24 @@ class ApiController extends Controller
      * @param string $groupKey Target group key for vectorization
      */
     #[NoAdminRequired]
-    public function uploadToKnowledge(int $fileId, string $groupKey = 'DEFAULT'): JSONResponse
+    public function uploadToKnowledge(int $fileId, string $groupKey = 'DEFAULT', ?bool $keepSynced = null): JSONResponse
     {
-        // Parse JSON body for groupKey
+        // Parse JSON body for groupKey and keepSynced
         $body = file_get_contents('php://input');
         if ($body !== false && $body !== '') {
             $decoded = json_decode($body, true);
-            if (is_array($decoded) && isset($decoded['groupKey'])) {
-                $groupKey = trim((string) $decoded['groupKey']);
+            if (is_array($decoded)) {
+                if (isset($decoded['groupKey'])) {
+                    $groupKey = trim((string) $decoded['groupKey']);
+                }
+                if ($keepSynced === null && array_key_exists('keepSynced', $decoded)) {
+                    $keepSynced = (bool) $decoded['keepSynced'];
+                } elseif ($keepSynced === null && array_key_exists('keep_synced', $decoded)) {
+                    $keepSynced = (bool) $decoded['keep_synced'];
+                }
             }
         }
+        $keepSynced = $keepSynced ?? true;
 
         if ($groupKey === '') {
             $groupKey = 'DEFAULT';
@@ -258,6 +266,7 @@ class ApiController extends Controller
                 (string) $fileId,
                 $node->getEtag(),
                 true,
+                $keepSynced,
             );
 
             if (($result['success'] ?? false) !== true) {

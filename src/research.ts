@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import ResearchChat from './components/ResearchChat.vue'
+import SearchableFilesList from './components/SearchableFilesList.vue'
 
 /**
  * Inject global styles for the research chat page.
@@ -131,4 +132,9 @@ const el = document.getElementById('synaplan-research-chat')
 if (el) {
 	const app = createApp(ResearchChat)
 	app.mount(el)
+}
+
+const searchableEl = document.getElementById('synaplan-searchable-files')
+if (searchableEl) {
+	createApp(SearchableFilesList).mount(searchableEl)
 }

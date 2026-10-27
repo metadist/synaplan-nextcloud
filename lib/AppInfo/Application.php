@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\AppInfo;
 use OCA\SynaplanIntegration\BackgroundJob\AdoptIdentitiesJob;
 use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
+use OCA\SynaplanIntegration\Listener\SourceEventListener;
 use OCA\SynaplanIntegration\Listener\UserChangedListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
 use OCA\SynaplanIntegration\Notification\CopyNotifier;
@@ -18,6 +19,9 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent;
+use OCP\Files\Events\Node\NodeDeletedEvent;
+use OCP\Files\Events\Node\NodeRenamedEvent;
+use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\User\Events\BeforeUserDeletedEvent;
@@ -39,6 +43,10 @@ class Application extends App implements IBootstrap
         // else still uses it.
         $context->registerEventListener(BeforeUserDeletedEvent::class, UserDeletedListener::class);
         $context->registerEventListener(UserChangedEvent::class, UserChangedListener::class);
+        $context->registerEventListener(NodeWrittenEvent::class, SourceEventListener::class);
+        $context->registerEventListener(NodeRenamedEvent::class, SourceEventListener::class);
+        $context->registerEventListener(NodeDeletedEvent::class, SourceEventListener::class);
+        $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', SourceEventListener::class);
         $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);
         $context->registerNotifierService(CopyNotifier::class);
         $context->registerServiceAlias(SeenNotificationStore::class, SeenNotifications::class);

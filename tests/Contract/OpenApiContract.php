@@ -74,6 +74,9 @@ final class OpenApiContract
             if ($method === 'POST' && preg_match('#^/api/v1/platform-links/deliveries/\{[^}/]+\}/result$#', $template) === 1) {
                 return $this->deliveryResultViolations($method, $template, $body);
             }
+            if ($method === 'POST' && $template === '/api/v1/platform-links/sources/events') {
+                return $this->sourceEventsViolations($method, $template, $body);
+            }
 
             return ["$method $template: sends a $contentType body the spec does not describe"];
         }
@@ -119,6 +122,12 @@ final class OpenApiContract
         foreach ($body as $field => $value) {
             $where = $prefix === '' ? (string) $field : $prefix . '.' . $field;
             if ($properties !== [] && !isset($properties[$field])) {
+                if ($method === 'POST' && $template === '/api/v1/files/upload' && $where === 'keep_synced') {
+                    if (!in_array($value, ['0', '1'], true)) {
+                        $violations[] = "$method $template: 'keep_synced' must be '0' or '1'";
+                    }
+                    continue;
+                }
                 $violations[] = "$method $template: sends '$where', which the spec does not declare";
                 continue;
             }
@@ -179,6 +188,52 @@ final class OpenApiContract
         if ($status !== null && !in_array($status, ['delivered', 'failed'], true)) {
             $rendered = is_scalar($status) ? (string) $status : 'invalid';
             $violations[] = "$method $template: 'status' = '$rendered' is not one of delivered, failed";
+        }
+
+        return $violations;
+    }
+
+    /**
+     * CloudSourceEvents::events() reads events[{id, event, version, path}],
+     * while CloudFileController::events omits requestBody in its OA attribute.
+     *
+     * @param array<string, mixed> $body
+     * @return list<string>
+     */
+    private function sourceEventsViolations(string $method, string $template, array $body): array
+    {
+        $violations = [];
+        foreach (array_keys($body) as $field) {
+            if ($field !== 'events') {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        $events = $body['events'] ?? null;
+        if (!is_array($events) || $events === []) {
+            $violations[] = "$method $template: required field 'events' is not sent";
+
+            return $violations;
+        }
+        $allowedFields = ['id', 'event', 'version', 'path'];
+        $allowedEvents = ['changed', 'moved', 'deleted', 'restored'];
+        foreach ($events as $index => $event) {
+            if (!is_array($event)) {
+                $violations[] = "$method $template: 'events[$index]' is not an object";
+                continue;
+            }
+            foreach (['id', 'event'] as $req) {
+                if (!isset($event[$req]) || !is_string($event[$req])) {
+                    $violations[] = "$method $template: required field 'events[$index].$req' is not sent";
+                }
+            }
+            foreach ($event as $field => $val) {
+                if (!in_array($field, $allowedFields, true)) {
+                    $violations[] = "$method $template: sends 'events[$index].$field', which the spec does not declare";
+                }
+            }
+            if (isset($event['event']) && is_string($event['event']) && !in_array($event['event'], $allowedEvents, true)) {
+                $violations[] = "$method $template: 'events[$index].event' = '{$event['event']}' is not one of " . implode(', ', $allowedEvents);
+            }
         }
 
         return $violations;

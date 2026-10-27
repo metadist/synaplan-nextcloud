@@ -6,6 +6,11 @@ import { chatAction } from './files_actions/chatAction'
 import { chatFileAction } from './files_actions/chatFileAction'
 import { registerFromSynaplanMenu } from './files_actions/fromSynaplanMenu'
 import { readFolderAction } from './files_actions/readFolderAction'
+import {
+	birdRowAction,
+	registerWatchedFolderHeader,
+} from './files_actions/birdRowAction'
+import { registerSynaplanSidebarTab } from './files_actions/sidebarTab'
 import { injectModalStyles } from './styles/modal-fix'
 
 /**
@@ -36,7 +41,10 @@ registerAction(translateAction)
 registerAction(chatAction)
 registerAction(chatFileAction)
 registerAction(readFolderAction)
+registerAction(birdRowAction)
 registerFromSynaplanMenu()
+registerWatchedFolderHeader()
+registerSynaplanSidebarTab()
 
 /**
  *
