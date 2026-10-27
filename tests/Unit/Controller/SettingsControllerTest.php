@@ -159,6 +159,26 @@ class SettingsControllerTest extends TestCase
         $this->assertSame('0', $written['per_user_accounts']);
     }
 
+    public function testSaveSettingsDoesNotAnnounceBeforeRegistration(): void
+    {
+        $platformLinks = $this->createMock(\OCA\SynaplanIntegration\Service\PlatformLinkService::class);
+        $platformLinks->expects($this->never())->method('announceDelivery');
+        $keys = $this->keyStorageFrom($this->config);
+        $controller = new SettingsController(
+            $this->request,
+            $this->config,
+            $this->synaplanClient,
+            new SynaplanConfig($this->config, $keys),
+            $keys,
+            $platformLinks,
+        );
+
+        $response = $controller->saveSettings(mode: 'provision', delivery_url: 'http://nextcloud/inbound');
+
+        $this->assertTrue($response->getData()['success']);
+        $this->assertFalse($response->getData()['delivery_error']);
+    }
+
     public function testRegisterInstanceWithoutServiceReturnsError(): void
     {
         $response = $this->controller->registerInstance();

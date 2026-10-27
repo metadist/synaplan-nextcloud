@@ -51,6 +51,14 @@ class AdoptIdentitiesJob extends TimedJob
         if (!in_array('identity_adopt', $this->links->capabilities(), true)) {
             return;
         }
+        try {
+            $url = $this->links->defaultDeliveryUrl();
+            if ($url !== '') {
+                $this->links->announceDelivery($url);
+            }
+        } catch (\Throwable) {
+            return;
+        }
 
         $offset = 0;
         $clean = true;
@@ -73,6 +81,10 @@ class AdoptIdentitiesJob extends TimedJob
                 }
                 if ($status !== 200) {
                     $clean = false;
+                    continue;
+                }
+                if (!$user->isEnabled()) {
+                    $this->links->reportLifecycle($uid, 'disabled');
                 }
             }
             $count = count($batch);

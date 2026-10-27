@@ -43,6 +43,7 @@ class AdoptIdentitiesJobTest extends TestCase
         $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_nc');
         $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:secret');
         $this->links->method('capabilities')->willReturn(['identity_adopt', 'lifecycle']);
+        $this->links->method('defaultDeliveryUrl')->willReturn('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
 
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = ''): string => $this->appConfig[$key] ?? $default
@@ -70,10 +71,11 @@ class AdoptIdentitiesJobTest extends TestCase
         );
     }
 
-    private function user(string $uid): IUser&MockObject
+    private function user(string $uid, bool $enabled = true): IUser&MockObject
     {
         $user = $this->createMock(IUser::class);
         $user->method('getUID')->willReturn($uid);
+        $user->method('isEnabled')->willReturn($enabled);
 
         return $user;
     }
@@ -83,13 +85,27 @@ class AdoptIdentitiesJobTest extends TestCase
         $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
         $this->userConfig['bob|synaplan_user_api_key'] = '';
         $this->users->method('search')->willReturn([$this->user('ada'), $this->user('bob')]);
+        $this->links->expects($this->once())->method('announceDelivery')
+            ->with('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
         $this->links->expects($this->once())->method('adoptIdentity')->with('ada', 'sk_ada')->willReturn(200);
+        $this->links->expects($this->never())->method('reportLifecycle');
 
         $job = $this->job();
         $this->runJob($job);
         $this->assertSame('1', $this->appConfig[AdoptIdentitiesJob::DONE]);
 
         $this->runJob($job);
+    }
+
+    public function testDisabledPersonIsReportedAfterAdoption(): void
+    {
+        $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
+        $this->users->method('search')->willReturn([$this->user('ada', false)]);
+        $this->links->expects($this->once())->method('adoptIdentity')->with('ada', 'sk_ada')->willReturn(200);
+        $this->links->expects($this->once())->method('reportLifecycle')->with('ada', 'disabled');
+
+        $this->runJob($this->job());
+        $this->assertSame('1', $this->appConfig[AdoptIdentitiesJob::DONE]);
     }
 
     public function testSkipsWhenSynaplanCannotAdoptYet(): void

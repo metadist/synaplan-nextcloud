@@ -236,6 +236,36 @@ class PlatformLinkService
     }
 
     /**
+     * Bring a provisioned person's legacy row into the canonical shape right
+     * before the Nextcloud user is deleted, so lifecycle(deleted) can find it
+     * even when the background job has not run yet.
+     */
+    public function adoptBeforeDelete(string $uid, string $userKey): void
+    {
+        if ($uid === '' || $userKey === ''
+            || $this->synaplanConfig->getLinkInstanceId() === ''
+            || $this->decryptSecret() === '') {
+            return;
+        }
+        try {
+            $status = $this->adoptIdentity($uid, $userKey);
+            if ($status === 403) {
+                $url = $this->defaultDeliveryUrl();
+                if ($url !== '') {
+                    $this->announceDelivery($url);
+                }
+                $this->adoptIdentity($uid, $userKey);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not adopt {uid} before deletion: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * A person was deleted, disabled or enabled here. Best-effort: a Synaplan
      * failure is logged and never thrown, so Nextcloud's own user change proceeds.
      * Does nothing until this Nextcloud is registered.
