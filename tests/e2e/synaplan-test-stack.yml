@@ -6,6 +6,11 @@
 #
 # Synaplan keeps the one-time codes of "Connect your Synaplan account" in
 # Redis, which the test stack does not start. Production always has Redis.
+#
+# Synaplan's backend/.env.test carries placeholder Stripe keys, which switch
+# billing on and keep API keys from accounts below a paid plan. Provisioning
+# runs against a self-hosted Synaplan, where billing is off, so the e2e stack
+# clears the key to match.
 
 services:
     redis_test:
