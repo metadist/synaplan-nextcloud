@@ -11,7 +11,7 @@
 
 services:
   nextcloud:
-    image: ${NC_IMAGE:-nextcloud:35-apache@sha256:89af7ee7a96ff5e9668280566209268ae6b2d02327f6ef6d56f6d68228cf9431}
+    image: ${NC_IMAGE:-nextcloud:35-apache@sha256:0347adaf2fa460aa9589f8c2b1ed246788d11a72ad9918d55ca288f3137fe5ca}
     ports:
       - "${NC_PORT:-8081}:80"
     environment:
@@ -47,7 +47,7 @@ services:
       start_period: 180s
 
   nextcloud-db:
-    image: mariadb:11.8@sha256:f16d7a344413e519dff518f27bdb221388f84b0d274c97c4fb5f2cb0dc1b34fa
+    image: mariadb:11.8@sha256:c4124d1afa875e47f2892edf26b482fa54f796e2f342d3717a04ca091a22a9bd
     command: --transaction-isolation=READ-COMMITTED
     environment:
       MARIADB_ROOT_PASSWORD: nextcloud-root
