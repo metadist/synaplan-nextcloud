@@ -159,6 +159,61 @@ class PlatformLinkServiceTest extends TestCase
         $this->service()->disconnect($user);
     }
 
+    public function testAnnounceNamesThisServerAndWhatTheAppDoes(): void
+    {
+        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
+        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
+        $this->synaplanConfig->method('getInstanceId')->willReturn('oc0abc');
+
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getStatusCode')->willReturn(200);
+        $resp->method('getBody')->willReturn('{"success":true}');
+        $body = null;
+        $this->httpClient->expects($this->once())
+            ->method('patch')
+            ->willReturnCallback(function (string $url, array $options) use (&$body, $resp): IResponse {
+                $this->assertStringEndsWith('/api/v1/platform-links/instances/self', $url);
+                $body = json_decode($options['body'], true);
+
+                return $resp;
+            });
+
+        $this->service()->announceDelivery('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
+
+        $this->assertSame('oc0abc', $body['server_id']);
+        $this->assertSame(['deliveries', 'pickups', 'read_scope'], $body['app_capabilities']);
+        $this->assertSame('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound', $body['delivery_url']);
+    }
+
+    public function testAdoptAndLifecycleUseTheInstanceCredential(): void
+    {
+        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
+        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
+
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getStatusCode')->willReturn(200);
+        $resp->method('getBody')->willReturn('{"success":true}');
+        $seen = [];
+        $this->httpClient->method('post')->willReturnCallback(
+            function (string $url, array $options) use (&$seen, $resp): IResponse {
+                $seen[] = [$url, json_decode($options['body'], true), $options['headers']];
+
+                return $resp;
+            }
+        );
+
+        $this->assertSame(200, $this->service()->adoptIdentity('ada', 'sk_ada'));
+        $this->service()->reportLifecycle('ada', 'disabled');
+
+        $this->assertStringEndsWith('/api/v1/platform-links/identities/adopt', $seen[0][0]);
+        $this->assertSame('ada', $seen[0][1]['external_id']);
+        $this->assertSame('sk_ada', $seen[0][2]['X-API-Key']);
+        $this->assertSame('pi_abc', $seen[0][2]['X-Instance-Id']);
+        $this->assertSame('s3cret', $seen[0][2]['X-Instance-Secret']);
+        $this->assertStringEndsWith('/api/v1/platform-links/lifecycle', $seen[1][0]);
+        $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $seen[1][1]);
+    }
+
     public function testDisconnectUidClearsEvenWhenRevokeFails(): void
     {
         $this->userAccounts->method('getStoredApiKeyId')->with('jdoe')->willReturn('44');

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\AppInfo;
 
+use OCA\SynaplanIntegration\BackgroundJob\AdoptIdentitiesJob;
 use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
+use OCA\SynaplanIntegration\Listener\UserChangedListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
 use OCA\SynaplanIntegration\Notification\CopyNotifier;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
@@ -19,6 +21,7 @@ use OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\User\Events\BeforeUserDeletedEvent;
+use OCP\User\Events\UserChangedEvent;
 
 class Application extends App implements IBootstrap
 {
@@ -31,9 +34,11 @@ class Application extends App implements IBootstrap
 
     public function register(IRegistrationContext $context): void
     {
-        // When a Nextcloud user is deleted, cascade-delete their Synaplan
-        // account (per-user mode) so no orphaned external data remains.
+        // A removed, disabled or re-enabled Nextcloud user is reported to
+        // Synaplan as that one identity. The account stays when something
+        // else still uses it.
         $context->registerEventListener(BeforeUserDeletedEvent::class, UserDeletedListener::class);
+        $context->registerEventListener(UserChangedEvent::class, UserChangedListener::class);
         $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);
         $context->registerNotifierService(CopyNotifier::class);
         $context->registerServiceAlias(SeenNotificationStore::class, SeenNotifications::class);
@@ -44,6 +49,9 @@ class Application extends App implements IBootstrap
         $context->injectFn(function (IJobList $jobs): void {
             if (!$jobs->has(RefreshNotifyKeysJob::class, null)) {
                 $jobs->add(RefreshNotifyKeysJob::class);
+            }
+            if (!$jobs->has(AdoptIdentitiesJob::class, null)) {
+                $jobs->add(AdoptIdentitiesJob::class);
             }
         });
 

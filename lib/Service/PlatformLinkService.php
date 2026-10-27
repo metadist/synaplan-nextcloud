@@ -182,14 +182,82 @@ class PlatformLinkService
     }
 
     /**
-     * Tell Synaplan where to call and that this app accepts copies.
+     * Tell Synaplan where to call, which server this is, and what this app does.
+     * server_id is this Nextcloud's own instance id, which adoption checks.
      */
     public function announceDelivery(string $deliveryUrl): void
     {
         $this->request('PATCH', '/api/v1/platform-links/instances/self', [
             'delivery_url' => $deliveryUrl,
+            'server_id' => $this->synaplanConfig->getInstanceId(),
             'app_capabilities' => ['deliveries', 'pickups', 'read_scope'],
-        ], $this->instanceHeaders());
+        ], array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']));
+    }
+
+    /**
+     * Core capabilities from instances/self. Empty when Synaplan cannot be read.
+     *
+     * @return list<string>
+     */
+    public function capabilities(): array
+    {
+        try {
+            $decoded = $this->request('GET', '/api/v1/platform-links/instances/self', null, $this->instanceHeaders());
+        } catch (\Throwable) {
+            return [];
+        }
+        $capabilities = $decoded['capabilities'] ?? [];
+        if (!is_array($capabilities)) {
+            return [];
+        }
+
+        return array_values(array_filter($capabilities, 'is_string'));
+    }
+
+    /**
+     * Bring one provisioned person's legacy identity row into the canonical shape.
+     * Returns the HTTP status. 200 is success, including a repeated call.
+     */
+    public function adoptIdentity(string $uid, string $userKey): int
+    {
+        $result = $this->request(
+            'POST',
+            '/api/v1/platform-links/identities/adopt',
+            ['external_id' => $uid],
+            array_merge($this->instanceHeaders(), [
+                'Content-Type' => 'application/json',
+                'X-API-Key' => $userKey,
+            ]),
+            false,
+            true,
+        );
+
+        return (int) ($result['status_code'] ?? 200);
+    }
+
+    /**
+     * A person was deleted, disabled or enabled here. Best-effort: a Synaplan
+     * failure is logged and never thrown, so Nextcloud's own user change proceeds.
+     * Does nothing until this Nextcloud is registered.
+     */
+    public function reportLifecycle(string $externalId, string $event): void
+    {
+        if ($externalId === '' || $this->synaplanConfig->getLinkInstanceId() === '') {
+            return;
+        }
+        try {
+            $this->request('POST', '/api/v1/platform-links/lifecycle', [
+                'external_id' => $externalId,
+                'event' => $event,
+            ], array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']));
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not tell Synaplan that {uid} was {event}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $externalId,
+                'event' => $event,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

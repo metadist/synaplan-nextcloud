@@ -67,6 +67,8 @@ final class SynaplanContractTest extends TestCase
         'synaplan_url' => self::BASE_URL,
         'api_key' => 'sk_admin',
         'per_user_accounts' => '1',
+        'link_instance_id' => 'instance-1',
+        'link_instance_secret' => 'enc:secret-1',
     ];
 
     /** Ada activated AI, so her calls go out with her own key. */
@@ -199,7 +201,7 @@ final class SynaplanContractTest extends TestCase
         $synaplanConfig = new SynaplanConfig($config, $keys);
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($this->ada());
-        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys);
+        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto());
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
         $links = new PlatformLinkService(
             $this->recordingClients(),
@@ -259,7 +261,8 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->notifyKeys(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
-            fn () => $accounts->deleteRemoteAccount('ada'),
+            fn () => $links->adoptIdentity('ada', 'sk_ada'),
+            fn () => $links->reportLifecycle('ada', 'deleted'),
             fn () => $links->registerInstance('sk_admin'),
             fn () => $links->instanceStatus(),
             fn () => $links->exchange('code-1'),

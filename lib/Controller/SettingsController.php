@@ -276,7 +276,14 @@ class SettingsController extends Controller
         $deliveryError = false;
         if ($delivery_url !== null) {
             $this->config->setAppValue(Application::APP_ID, 'delivery_url', $delivery_url);
-            $deliveryError = !$this->announceDelivery($delivery_url);
+        }
+        // A registered cloud is told its server id on every save, including
+        // when accounts are created by the administrator (not only link mode).
+        if ($delivery_url !== null || $this->synaplanConfig->getLinkInstanceId() !== '') {
+            $url = ($delivery_url !== null && $delivery_url !== '')
+                ? $delivery_url
+                : ($this->platformLinks?->defaultDeliveryUrl() ?? '');
+            $deliveryError = $url !== '' && !$this->announceDelivery($url);
         }
 
         return new JSONResponse([

@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Who is who.** Registering this Nextcloud also works when the administrator creates the accounts, and tells Synaplan which server this is. Accounts that already exist are linked to this server once, in the background. Removing, disabling or enabling a person tells Synaplan about that person only. A Synaplan account that is still used somewhere else is kept.
+- **Organisation login** is listed with the other ways people use Synaplan, and says it needs the Nextcloud app user_oidc.
 - **What Synaplan may read.** In personal settings a person chooses only what they watch, folders they name, or all of their files. A folder's menu can add that folder. A folder read from Synaplan lists those files and sends the ones that were asked for.
 - Synaplan can copy a file into this Nextcloud. It lands in the Synaplan folder, or in the folder a person chooses in their personal settings. A notification names the file and the folder.
 - **New → From Synaplan** lists the person's files in Synaplan, with generated files first, and copies the chosen file into the folder that is open.
