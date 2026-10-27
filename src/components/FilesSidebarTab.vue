@@ -4,127 +4,140 @@
 			<NcLoadingIcon :size="24" />
 		</div>
 
-		<p
+		<div
 			v-else-if="unreachable"
-			class="sp-sidebar-quiet"
+			class="sp-sidebar-banner"
 			data-testid="synaplan-sidebar-unreachable">
 			{{ t('synaplan_integration', "Couldn't check Synaplan right now") }}
-		</p>
+		</div>
 
-		<p v-else-if="!enabled" class="sp-sidebar-quiet">
+		<div v-else-if="!enabled" class="sp-sidebar-banner">
 			{{ t('synaplan_integration', 'Connect your Synaplan account first.') }}
-		</p>
+		</div>
 
 		<div v-else class="sp-sidebar-body">
-			<div class="sp-sidebar-head">
-				<span
-					class="sp-sidebar-glyph"
-					:class="stateClass"
-					v-html="iconHtml" />
-				<div class="sp-sidebar-titles">
-					<strong
-						class="sp-sidebar-state"
-						data-testid="synaplan-sidebar-state">
-						{{ stateHeading }}
-					</strong>
-					<span v-if="knowledgeFolder" class="sp-sidebar-sub">
-						{{
-							t(
-								'synaplan_integration',
-								'In your knowledge folder “{folder}”',
-								{ folder: knowledgeFolder },
-							)
-						}}
-					</span>
+			<div class="sp-card">
+				<div class="sp-card-header" :class="stateClass">
+					<span
+						class="sp-sidebar-glyph"
+						:class="stateClass"
+						v-html="iconHtml" />
+					<div class="sp-sidebar-titles">
+						<div
+							class="sp-sidebar-state"
+							data-testid="synaplan-sidebar-state">
+							{{ stateHeading }}
+						</div>
+						<div v-if="knowledgeFolder" class="sp-sidebar-sub">
+							{{
+								t(
+									'synaplan_integration',
+									'In your knowledge folder “{folder}”',
+									{ folder: knowledgeFolder },
+								)
+							}}
+						</div>
+					</div>
+				</div>
+
+				<div v-if="isSearchableOrPending" class="sp-card-sections">
+					<div class="sp-section">
+						<div class="sp-section-title">
+							{{ t('synaplan_integration', 'Who owns this') }}
+						</div>
+						<div class="sp-section-text">
+							{{ t('synaplan_integration', 'Added by you.') }}
+						</div>
+					</div>
+
+					<div class="sp-section">
+						<div class="sp-section-title">
+							{{ t('synaplan_integration', 'Who else can use it') }}
+						</div>
+						<div class="sp-section-text">
+							{{
+								t(
+									'synaplan_integration',
+									'Only you can search this file in your knowledge folder.',
+								)
+							}}
+						</div>
+					</div>
+
+					<div class="sp-section">
+						<div class="sp-section-title">
+							{{ t('synaplan_integration', 'What it touches') }}
+						</div>
+						<div class="sp-section-text">
+							{{
+								keptUpToDate
+									? t(
+											'synaplan_integration',
+											'Answers questions from “{folder}” and stays up to date when the file changes here.',
+											{ folder: knowledgeFolder || 'DEFAULT' },
+										)
+									: t(
+											'synaplan_integration',
+											'Answers questions from “{folder}”.',
+											{ folder: knowledgeFolder || 'DEFAULT' },
+										)
+							}}
+						</div>
+					</div>
+
+					<div class="sp-section">
+						<div class="sp-section-title">
+							{{ t('synaplan_integration', 'Where it came from') }}
+						</div>
+						<div class="sp-section-text">
+							{{
+								t(
+									'synaplan_integration',
+									'From this Nextcloud ({name}).',
+									{ name: fileName },
+								)
+							}}
+						</div>
+					</div>
+				</div>
+
+				<div v-else class="sp-card-empty">
+					{{
+						t(
+							'synaplan_integration',
+							'The AI can then find this file when you ask a question, here in the chat or in Synaplan.',
+						)
+					}}
 				</div>
 			</div>
 
-			<dl v-if="isSearchableOrPending" class="sp-sidebar-facts">
-				<div class="sp-fact">
-					<dt>{{ t('synaplan_integration', 'Who owns this') }}</dt>
-					<dd>{{ t('synaplan_integration', 'Added by you.') }}</dd>
-				</div>
-				<div class="sp-fact">
-					<dt>{{ t('synaplan_integration', 'Who else can use it') }}</dt>
-					<dd>
-						{{
-							t(
-								'synaplan_integration',
-								'Only you can search this file in your knowledge folder.',
-							)
-						}}
-					</dd>
-				</div>
-				<div class="sp-fact">
-					<dt>{{ t('synaplan_integration', 'What it touches') }}</dt>
-					<dd>
-						{{
-							keptUpToDate
-								? t(
-										'synaplan_integration',
-										'Answers questions from “{folder}” and stays up to date when the file changes here.',
-										{ folder: knowledgeFolder || 'DEFAULT' },
-									)
-								: t(
-										'synaplan_integration',
-										'Answers questions from “{folder}”.',
-										{ folder: knowledgeFolder || 'DEFAULT' },
-									)
-						}}
-					</dd>
-				</div>
-				<div class="sp-fact">
-					<dt>{{ t('synaplan_integration', 'Where it came from') }}</dt>
-					<dd>
-						{{
-							t(
-								'synaplan_integration',
-								'From this Nextcloud ({name}).',
-								{
-									name: fileName,
-								},
-							)
-						}}
-					</dd>
-				</div>
-			</dl>
-
-			<p v-else class="sp-sidebar-hint">
-				{{
-					t(
-						'synaplan_integration',
-						'The AI can then find this file when you ask a question, here in the chat or in Synaplan.',
-					)
-				}}
-			</p>
-
 			<div v-if="watches.length > 0" class="sp-sidebar-watches">
-				<div v-for="watch in watches" :key="watch.id" class="sp-watch-box">
-					<p class="sp-watch-sentence">
-						{{ watch.sentence }}
-					</p>
-					<p class="sp-watch-hint">
+				<div v-for="item in watches" :key="item.id" class="sp-watch-box">
+					<div class="sp-watch-sentence">{{ item.sentence }}</div>
+					<div class="sp-watch-hint">
 						{{
 							t(
 								'synaplan_integration',
 								'Everyone who can open this folder sees that it is watched.',
 							)
 						}}
-					</p>
+					</div>
 				</div>
 			</div>
 
 			<div v-if="kind === 'file'" class="sp-sidebar-actions">
 				<NcButton
 					v-if="isSearchableOrPending"
-					variant="secondary"
+					variant="primary"
 					:disabled="removing"
+					class="sp-btn-full"
 					@click="openChat">
 					{{ t('synaplan_integration', 'Chat about this file') }}
 				</NcButton>
 				<NcButton
-					variant="primary"
+					:variant="isSearchableOrPending ? 'secondary' : 'primary'"
 					:disabled="removing"
+					class="sp-btn-full"
 					@click="openKnowledgeModal">
 					{{
 						isSearchableOrPending
@@ -134,8 +147,9 @@
 				</NcButton>
 				<NcButton
 					v-if="isSearchableOrPending"
-					variant="error"
+					variant="secondary"
 					:disabled="removing"
+					class="sp-btn-full sp-btn-remove"
 					data-testid="synaplan-sidebar-remove"
 					@click="removeFromSynaplan">
 					{{ t('synaplan_integration', 'Remove from Synaplan') }}
@@ -147,12 +161,12 @@
 					rel="noopener noreferrer"
 					class="sp-sidebar-link"
 					data-testid="synaplan-sidebar-open">
-					{{
+					<span>{{
 						t('synaplan_integration', 'Open in {app}', {
 							app: 'Synaplan',
 						})
-					}}
-					↗
+					}}</span>
+					<span aria-hidden="true">↗</span>
 				</a>
 			</div>
 		</div>
@@ -244,7 +258,7 @@ const iconHtml = computed(() =>
 )
 
 /**
- *
+ * Load the sidebar detail for the active file or folder.
  */
 async function loadDetail(): Promise<void> {
 	const id = props.fileIdRef.value
@@ -271,7 +285,7 @@ async function loadDetail(): Promise<void> {
 }
 
 /**
- *
+ * Remove this file from Synaplan's AI search.
  */
 async function removeFromSynaplan(): Promise<void> {
 	const id = props.fileIdRef.value
@@ -298,7 +312,7 @@ async function removeFromSynaplan(): Promise<void> {
 }
 
 /**
- *
+ * Open the Make searchable by AI modal for this file.
  */
 function openKnowledgeModal(): void {
 	const id = props.fileIdRef.value
@@ -319,7 +333,7 @@ function openKnowledgeModal(): void {
 }
 
 /**
- *
+ * Open the per-file chat modal.
  */
 function openChat(): void {
 	const id = props.fileIdRef.value
@@ -352,26 +366,51 @@ onCloudStatusInvalidated(() => {
 
 <style scoped>
 .synaplan-sidebar-tab {
-	padding: 16px;
+	display: block;
+	padding: 6px 4px 18px;
+	box-sizing: border-box;
+	text-align: left;
 }
 
 .sp-sidebar-loading {
 	display: flex;
 	justify-content: center;
-	padding: 24px 0;
+	padding: 28px 0;
 }
 
-.sp-sidebar-quiet {
+.sp-sidebar-banner {
+	padding: 12px 14px;
+	border-radius: 12px;
+	background: var(--color-background-hover, rgba(127, 127, 127, 0.08));
+	border: 1px solid var(--color-border, rgba(127, 127, 127, 0.2));
 	color: var(--color-text-maxcontrast, #767676);
-	font-size: 0.9em;
-	margin: 0;
+	font-size: 13.5px;
+	line-height: 1.45;
 }
 
-.sp-sidebar-head {
+.sp-sidebar-body {
 	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	margin-bottom: 16px;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.sp-card {
+	border-radius: 12px;
+	border: 1px solid var(--color-border, rgba(127, 127, 127, 0.22));
+	background: var(--color-background-hover, rgba(127, 127, 127, 0.06));
+	overflow: hidden;
+}
+
+.sp-card-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 14px 16px;
+	border-bottom: 1px solid var(--color-border, rgba(127, 127, 127, 0.16));
+}
+
+.sp-card-header.is-ok {
+	background: light-dark(rgba(5, 150, 105, 0.07), rgba(52, 211, 153, 0.08));
 }
 
 .sp-sidebar-glyph {
@@ -379,8 +418,10 @@ onCloudStatusInvalidated(() => {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	background: light-dark(rgba(5, 150, 105, 0.14), rgba(52, 211, 153, 0.16));
 	flex-shrink: 0;
 }
 
@@ -390,85 +431,107 @@ onCloudStatusInvalidated(() => {
 
 .sp-sidebar-glyph.is-warn {
 	color: light-dark(#b45309, #fbbf24);
+	background: light-dark(rgba(180, 83, 9, 0.12), rgba(251, 191, 36, 0.15));
 }
 
 .sp-sidebar-glyph.is-error {
 	color: light-dark(#dc2626, #f87171);
+	background: light-dark(rgba(220, 38, 38, 0.12), rgba(248, 113, 113, 0.15));
 }
 
 .sp-sidebar-glyph.is-info {
 	color: light-dark(#0284c7, #38bdf8);
+	background: light-dark(rgba(2, 132, 199, 0.12), rgba(56, 189, 248, 0.15));
 }
 
 .sp-sidebar-glyph.is-muted {
 	color: var(--color-text-maxcontrast, #767676);
+	background: var(--color-background-dark, rgba(127, 127, 127, 0.14));
 }
 
 .sp-sidebar-titles {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;
+	min-width: 0;
 }
 
 .sp-sidebar-state {
-	font-size: 1em;
+	font-size: 15.5px;
+	font-weight: 700;
+	line-height: 1.3;
 	color: var(--color-main-text, #222);
 }
 
 .sp-sidebar-sub {
-	font-size: 0.85em;
+	font-size: 13px;
+	line-height: 1.35;
 	color: var(--color-text-maxcontrast, #767676);
 }
 
-.sp-sidebar-facts {
-	margin: 0 0 16px;
+.sp-card-sections {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
 }
 
-.sp-fact dt {
-	font-size: 0.8em;
-	font-weight: 600;
-	color: var(--color-text-maxcontrast, #767676);
-	margin: 0 0 2px;
+.sp-section {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 12px 16px;
+	text-align: left;
 }
 
-.sp-fact dd {
-	margin: 0;
-	font-size: 0.9em;
+.sp-section + .sp-section {
+	border-top: 1px solid var(--color-border, rgba(127, 127, 127, 0.14));
+}
+
+.sp-section-title {
+	font-size: 14.5px;
+	font-weight: 700;
+	line-height: 1.35;
 	color: var(--color-main-text, #222);
+	text-align: left;
 }
 
-.sp-sidebar-hint {
-	font-size: 0.9em;
-	color: var(--color-text-maxcontrast, #767676);
-	margin: 0 0 16px;
+.sp-section-text {
+	font-size: 13.5px;
 	line-height: 1.45;
+	color: var(--color-text-maxcontrast, #767676);
+	text-align: left;
+	word-break: break-word;
+}
+
+.sp-card-empty {
+	padding: 14px 16px;
+	font-size: 13.5px;
+	line-height: 1.5;
+	color: var(--color-text-maxcontrast, #767676);
 }
 
 .sp-sidebar-watches {
-	margin-bottom: 16px;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
 
 .sp-watch-box {
-	padding: 10px 12px;
-	border-radius: 8px;
-	background: var(--color-background-dark, rgba(0, 0, 0, 0.05));
+	padding: 12px 16px;
+	border-radius: 12px;
+	background: var(--color-background-hover, rgba(127, 127, 127, 0.08));
+	border: 1px solid var(--color-border, rgba(127, 127, 127, 0.2));
 }
 
 .sp-watch-sentence {
 	margin: 0 0 4px;
-	font-size: 0.9em;
+	font-size: 14px;
 	font-weight: 600;
+	color: var(--color-main-text, #222);
 }
 
 .sp-watch-hint {
 	margin: 0;
-	font-size: 0.82em;
+	font-size: 12.5px;
 	color: var(--color-text-maxcontrast, #767676);
 }
 
@@ -478,16 +541,31 @@ onCloudStatusInvalidated(() => {
 	gap: 8px;
 }
 
+.sp-btn-full {
+	width: 100%;
+	justify-content: center;
+}
+
+.sp-btn-remove {
+	color: light-dark(#dc2626, #f87171) !important;
+}
+
 .sp-sidebar-link {
-	display: inline-block;
-	margin-top: 4px;
-	font-size: 0.9em;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 12px;
+	margin-top: 2px;
+	font-size: 13.5px;
 	font-weight: 600;
 	color: var(--color-primary-element, #0082c9);
 	text-decoration: none;
+	border-radius: 8px;
 }
 
 .sp-sidebar-link:hover {
 	text-decoration: underline;
+	background: var(--color-background-hover, rgba(127, 127, 127, 0.08));
 }
 </style>

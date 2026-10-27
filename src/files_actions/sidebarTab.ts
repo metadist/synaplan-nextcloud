@@ -28,6 +28,7 @@ class SynaplanSidebarElement extends HTMLElement {
 	}
 
 	connectedCallback(): void {
+		this.style.display = 'block'
 		if (this.app) {
 			return
 		}

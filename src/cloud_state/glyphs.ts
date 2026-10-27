@@ -10,8 +10,10 @@ export interface GlyphOverrides {
 	bird_eyes?: string | null
 }
 
-export const BIRD_SVG =
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14c2-6 6-8 9-7 2 .6 3 2 4 2 2 0 4-1.5 4-1.5"/><path d="M13 7c1 3 1 6-1 8-2 2-5 3-8 2 1-2 2-4 2-6"/><path d="M8 16c1 2 3 3 5 3"/></svg>'
+const BIRD_PATH =
+	'M23 11.5L19.95 10.37C19.69 9.22 19.04 8.56 19.04 8.56C17.4 6.92 14.75 6.92 13.11 8.56L11.63 10.04L5 3C4 7 5 11 7.45 14.22L2 19.5C2 19.5 10.89 21.5 16.07 17.45C18.83 15.29 19.45 14.03 19.84 12.7L23 11.5M17.71 11.72C17.32 12.11 16.68 12.11 16.29 11.72C15.9 11.33 15.9 10.7 16.29 10.31C16.68 9.92 17.32 9.92 17.71 10.31C18.1 10.7 18.1 11.33 17.71 11.72Z'
+
+export const BIRD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill="currentColor" d="${BIRD_PATH}"/></svg>`
 
 /**
  * Badge type for a file state or watch state (plan 04 §A.1).
@@ -129,26 +131,30 @@ export function glyphMarkup(options: {
 	}
 
 	const eyesMarkup = eyes
-		? '<circle cx="15.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/><circle cx="18" cy="8" r="0.8" fill="currentColor" stroke="none"/>'
+		? '<circle cx="15.5" cy="8.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="18.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/>'
 		: ''
 
 	let badgePath = ''
 	if (badge === 'clock') {
-		badgePath = '<circle cx="12" cy="12" r="7"/><path d="M12 9v4l2 2"/>'
+		badgePath =
+			'<circle cx="12" cy="12" r="7" style="fill:none;stroke:currentColor;"/><path d="M12 9v4l2 2" style="fill:none;stroke:currentColor;"/>'
 	} else if (badge === 'arrows') {
-		badgePath = '<path d="M7 8h8l-2-2M17 16H9l2 2"/>'
+		badgePath =
+			'<path d="M7 8h8l-2-2M17 16H9l2 2" style="fill:none;stroke:currentColor;"/>'
 	} else if (badge === 'dot') {
 		badgePath =
-			'<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>'
+			'<circle cx="12" cy="12" r="4" style="fill:currentColor;stroke:none;"/>'
 	} else if (badge === 'alert') {
-		badgePath = '<path d="M12 5l7 12H5l7-12z"/><path d="M12 10v3"/>'
+		badgePath =
+			'<path d="M12 5l7 12H5l7-12z" style="fill:none;stroke:currentColor;"/><path d="M12 10v3" style="fill:none;stroke:currentColor;"/>'
 	} else if (badge === 'pause') {
-		badgePath = '<path d="M9 7v10M15 7v10"/>'
+		badgePath =
+			'<path d="M9 7v10M15 7v10" style="fill:none;stroke:currentColor;"/>'
 	}
 
 	const badgeSvg = badgePath
-		? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:absolute;bottom:-2px;right:-4px;display:block;width:10px;height:10px;">${badgePath}</svg>`
+		? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="10" height="10" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:absolute;bottom:-2px;right:-4px;display:block;width:10px;height:10px;fill:none;stroke:currentColor;">${badgePath}</svg>`
 		: ''
 
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;width:${size}px;height:${size}px;"><path d="M4 14c2-6 6-8 9-7 2 .6 3 2 4 2 2 0 4-1.5 4-1.5"/><path d="M13 7c1 3 1 6-1 8-2 2-5 3-8 2 1-2 2-4 2-6"/><path d="M8 16c1 2 3 3 5 3"/>${eyesMarkup}</svg>${badgeSvg}`
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" style="display:block;width:${size}px;height:${size}px;fill:currentColor;"><path fill="currentColor" d="${BIRD_PATH}"/>${eyesMarkup}</svg>${badgeSvg}`
 }
