@@ -32,6 +32,7 @@ class SourceEventsJob extends QueuedJob
         $event = is_string($argument['event'] ?? null) ? $argument['event'] : '';
         $version = is_string($argument['version'] ?? null) ? $argument['version'] : '';
         $path = is_string($argument['path'] ?? null) ? $argument['path'] : '';
+        $attempts = is_int($argument['attempts'] ?? null) ? $argument['attempts'] : 0;
         if ($id === '' || $event === '') {
             return;
         }
@@ -42,6 +43,17 @@ class SourceEventsJob extends QueuedJob
             'version' => $version,
             'path' => $path,
         ]]);
+        if (($answer['retry'] ?? false) === true && $attempts < 3) {
+            $this->jobs->add(self::class, [
+                'id' => $id,
+                'event' => $event,
+                'version' => $version,
+                'path' => $path,
+                'attempts' => $attempts + 1,
+            ]);
+
+            return;
+        }
         foreach ($answer['reupload'] as $entry) {
             $this->jobs->add(ReuploadJob::class, [
                 'uid' => $entry['external_id'],

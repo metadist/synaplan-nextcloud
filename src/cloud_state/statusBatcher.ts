@@ -76,6 +76,7 @@ export function onCloudStatusInvalidated(fn: () => void): () => void {
 export function invalidateCloudStatusCache(): void {
 	cache.clear()
 	folderWatches.clear()
+	featureEnabled = null
 	listeners.forEach((fn) => fn())
 }
 

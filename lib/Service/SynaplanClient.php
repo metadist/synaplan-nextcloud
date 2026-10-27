@@ -349,7 +349,7 @@ class SynaplanClient
         ?string $sourceId = null,
         ?string $sourceEtag = null,
         bool $overwrite = false,
-        bool $keepSynced = false,
+        ?bool $keepSynced = null,
         ?string $apiKey = null,
     ): array {
         $client = $this->clientService->newClient();
@@ -393,8 +393,8 @@ class SynaplanClient
         if ($overwrite) {
             $multipart[] = ['name' => 'overwrite', 'contents' => '1'];
         }
-        if ($keepSynced) {
-            $multipart[] = ['name' => 'keep_synced', 'contents' => '1'];
+        if ($keepSynced !== null) {
+            $multipart[] = ['name' => 'keep_synced', 'contents' => $keepSynced ? '1' : '0'];
         }
 
         $options = [

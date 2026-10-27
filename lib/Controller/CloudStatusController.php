@@ -98,11 +98,12 @@ class CloudStatusController extends Controller
             'file_id' => null,
             'kept_up_to_date' => false,
         ];
+        $versionState = (string) ($item['state'] ?? 'none');
         $synaplanFileId = isset($item['file_id']) && is_int($item['file_id']) ? $item['file_id'] : null;
         if ($synaplanFileId !== null) {
             $remote = $this->cloudState->detail($synaplanFileId);
             if (is_array($remote)) {
-                $item = array_merge($item, $remote);
+                $item = array_merge($remote, $item, ['state' => $versionState]);
             }
         }
 
@@ -140,35 +141,43 @@ class CloudStatusController extends Controller
         }
 
         $userFolder = $this->rootFolder->getUserFolder($user->getUID());
-        $files = [];
+        $candidates = [];
+        $probeItems = [];
         foreach (is_array($recent['files'] ?? null) ? $recent['files'] : [] as $row) {
             if (!is_array($row) || ($row['source'] ?? '') !== 'nextcloud') {
                 continue;
             }
-            $status = (string) ($row['status'] ?? '');
-            if ($status !== 'vectorized') {
-                continue;
-            }
             $sourceId = isset($row['source_id']) ? (string) $row['source_id'] : '';
             $ncId = ctype_digit($sourceId) ? (int) $sourceId : 0;
-            $openUrl = $ncId > 0
-                ? $this->urlGenerator->getAbsoluteURL('/index.php/f/' . $ncId)
-                : '';
-            $path = (string) ($row['original_name'] ?? $row['filename'] ?? '');
-            if ($ncId > 0) {
-                $node = $userFolder->getFirstNodeById($ncId);
-                if ($node instanceof File) {
-                    $path = $userFolder->getRelativePath($node->getPath()) ?? $node->getName();
-                }
+            if ($ncId <= 0 || isset($candidates[$sourceId])) {
+                continue;
             }
-            $files[] = [
+            $node = $userFolder->getFirstNodeById($ncId);
+            if (!$node instanceof File) {
+                continue;
+            }
+            $path = $userFolder->getRelativePath($node->getPath()) ?? $node->getName();
+            $candidates[$sourceId] = [
                 'id' => (int) ($row['id'] ?? 0),
                 'fileId' => $ncId,
                 'name' => (string) ($row['filename'] ?? $path),
                 'path' => ltrim($path, '/'),
                 'knowledgeFolder' => (string) ($row['group_key'] ?? ''),
-                'openUrl' => $openUrl,
+                'openUrl' => $this->urlGenerator->getAbsoluteURL('/index.php/f/' . $ncId),
             ];
+            $probeItems[] = ['id' => $sourceId, 'version' => (string) $node->getEtag()];
+        }
+
+        $files = [];
+        if ($probeItems !== []) {
+            $checked = $this->cloudState->status($probeItems);
+            foreach ($checked['items'] as $statusRow) {
+                $id = is_string($statusRow['id'] ?? null) ? $statusRow['id'] : '';
+                $state = (string) ($statusRow['state'] ?? 'none');
+                if ($id !== '' && $state !== 'none' && isset($candidates[$id])) {
+                    $files[] = $candidates[$id];
+                }
+            }
         }
 
         return new JSONResponse([

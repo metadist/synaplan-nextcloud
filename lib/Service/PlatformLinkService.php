@@ -199,22 +199,30 @@ class PlatformLinkService
      * or came back from the trash. Returns the list of copies to re-upload.
      *
      * @param list<array{id: string, event: string, version: string, path: string}> $events
-     * @return array{applied: int, ignored: int, reupload: list<array{external_id: string, id: string}>}
+     * @return array{applied: int, ignored: int, reupload: list<array{external_id: string, id: string}>, retry?: bool}
      */
     public function reportSourceEvents(array $events): array
     {
         if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '') {
             return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
         }
-        $decoded = $this->request(
-            'POST',
-            '/api/v1/platform-links/sources/events',
-            ['events' => $events],
-            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
-            true,
-            true,
-        );
-        if (isset($decoded['status_code']) && (int) $decoded['status_code'] >= 400) {
+        try {
+            $decoded = $this->request(
+                'POST',
+                '/api/v1/platform-links/sources/events',
+                ['events' => $events],
+                array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+                true,
+                true,
+            );
+        } catch (\Throwable) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true];
+        }
+        $status = (int) ($decoded['status_code'] ?? 200);
+        if ($status === 429 || $status >= 500) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true];
+        }
+        if ($status >= 400) {
             return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
         }
         $reupload = [];

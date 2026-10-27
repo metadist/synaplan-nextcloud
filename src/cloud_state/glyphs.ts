@@ -125,11 +125,6 @@ export function glyphMarkup(options: {
 	const size = options.size ?? 16
 	const overrideUrl = eyes ? options.overrides?.bird_eyes : options.overrides?.bird
 
-	if (overrideUrl) {
-		const safeUrl = overrideUrl.replace(/"/g, '&quot;')
-		return `<img src="${safeUrl}" alt="" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;" />`
-	}
-
 	const eyesMarkup = eyes
 		? '<circle cx="15.5" cy="8.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="18.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/>'
 		: ''
@@ -155,6 +150,11 @@ export function glyphMarkup(options: {
 	const badgeSvg = badgePath
 		? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="10" height="10" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position:absolute;bottom:-2px;right:-4px;display:block;width:10px;height:10px;fill:none;stroke:currentColor;">${badgePath}</svg>`
 		: ''
+
+	if (overrideUrl) {
+		const safeUrl = overrideUrl.replace(/"/g, '&quot;')
+		return `<img src="${safeUrl}" alt="" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;" />${badgeSvg}`
+	}
 
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" style="display:block;width:${size}px;height:${size}px;fill:currentColor;"><path fill="currentColor" d="${BIRD_PATH}"/>${eyesMarkup}</svg>${badgeSvg}`
 }

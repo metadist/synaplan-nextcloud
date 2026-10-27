@@ -57,7 +57,10 @@ class ReuploadJob extends QueuedJob
             }
 
             $etag = (string) $node->getEtag();
-            $groupKey = $this->resolveGroupKey($remoteId, $etag, $userKey);
+            $groupKey = $this->resolveSubscribedGroupKey($remoteId, $etag, $userKey);
+            if ($groupKey === null) {
+                return;
+            }
             $relative = $userFolder->getRelativePath($node->getPath()) ?? $node->getName();
 
             $this->synaplanClient->uploadFile(
@@ -82,10 +85,16 @@ class ReuploadJob extends QueuedJob
         }
     }
 
-    private function resolveGroupKey(string $remoteId, string $etag, string $userKey): string
+    private function resolveSubscribedGroupKey(string $remoteId, string $etag, string $userKey): ?string
     {
         $status = $this->cloudState->status([['id' => $remoteId, 'version' => $etag]], $userKey);
-        $folder = $status['items'][0]['knowledge_folder'] ?? null;
+        $item = $status['items'][0] ?? null;
+        if (!is_array($item)
+            || ($item['kept_up_to_date'] ?? false) !== true
+            || ($item['state'] ?? 'none') === 'none') {
+            return null;
+        }
+        $folder = $item['knowledge_folder'] ?? null;
         if (is_array($folder) && is_string($folder['key'] ?? null) && $folder['key'] !== '') {
             return $folder['key'];
         }

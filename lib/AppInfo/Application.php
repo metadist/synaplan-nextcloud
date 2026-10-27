@@ -19,6 +19,7 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent;
+use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
@@ -45,6 +46,7 @@ class Application extends App implements IBootstrap
         $context->registerEventListener(UserChangedEvent::class, UserChangedListener::class);
         $context->registerEventListener(NodeWrittenEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeRenamedEvent::class, SourceEventListener::class);
+        $context->registerEventListener(BeforeNodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', SourceEventListener::class);
         $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);

@@ -197,7 +197,7 @@ export function registerWatchedFolderHeader(): void {
 	let currentEl: HTMLElement | null = null
 	let currentFolder: IFolder | null = null
 
-	const updateHeader = (folder: IFolder | null) => {
+	const updateHeader = async (folder: IFolder | null) => {
 		if (!currentEl) {
 			return
 		}
@@ -206,12 +206,20 @@ export function registerWatchedFolderHeader(): void {
 			currentEl.style.display = 'none'
 			return
 		}
-		const folderId = extractNodeId(folder as unknown as Record<string, unknown>)
+		const folderNode = folder as unknown as Record<string, unknown>
+		const folderId = extractNodeId(folderNode)
 		if (!folderId) {
 			currentEl.style.display = 'none'
 			return
 		}
-		const watch = watchForTarget(folderId)
+		const resolved = await requestRowStatus(
+			folderId,
+			extractNodeVersion(folderNode),
+		)
+		if (!currentEl || currentFolder !== folder) {
+			return
+		}
+		const watch = resolved.watch ?? watchForTarget(folderId)
 		if (!watch) {
 			currentEl.style.display = 'none'
 			return

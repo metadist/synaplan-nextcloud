@@ -212,6 +212,7 @@ const keptUpToDate = ref(false)
 const watches = ref<CloudWatchSummary[]>([])
 const glyphs = ref<GlyphOverrides>({})
 const openSynaplanUrl = ref('')
+let loadSeq = 0
 
 const fileName = computed(() => props.fileNameRef.value)
 
@@ -265,9 +266,13 @@ async function loadDetail(): Promise<void> {
 	if (!id || id <= 0) {
 		return
 	}
+	const seq = ++loadSeq
 	loading.value = true
 	try {
 		const { data } = await axios.get(`${baseUrl}/api/v1/cloud/files/${id}`)
+		if (seq !== loadSeq || props.fileIdRef.value !== id) {
+			return
+		}
 		enabled.value = Boolean(data?.enabled)
 		unreachable.value = Boolean(data?.unreachable)
 		kind.value = data?.kind === 'folder' ? 'folder' : 'file'
@@ -278,9 +283,14 @@ async function loadDetail(): Promise<void> {
 		glyphs.value = data?.glyphs || {}
 		openSynaplanUrl.value = data?.openSynaplanUrl || ''
 	} catch {
+		if (seq !== loadSeq || props.fileIdRef.value !== id) {
+			return
+		}
 		unreachable.value = true
 	} finally {
-		loading.value = false
+		if (seq === loadSeq) {
+			loading.value = false
+		}
 	}
 }
 
@@ -296,9 +306,11 @@ async function removeFromSynaplan(): Promise<void> {
 	try {
 		const { data } = await axios.delete(`${baseUrl}/api/v1/knowledge/${id}`)
 		if (data?.success) {
-			state.value = 'none'
-			knowledgeFolder.value = null
-			keptUpToDate.value = false
+			if (props.fileIdRef.value === id) {
+				state.value = 'none'
+				knowledgeFolder.value = null
+				keptUpToDate.value = false
+			}
 			invalidateCloudStatusCache()
 			showSuccess(
 				t('synaplan_integration', 'This file is no longer searchable by AI'),
