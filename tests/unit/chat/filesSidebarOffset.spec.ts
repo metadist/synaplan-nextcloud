@@ -55,4 +55,12 @@ describe('filesSidebarOffset', () => {
 	it('stays in the corner when the sidebar covers the window', () => {
 		expect(filesSidebarOffset(sidebar('flex', 1180), VIEWPORT)).toBe(0)
 	})
+
+	it('stays in the corner when the open chat would be too narrow beside the sidebar', () => {
+		expect(filesSidebarOffset(sidebar('flex', 680), 800)).toBe(0)
+	})
+
+	it('moves left when the open chat still fits beside the sidebar', () => {
+		expect(filesSidebarOffset(sidebar('flex', 400), 800)).toBe(400)
+	})
 })

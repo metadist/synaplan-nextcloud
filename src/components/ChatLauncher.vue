@@ -115,9 +115,11 @@ onMounted(() => {
 		updateOffset()
 	})
 	bodyObserver.observe(document.body, { childList: true, subtree: true })
+	window.addEventListener('resize', updateOffset)
 })
 
 onUnmounted(() => {
+	window.removeEventListener('resize', updateOffset)
 	bodyObserver?.disconnect()
 	sidebarObserver?.disconnect()
 	resizeObserver?.disconnect()
@@ -168,7 +170,7 @@ onUnmounted(() => {
 	z-index: 10000;
 }
 
-/* Only while the Files sidebar is open and there is room beside it. */
+/* Only while the Files sidebar is open and a usable chat still fits beside it. */
 .synaplan-chat-launcher--beside-sidebar .synaplan-chat-fab,
 .synaplan-chat-launcher--beside-sidebar .synaplan-chat-launcher-panel {
 	right: calc(24px + var(--synaplan-files-sidebar, 0px));
