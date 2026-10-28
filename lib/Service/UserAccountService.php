@@ -10,15 +10,20 @@ use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
  * Resolves a per-user Synaplan API key for the current Nextcloud user.
  *
  * On first use for a user, this service uses the admin API key to:
- *   1. provision a Synaplan account for the NC user (idempotent on
- *      source="nextcloud" + external_id="<instanceId>:<uid>"), and
+ *   1. provision a Synaplan account for the NC user, and
  *   2. mint a per-user API key on that account.
+ *
+ * Once this Nextcloud is registered, both calls also send the instance
+ * credential and the bare Nextcloud user id, so Synaplan stores the
+ * canonical identity row. Without a registration the external id stays
+ * "<instanceId>:<uid>", as older releases sent it.
  *
  * The minted key is cached in the NC user's preferences (server-side only,
  * never exposed to the browser). All subsequent Synaplan calls made on behalf
@@ -40,7 +45,7 @@ class UserAccountService
     public const LINK_EMAIL_PREF = 'synaplan_link_email';
     public const LINKED_AT_PREF = 'synaplan_linked_at';
     public const LINK_ID_PREF = 'synaplan_link_id';
-    /** Durable: survives disconnect / 401 so user-deletion never deletes a linked Synaplan user. */
+    /** Durable: survives disconnect / 401 so a removed linked person is reported, not dropped silently. */
     public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
 
     public const KIND_LINKED = 'linked';
@@ -57,6 +62,7 @@ class UserAccountService
         private SynaplanConfig $synaplanConfig,
         private LoggerInterface $logger,
         private KeyStorage $keys,
+        private ICrypto $crypto,
     ) {
     }
 
@@ -424,37 +430,6 @@ class UserAccountService
     }
 
     /**
-     * Delete a user's Synaplan account (and its data) via the admin API.
-     *
-     * Called when the Nextcloud user is removed so the external account does
-     * not linger orphaned. Best-effort: failures are logged, never thrown, so
-     * they can't block Nextcloud's own user deletion.
-     */
-    public function deleteRemoteAccount(string $uid): void
-    {
-        $synaplanUserId = $this->getSynaplanUserId($uid);
-        $adminKey = $this->synaplanConfig->getAdminApiKey();
-        if ($synaplanUserId === null || $adminKey === '') {
-            return;
-        }
-
-        try {
-            $this->adminRequest('DELETE', '/api/v1/admin/users/' . $synaplanUserId, null, $adminKey);
-            $this->logger->info('Deleted Synaplan account for removed Nextcloud user {uid} (synaplan id {sid})', [
-                'app' => Application::APP_ID,
-                'uid' => $uid,
-                'sid' => $synaplanUserId,
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to delete Synaplan account for removed Nextcloud user {uid}: {message}', [
-                'app' => Application::APP_ID,
-                'uid' => $uid,
-                'message' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
      * Fetch per-user usage from Synaplan (admin API) for a provisioned account.
      *
      * @return array<string, mixed>
@@ -480,7 +455,10 @@ class UserAccountService
             return null;
         }
 
-        $externalId = $this->synaplanConfig->getInstanceId() . ':' . $user->getUID();
+        $credential = $this->instanceHeaders();
+        $externalId = $credential === []
+            ? $this->synaplanConfig->getInstanceId() . ':' . $user->getUID()
+            : $user->getUID();
         $email = $user->getEMailAddress();
         if ($email === null || $email === '') {
             // Synaplan requires an email; synthesize a stable, unique one from
@@ -494,7 +472,7 @@ class UserAccountService
                 'external_id' => $externalId,
                 'email' => $email,
                 'display_name' => $user->getDisplayName(),
-            ], $adminKey);
+            ], $adminKey, $credential);
         } catch (\Throwable $e) {
             if ($this->isConflict($e)) {
                 throw new EmailConflictException();
@@ -510,7 +488,7 @@ class UserAccountService
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
             'name' => 'nextcloud-' . $user->getUID(),
             'scopes' => self::USER_KEY_SCOPES,
-        ], $adminKey);
+        ], $adminKey, $credential);
 
         $userKey = (string) ($minted['api_key']['key'] ?? '');
         if ($userKey === '') {
@@ -534,10 +512,39 @@ class UserAccountService
     }
 
     /**
+     * Instance credential when this Nextcloud is registered, otherwise none.
+     * Provisioning then keeps the legacy external id.
+     *
+     * @return array<string, string>
+     */
+    private function instanceHeaders(): array
+    {
+        $id = $this->synaplanConfig->getLinkInstanceId();
+        $cipher = $this->synaplanConfig->getLinkInstanceSecretCipher();
+        if ($id === '' || $cipher === '') {
+            return [];
+        }
+        try {
+            $secret = $this->crypto->decrypt($cipher);
+        } catch (\Throwable) {
+            $secret = $cipher;
+        }
+        if ($secret === '') {
+            return [];
+        }
+
+        return [
+            'X-Instance-Id' => $id,
+            'X-Instance-Secret' => $secret,
+        ];
+    }
+
+    /**
      * @param array<string, mixed>|null $body Request body for POST; null for GET.
+     * @param array<string, string> $extraHeaders
      * @return array<string, mixed>
      */
-    private function adminRequest(string $method, string $path, ?array $body, string $adminKey): array
+    private function adminRequest(string $method, string $path, ?array $body, string $adminKey, array $extraHeaders = []): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
@@ -545,6 +552,7 @@ class UserAccountService
         $headers = [
             'X-API-Key' => $adminKey,
             'Accept' => 'application/json',
+            ...$extraHeaders,
         ];
         $options = [
             'headers' => $headers,

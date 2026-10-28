@@ -37,6 +37,7 @@ Requires a running Synaplan instance. Three ways to connect: one shared account,
 	</dependencies>
 	<background-jobs>
 		<job>OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob</job>
+		<job>OCA\SynaplanIntegration\BackgroundJob\AdoptIdentitiesJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\SynaplanIntegration\Settings\SynaplanAdmin</admin>

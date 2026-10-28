@@ -14,6 +14,7 @@ use OCP\Http\Client\IResponse;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\Security\ICrypto;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -75,6 +76,11 @@ class UserAccountServiceTest extends TestCase
     {
         $keys = $this->keyStorageOver($this->userConfig, $this->appConfig, $this->sensitive);
 
+        $crypto = $this->createStub(ICrypto::class);
+        $crypto->method('decrypt')->willReturnCallback(
+            fn (string $value): string => str_starts_with($value, 'enc:') ? substr($value, 4) : $value
+        );
+
         return new UserAccountService(
             $this->clientService,
             $this->config,
@@ -82,6 +88,7 @@ class UserAccountServiceTest extends TestCase
             new SynaplanConfig($this->config, $keys),
             $this->logger,
             $keys,
+            $crypto,
         );
     }
 
@@ -361,33 +368,35 @@ class UserAccountServiceTest extends TestCase
         $this->assertTrue($this->service()->wasLinked('alice'));
     }
 
-    public function testDeleteRemoteAccountCallsAdminDelete(): void
+    public function testProvisioningSendsTheInstanceCredentialAndBareUserId(): void
     {
-        $this->userConfig['gwen|synaplan_user_id'] = '55';
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->appConfig['link_instance_secret'] = 'enc:s3cret';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'alice@example.com', 'Alice'));
 
-        $resp = $this->createMock(IResponse::class);
-        $resp->method('getBody')->willReturn(json_encode(['success' => true]));
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 501]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['key' => 'sk_alice_minted']]));
 
-        $captured = '';
-        $this->httpClient->expects($this->once())
-            ->method('delete')
-            ->willReturnCallback(function (string $url, array $options) use (&$captured, $resp): IResponse {
-                $captured = $url . '|' . ($options['headers']['X-API-Key'] ?? '');
+        $captured = [];
+        $this->httpClient->expects($this->exactly(2))
+            ->method('post')
+            ->willReturnCallback(function (string $url, array $options) use (&$captured, $provisionResp, $mintResp): IResponse {
+                $captured[] = [json_decode($options['body'], true), $options['headers']];
 
-                return $resp;
+                return str_contains($url, '/api-keys') ? $mintResp : $provisionResp;
             });
 
-        $this->service()->deleteRemoteAccount('gwen');
+        $this->service()->getCurrentUserApiKey();
 
-        $this->assertStringEndsWith('/api/v1/admin/users/55|sk_admin_key', $captured);
-    }
-
-    public function testDeleteRemoteAccountNoopWhenNoAccount(): void
-    {
-        $this->httpClient->expects($this->never())->method('delete');
-
-        // No stored synaplan_user_id for this uid.
-        $this->service()->deleteRemoteAccount('nobody');
+        $this->assertSame('alice', $captured[0][0]['external_id']);
+        $this->assertSame('pi_nc', $captured[0][1]['X-Instance-Id']);
+        $this->assertSame('s3cret', $captured[0][1]['X-Instance-Secret']);
+        $this->assertSame('sk_admin_key', $captured[0][1]['X-API-Key']);
+        $this->assertSame('pi_nc', $captured[1][1]['X-Instance-Id']);
+        $this->assertSame('s3cret', $captured[1][1]['X-Instance-Secret']);
     }
 
     public function testSharedModeResolvesNull(): void

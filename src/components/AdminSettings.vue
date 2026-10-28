@@ -327,74 +327,13 @@
 
 				<div :style="{ height: '16px' }" />
 
-				<div class="sp-field">
-					<strong>{{
-						t('synaplan_integration', 'How users connect')
-					}}</strong>
-					<p class="sp-hint">
-						{{ modeHint }}
-					</p>
-					<div class="sp-env-switch">
-						<NcCheckboxRadioSwitch
-							v-model="mode"
-							value="shared"
-							name="sp-mode"
-							type="radio"
-							:disabled="saving">
-							{{ t('synaplan_integration', 'One shared account') }}
-						</NcCheckboxRadioSwitch>
-						<NcCheckboxRadioSwitch
-							v-model="mode"
-							value="provision"
-							name="sp-mode"
-							type="radio"
-							:disabled="saving">
-							{{
-								t(
-									'synaplan_integration',
-									'Accounts created by the administrator',
-								)
-							}}
-						</NcCheckboxRadioSwitch>
-						<NcCheckboxRadioSwitch
-							v-model="mode"
-							value="link"
-							name="sp-mode"
-							type="radio"
-							:disabled="saving">
-							{{
-								t(
-									'synaplan_integration',
-									'Connect your Synaplan account',
-								)
-							}}
-						</NcCheckboxRadioSwitch>
-					</div>
-				</div>
-
-				<template v-if="mode === 'link'">
-					<div :style="{ height: '12px' }" />
-					<NcCheckboxRadioSwitch
-						v-model="linkAutoProvision"
-						type="switch"
-						:disabled="saving || !hasAdminKey">
-						{{
-							t(
-								'synaplan_integration',
-								'Offer to create an account for users who have none',
-							)
-						}}
-					</NcCheckboxRadioSwitch>
-					<p class="sp-hint sp-switch-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'Needs the admin API key. Users who already have a Synaplan account still connect it.',
-							)
-						}}
-					</p>
-				</template>
-
+				<AdminConnection
+					:mode="mode"
+					:link-auto-provision="linkAutoProvision"
+					:has-admin-key="hasAdminKey"
+					:saving="saving"
+					@update:mode="mode = $event"
+					@update:link-auto-provision="linkAutoProvision = $event" />
 				<div :style="{ height: '20px' }" />
 
 				<div :style="{ display: 'flex', gap: '16px' }">
@@ -414,264 +353,21 @@
 				</div>
 			</NcSettingsSection>
 
-			<NcSettingsSection
-				v-if="mode === 'link'"
-				:name="t('synaplan_integration', 'This Nextcloud')">
-				<p class="sp-hint">
-					{{
-						t(
-							'synaplan_integration',
-							'Register this Nextcloud so people can connect their Synaplan account. You do this once.',
-						)
-					}}
-				</p>
-				<p v-if="linkRegistered" class="sp-status">
-					{{ instanceStatusLabel }}
-				</p>
-				<p v-else class="sp-status">
-					{{ t('synaplan_integration', 'Not registered yet.') }}
-				</p>
-				<div :style="{ height: '16px' }" />
-				<div class="sp-field">
-					<strong>{{
-						t(
-							'synaplan_integration',
-							'Address Synaplan uses to reach this Nextcloud',
-						)
-					}}</strong>
-					<p class="sp-hint">
-						{{
-							t(
-								'synaplan_integration',
-								'Leave empty on a normal server. On the local Docker install, Synaplan reaches Nextcloud at http://nextcloud.',
-							)
-						}}
-					</p>
-					<div :style="inputWrapStyle">
-						<NcTextField
-							id="synaplan-delivery-url"
-							v-model="deliveryUrl"
-							:label="
-								t(
-									'synaplan_integration',
-									'Address Synaplan uses to reach this Nextcloud',
-								)
-							"
-							:label-visible="false"
-							:disabled="saving"
-							:style="{ width: '100%' }" />
-					</div>
-				</div>
-				<div :style="{ display: 'flex', gap: '16px', margin: '12px 0' }">
-					<span
-						v-if="!linkRegistered"
-						role="button"
-						tabindex="0"
-						:style="primaryBtnStyle"
-						@click="!registering && registerInstance()"
-						@keydown.enter="!registering && registerInstance()"
-						@keydown.space.prevent="!registering && registerInstance()">
-						{{
-							registering
-								? t('synaplan_integration', 'Registering…')
-								: t('synaplan_integration', 'Register this instance')
-						}}
-					</span>
-					<span
-						v-else
-						role="button"
-						tabindex="0"
-						:style="secondaryBtnStyle"
-						@click="!registering && forgetInstance()"
-						@keydown.enter="!registering && forgetInstance()"
-						@keydown.space.prevent="!registering && forgetInstance()">
-						{{ t('synaplan_integration', 'Forget registration') }}
-					</span>
-				</div>
-			</NcSettingsSection>
+			<AdminRegistration
+				:delivery-url="deliveryUrl"
+				:mode="mode"
+				:saving="saving"
+				:link-registered="linkRegistered"
+				:link-instance-id="linkInstanceId"
+				:link-instance="linkInstance"
+				:registering="registering"
+				:primary-btn-style="primaryBtnStyle"
+				:secondary-btn-style="secondaryBtnStyle"
+				@update:delivery-url="deliveryUrl = $event"
+				@register="registerInstance"
+				@forget="forgetInstance" />
 
-			<NcSettingsSection
-				v-if="mode !== 'shared'"
-				:name="t('synaplan_integration', 'AI Users')">
-				<p class="sp-hint">
-					{{
-						t(
-							'synaplan_integration',
-							'Nextcloud users who have activated AI. Each has their own Synaplan account, files and usage.',
-						)
-					}}
-				</p>
-
-				<div class="sp-aiusers-toolbar">
-					<NcTextField
-						:value="aiUserSearch"
-						:label="t('synaplan_integration', 'Search name or email')"
-						:label-visible="false"
-						:placeholder="
-							t('synaplan_integration', 'Search name or email')
-						"
-						class="sp-aiusers-search"
-						@update:value="aiUserSearch = $event" />
-					<span
-						role="button"
-						tabindex="0"
-						:style="secondaryBtnStyle"
-						@click="!aiUsersLoading && loadAiUsers()"
-						@keydown.enter="!aiUsersLoading && loadAiUsers()">
-						{{
-							aiUsersLoading
-								? t('synaplan_integration', 'Loading...')
-								: t('synaplan_integration', 'Refresh')
-						}}
-					</span>
-					<span class="sp-hint">{{
-						t('synaplan_integration', '{count} activated', {
-							count: aiUsers.length,
-						})
-					}}</span>
-				</div>
-
-				<p v-if="aiUsers.length === 0 && !aiUsersLoading" class="sp-hint">
-					{{
-						t('synaplan_integration', 'No users have activated AI yet.')
-					}}
-				</p>
-
-				<p v-else-if="filteredAiUsers.length === 0" class="sp-hint">
-					{{ t('synaplan_integration', 'No users match your search.') }}
-				</p>
-
-				<div v-else class="sp-aiusers-list">
-					<div
-						v-for="u in paginatedAiUsers"
-						:key="u.uid"
-						class="sp-aiuser">
-						<div class="sp-aiuser-row">
-							<div class="sp-aiuser-main">
-								<span class="sp-aiuser-name">{{
-									u.displayName
-								}}</span>
-								<span class="sp-uid">({{ u.uid }})</span>
-							</div>
-							<div class="sp-aiuser-meta">
-								<span v-if="u.kind" class="sp-kind-badge">
-									{{
-										u.kind === 'linked'
-											? t('synaplan_integration', 'Connected')
-											: t(
-													'synaplan_integration',
-													'Created for them',
-												)
-									}}
-								</span>
-								<span v-if="u.email">{{ u.email }}</span>
-								<span
-									>{{ t('synaplan_integration', 'Synaplan ID') }}:
-									{{ u.synaplanUserId ?? '—' }}</span
-								>
-								<span>{{
-									u.hasKey
-										? t('synaplan_integration', 'Key ✓')
-										: t('synaplan_integration', 'No key')
-								}}</span>
-								<span>{{ formatConsentDate(u.consentAt) }}</span>
-							</div>
-							<div class="sp-aiusers-actions">
-								<span
-									role="button"
-									tabindex="0"
-									class="sp-aiusers-link"
-									@click="openDetails(u)"
-									@keydown.enter="openDetails(u)">
-									{{ t('synaplan_integration', 'Details') }}
-								</span>
-								<span
-									role="button"
-									tabindex="0"
-									class="sp-aiusers-link sp-aiusers-danger"
-									@click="deactivateUser(u)"
-									@keydown.enter="deactivateUser(u)">
-									{{ t('synaplan_integration', 'Deactivate') }}
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
-
-				<div v-if="aiUsersTotalPages > 1" class="sp-aiusers-pagination">
-					<span
-						role="button"
-						tabindex="0"
-						class="sp-page-btn"
-						:class="{ 'sp-page-disabled': aiUserPage <= 1 }"
-						@click="aiUserPage > 1 && aiUserPage--"
-						@keydown.enter="aiUserPage > 1 && aiUserPage--">
-						‹ {{ t('synaplan_integration', 'Previous') }}
-					</span>
-					<span class="sp-hint"
-						>{{ aiUserPage }} / {{ aiUsersTotalPages }}</span
-					>
-					<span
-						role="button"
-						tabindex="0"
-						class="sp-page-btn"
-						:class="{
-							'sp-page-disabled': aiUserPage >= aiUsersTotalPages,
-						}"
-						@click="aiUserPage < aiUsersTotalPages && aiUserPage++"
-						@keydown.enter="
-							aiUserPage < aiUsersTotalPages && aiUserPage++
-						">
-						{{ t('synaplan_integration', 'Next') }} ›
-					</span>
-				</div>
-			</NcSettingsSection>
-
-			<NcDialog
-				:open="detailUser !== null"
-				:name="detailModalTitle"
-				size="normal"
-				@update:open="onDetailOpenChange">
-				<div v-if="detailUser" class="sp-user-detail">
-					<dl class="sp-detail-grid">
-						<dt>{{ t('synaplan_integration', 'Name') }}</dt>
-						<dd>{{ detailUser.displayName }}</dd>
-						<dt>{{ t('synaplan_integration', 'Username') }}</dt>
-						<dd>{{ detailUser.uid }}</dd>
-						<dt>{{ t('synaplan_integration', 'Email') }}</dt>
-						<dd>{{ detailUser.email || '—' }}</dd>
-						<dt>
-							{{ t('synaplan_integration', 'Synaplan account ID') }}
-						</dt>
-						<dd>{{ detailUser.synaplanUserId ?? '—' }}</dd>
-						<dt>{{ t('synaplan_integration', 'API key') }}</dt>
-						<dd>
-							{{
-								detailUser.hasKey
-									? t('synaplan_integration', 'Issued')
-									: t('synaplan_integration', 'None')
-							}}
-						</dd>
-						<dt>{{ t('synaplan_integration', 'Activated') }}</dt>
-						<dd>{{ formatConsentDate(detailUser.consentAt) }}</dd>
-					</dl>
-
-					<h4 class="sp-detail-heading">
-						{{ t('synaplan_integration', 'Usage') }}
-					</h4>
-					<span v-if="usageLoading[detailUser.uid]" class="sp-hint">{{
-						t('synaplan_integration', 'Loading usage...')
-					}}</span>
-					<ul v-else-if="detailUsageEntries.length" class="sp-usage-list">
-						<li v-for="entry in detailUsageEntries" :key="entry.key">
-							<strong>{{ entry.key }}:</strong> {{ entry.value }}
-						</li>
-					</ul>
-					<span v-else class="sp-hint">{{
-						t('synaplan_integration', 'No usage data available.')
-					}}</span>
-				</div>
-			</NcDialog>
+			<AdminAiUsers v-if="mode !== 'shared'" @notify="showMessage" />
 
 			<NcSettingsSection :name="t('synaplan_integration', 'Quick Links')">
 				<ul class="sp-links">
@@ -709,7 +405,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from '@nextcloud/axios'
 import { generateUrl, imagePath } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
@@ -718,7 +414,9 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
-import NcDialog from '@nextcloud/vue/components/NcDialog'
+import AdminAiUsers from './AdminAiUsers.vue'
+import AdminConnection from './AdminConnection.vue'
+import AdminRegistration from './AdminRegistration.vue'
 
 interface LanguageOption {
 	id: string
@@ -850,95 +548,6 @@ const apiKeyHint = computed(() =>
 		: t('synaplan_integration', 'Your Synaplan API key for authentication.'),
 )
 
-const modeHint = computed(() => {
-	if (mode.value === 'link') {
-		return t(
-			'synaplan_integration',
-			'Each person connects their own Synaplan account. Their models, knowledge and memories stay theirs.',
-		)
-	}
-	if (mode.value === 'provision') {
-		return t(
-			'synaplan_integration',
-			'The key above is treated as an admin key: every Nextcloud user gets their own Synaplan account.',
-		)
-	}
-	return t('synaplan_integration', 'All users share the single configured key.')
-})
-
-const instanceStatusLabel = computed(() => {
-	const inst = linkInstance.value
-	const host = inst?.host || ''
-	if (inst?.status === 'pending') {
-		return host
-			? t(
-					'synaplan_integration',
-					'Waiting for approval by the Synaplan administrator ({host}).',
-					{ host },
-				)
-			: t(
-					'synaplan_integration',
-					'Waiting for approval by the Synaplan administrator.',
-				)
-	}
-	if (inst?.status === 'active') {
-		return host
-			? t('synaplan_integration', 'Registered and ready ({host}).', { host })
-			: t('synaplan_integration', 'Registered and ready.')
-	}
-	if (linkInstanceId.value) {
-		return t('synaplan_integration', 'Registered. Checking status…')
-	}
-	return t('synaplan_integration', 'Not registered yet.')
-})
-
-interface AiUser {
-	uid: string
-	displayName: string
-	email: string
-	synaplanUserId: number | null
-	hasKey: boolean
-	consentAt: string
-	kind?: 'linked' | 'provisioned' | null
-}
-
-const AI_USERS_PER_PAGE = 20
-
-const aiUsers = ref<AiUser[]>([])
-const aiUsersLoading = ref(false)
-const aiUserSearch = ref('')
-const aiUserPage = ref(1)
-const usageLoading = ref<Record<string, boolean>>({})
-const usageData = ref<Record<string, unknown>>({})
-const detailUser = ref<AiUser | null>(null)
-
-const filteredAiUsers = computed(() => {
-	const q = aiUserSearch.value.trim().toLowerCase()
-	if (!q) {
-		return aiUsers.value
-	}
-	return aiUsers.value.filter(
-		(u) =>
-			u.displayName.toLowerCase().includes(q)
-			|| u.email.toLowerCase().includes(q)
-			|| u.uid.toLowerCase().includes(q),
-	)
-})
-
-const aiUsersTotalPages = computed(() =>
-	Math.max(1, Math.ceil(filteredAiUsers.value.length / AI_USERS_PER_PAGE)),
-)
-
-const paginatedAiUsers = computed(() => {
-	const start = (aiUserPage.value - 1) * AI_USERS_PER_PAGE
-	return filteredAiUsers.value.slice(start, start + AI_USERS_PER_PAGE)
-})
-
-// Reset to the first page whenever the search term changes.
-watch(aiUserSearch, () => {
-	aiUserPage.value = 1
-})
-
 const baseUrl = generateUrl('/apps/synaplan_integration')
 
 /* Inline button styles — guarantees we beat Nextcloud's global CSS */
@@ -1058,7 +667,9 @@ async function save() {
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
 			read_folder_cap: Number(readFolderCap.value) || 20,
-			...(mode.value === 'link' ? { delivery_url: deliveryUrl.value } : {}),
+			...(mode.value === 'link' || mode.value === 'provision'
+				? { delivery_url: deliveryUrl.value }
+				: {}),
 		})
 		if (apiKey.value) {
 			apiKeySet.value = true
@@ -1139,118 +750,6 @@ async function testConnection() {
 }
 
 /**
- * Load the list of Nextcloud users who have activated AI (per-user mode).
- */
-async function loadAiUsers() {
-	aiUsersLoading.value = true
-	try {
-		const { data } = await axios.get(`${baseUrl}/api/v1/admin/ai-users`)
-		if (data.success) {
-			aiUsers.value = data.users || []
-		}
-	} catch {
-		showMessage(t('synaplan_integration', 'Failed to load AI users.'), 'error')
-	} finally {
-		aiUsersLoading.value = false
-	}
-}
-
-/**
- * Open the per-user details modal, lazily fetching usage on first open.
- * @param {AiUser} u The user row
- */
-async function openDetails(u: AiUser) {
-	detailUser.value = u
-	if (usageData.value[u.uid] === undefined) {
-		usageLoading.value = { ...usageLoading.value, [u.uid]: true }
-		try {
-			const { data } = await axios.get(
-				`${baseUrl}/api/v1/admin/ai-users/${encodeURIComponent(u.uid)}/usage`,
-			)
-			usageData.value = { ...usageData.value, [u.uid]: data }
-		} catch {
-			usageData.value = { ...usageData.value, [u.uid]: {} }
-		} finally {
-			usageLoading.value = { ...usageLoading.value, [u.uid]: false }
-		}
-	}
-}
-
-const detailModalTitle = computed(() =>
-	detailUser.value
-		? t('synaplan_integration', 'AI user: {name}', {
-				name: detailUser.value.displayName,
-			})
-		: '',
-)
-
-const detailUsageEntries = computed(() =>
-	detailUser.value ? usageEntries(detailUser.value.uid) : [],
-)
-
-/**
- * NcDialog open-state handler — closes the modal when dismissed.
- * @param {boolean} open New open state
- */
-function onDetailOpenChange(open: boolean) {
-	if (!open) {
-		detailUser.value = null
-	}
-}
-
-/**
- * Flatten a user's usage payload into scalar key/value rows for display.
- * @param {string} uid Nextcloud user id
- */
-function usageEntries(uid: string): { key: string; value: string }[] {
-	const data = usageData.value[uid] as Record<string, unknown> | undefined
-	const usage = (data?.usage ?? data) as Record<string, unknown> | undefined
-	if (!usage || typeof usage !== 'object') {
-		return []
-	}
-	const out: { key: string; value: string }[] = []
-	for (const [key, value] of Object.entries(usage)) {
-		if (value === null || typeof value === 'object') {
-			continue
-		}
-		out.push({ key, value: String(value) })
-	}
-	return out
-}
-
-/**
- * Deactivate AI for a user (clears their consent + key on the server).
- * @param {AiUser} u The user row
- */
-async function deactivateUser(u: AiUser) {
-	try {
-		await axios.post(
-			`${baseUrl}/api/v1/admin/ai-users/${encodeURIComponent(u.uid)}/deactivate`,
-		)
-		showMessage(
-			t('synaplan_integration', 'Deactivated AI for {name}.', {
-				name: u.displayName,
-			}),
-		)
-		await loadAiUsers()
-	} catch {
-		showMessage(t('synaplan_integration', 'Failed to deactivate user.'), 'error')
-	}
-}
-
-/**
- * Human-readable activation date.
- * @param {string} iso ISO timestamp
- */
-function formatConsentDate(iso: string): string {
-	if (!iso) {
-		return '—'
-	}
-	const d = new Date(iso)
-	return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
-}
-
-/**
  * Register this Nextcloud as a Synaplan platform instance.
  */
 async function registerInstance() {
@@ -1325,7 +824,10 @@ let statusTimer: ReturnType<typeof setInterval> | null = null
  * Refresh instance status while waiting for Synaplan approval.
  */
 async function refreshInstanceStatus() {
-	if (mode.value !== 'link' || !linkRegistered.value) {
+	if (
+		(mode.value !== 'link' && mode.value !== 'provision')
+		|| !linkRegistered.value
+	) {
 		return
 	}
 	try {
@@ -1342,9 +844,6 @@ async function refreshInstanceStatus() {
 
 onMounted(async () => {
 	await loadSettings()
-	if (mode.value !== 'shared') {
-		loadAiUsers()
-	}
 	statusTimer = setInterval(() => {
 		if (linkInstance.value?.status === 'pending') {
 			refreshInstanceStatus()
@@ -1480,139 +979,5 @@ onUnmounted(() => {
 	background: var(--color-background-hover, rgba(255, 255, 255, 0.1));
 	border-color: var(--color-primary-element, #0082c9);
 	text-decoration: none;
-}
-
-/* AI Users control panel */
-.sp-aiusers-toolbar {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 12px;
-	margin: 8px 0 12px;
-}
-
-.sp-aiusers-search {
-	flex: 1 1 240px;
-	max-width: 360px;
-}
-
-.sp-aiusers-pagination {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 16px;
-	margin-top: 12px;
-}
-
-.sp-page-btn {
-	cursor: pointer;
-	color: var(--color-primary-element, #0082c9);
-	font-weight: 500;
-}
-
-.sp-page-disabled {
-	color: var(--color-text-maxcontrast, #8a8a8a);
-	cursor: default;
-	opacity: 0.5;
-}
-
-.sp-aiusers-list {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	font-size: 0.9em;
-}
-
-.sp-aiuser {
-	border: 1px solid var(--color-border, rgba(127, 127, 127, 0.2));
-	border-radius: var(--border-radius-large, 8px);
-	padding: 8px 12px;
-}
-
-.sp-aiuser-row {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px 20px;
-}
-
-.sp-aiuser-main {
-	flex: 1 1 180px;
-}
-
-.sp-aiuser-name {
-	font-weight: 600;
-	color: var(--color-main-text, #222);
-}
-
-.sp-aiuser-meta {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px 16px;
-	color: var(--color-text-maxcontrast, #6b6b6b);
-}
-
-.sp-uid {
-	color: var(--color-text-maxcontrast, #6b6b6b);
-	font-size: 0.85em;
-}
-
-.sp-aiusers-actions {
-	display: flex;
-	gap: 12px;
-	margin-left: auto;
-}
-
-.sp-aiusers-link {
-	cursor: pointer;
-	color: var(--color-primary-element, #0082c9);
-	font-weight: 500;
-}
-
-.sp-aiusers-danger {
-	color: var(--color-error, #e9322d);
-}
-
-.sp-user-detail {
-	padding: 8px 4px;
-}
-
-.sp-detail-grid {
-	display: grid;
-	grid-template-columns: minmax(120px, auto) 1fr;
-	gap: 6px 16px;
-	margin: 0 0 16px;
-}
-
-.sp-detail-grid dt {
-	color: var(--color-text-maxcontrast, #6b6b6b);
-	font-weight: 600;
-}
-
-.sp-detail-grid dd {
-	margin: 0;
-	color: var(--color-main-text, #222);
-	word-break: break-word;
-}
-
-.sp-detail-heading {
-	margin: 8px 0;
-	font-weight: 600;
-}
-
-.sp-usage-list {
-	margin: 0;
-	padding: 0 0 0 16px;
-	columns: 2;
-}
-
-.sp-kind-badge {
-	display: inline-block;
-	padding: 2px 8px;
-	border-radius: 999px;
-	font-size: 0.8em;
-	font-weight: 600;
-	background: var(--color-background-dark, rgba(127, 127, 127, 0.15));
-	color: var(--color-main-text, #222);
 }
 </style>
