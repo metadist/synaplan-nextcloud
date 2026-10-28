@@ -181,7 +181,7 @@ class PlatformLinkServiceTest extends TestCase
         $this->service()->announceDelivery('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
 
         $this->assertSame('oc0abc', $body['server_id']);
-        $this->assertSame(['deliveries', 'pickups', 'read_scope'], $body['app_capabilities']);
+        $this->assertSame(['deliveries', 'pickups', 'read_scope', 'source_events'], $body['app_capabilities']);
         $this->assertSame('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound', $body['delivery_url']);
     }
 

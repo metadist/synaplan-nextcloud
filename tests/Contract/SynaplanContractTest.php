@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Contract;
 
 use OCA\SynaplanIntegration\Controller\ChatController;
 use OCA\SynaplanIntegration\Http\SseProxyResponse;
+use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
@@ -203,6 +204,7 @@ final class SynaplanContractTest extends TestCase
         $session->method('getUser')->willReturn($this->ada());
         $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto());
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
+        $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,
@@ -228,7 +230,11 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->getFileContent(42),
             fn () => $client->knowledgeStatus(7, 'etag-1'),
             fn () => $client->deleteKnowledgeFile(42),
-            fn () => $client->uploadFile('report.pdf', '%PDF', 'Contracts', 'vectorize', '/Projects/report.pdf', '7', 'etag-1', true),
+            fn () => $client->uploadFile('report.pdf', '%PDF', 'Contracts', 'vectorize', '/Projects/report.pdf', '7', 'etag-1', true, true),
+            fn () => $cloudState->status([['id' => '7', 'version' => 'etag-1']]),
+            fn () => $cloudState->detail(42),
+            fn () => $cloudState->glyphOverrides(),
+            fn () => $links->reportSourceEvents([['id' => '7', 'event' => 'changed', 'version' => 'etag-2', 'path' => 'Projects/report.pdf']]),
             fn () => $client->generateMedia('A cat', 'image', 3),
             fn () => $client->downloadFile('/api/v1/files/uploads/7/cat.png'),
             fn () => $client->listRecentFiles(),

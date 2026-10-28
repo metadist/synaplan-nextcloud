@@ -27,6 +27,7 @@ services:
         environment:
             REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
+            CLOUD_FILES_ENABLED: 'true'
         depends_on:
             redis_test:
                 condition: service_healthy

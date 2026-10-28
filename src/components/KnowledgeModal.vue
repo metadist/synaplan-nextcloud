@@ -206,6 +206,23 @@
 						@tag="onNewTag" />
 				</div>
 
+				<div class="keep-synced-field">
+					<NcCheckboxRadioSwitch
+						v-model="keepSynced"
+						type="checkbox"
+						:disabled="loading">
+						{{ t('synaplan_integration', 'Keep it up to date') }}
+					</NcCheckboxRadioSwitch>
+					<p class="delete-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'If you delete the file here, Synaplan forgets it too.',
+							)
+						}}
+					</p>
+				</div>
+
 				<!-- Error -->
 				<FailureNote :failure="failure" />
 
@@ -260,12 +277,14 @@ import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
 import { showError } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
+import { invalidateCloudStatusCache } from '../cloud_state/statusBatcher'
 import { describeFailure, failureFromError, type Failure } from '../failures'
 
 const props = defineProps<{
@@ -283,6 +302,7 @@ const loading = ref(false)
 const loadingGroups = ref(false)
 const failure = ref<Failure | null>(null)
 const selectedGroup = ref('')
+const keepSynced = ref(true)
 const groupOptions = ref<string[]>([])
 const uploadSuccess = ref(false)
 const chunksCreated = ref(0)
@@ -406,6 +426,7 @@ async function removeFromKnowledge() {
 			removed.value = true
 			inKnowledge.value = false
 			isStale.value = false
+			invalidateCloudStatusCache()
 		} else {
 			failure.value = describeFailure(data.error, data.message)
 			showError(failure.value.text)
@@ -444,7 +465,7 @@ async function uploadFile() {
 	try {
 		const { data } = await axios.post(
 			`${baseUrl}/api/v1/knowledge/upload/${props.fileId}`,
-			{ groupKey: selectedGroup.value },
+			{ groupKey: selectedGroup.value, keepSynced: keepSynced.value },
 		)
 
 		const created = data.chunksCreated || 0
@@ -453,6 +474,7 @@ async function uploadFile() {
 			wasUpdate.value = Boolean(data.overwritten)
 			chunksCreated.value = created
 			extractedLength.value = data.extractedTextLength || 0
+			invalidateCloudStatusCache()
 		} else if (data.success) {
 			// The server accepted the file but stored zero chunks. Surface this
 			// as a failure instead of a misleading green success screen.
@@ -519,6 +541,16 @@ onMounted(() => {
 .field :deep(.v-select) {
 	flex: 1;
 	min-width: 0;
+}
+
+.keep-synced-field {
+	margin: 4px 0 16px;
+}
+
+.delete-hint {
+	color: var(--color-text-maxcontrast, #767676);
+	font-size: 0.85em;
+	margin: 4px 0 0 28px;
 }
 
 .file-info {

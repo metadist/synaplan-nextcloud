@@ -190,8 +190,53 @@ class PlatformLinkService
         $this->request('PATCH', '/api/v1/platform-links/instances/self', [
             'delivery_url' => $deliveryUrl,
             'server_id' => $this->synaplanConfig->getInstanceId(),
-            'app_capabilities' => ['deliveries', 'pickups', 'read_scope'],
+            'app_capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
         ], array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']));
+    }
+
+    /**
+     * Tell Synaplan that files on this Nextcloud changed, moved, were deleted
+     * or came back from the trash. Returns the list of copies to re-upload.
+     *
+     * @param list<array{id: string, event: string, version: string, path: string}> $events
+     * @return array{applied: int, ignored: int, reupload: list<array{external_id: string, id: string}>, retry?: bool}
+     */
+    public function reportSourceEvents(array $events): array
+    {
+        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '') {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
+        }
+        try {
+            $decoded = $this->request(
+                'POST',
+                '/api/v1/platform-links/sources/events',
+                ['events' => $events],
+                array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+                true,
+                true,
+            );
+        } catch (\Throwable) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true];
+        }
+        $status = (int) ($decoded['status_code'] ?? 200);
+        if ($status === 429 || $status >= 500) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true];
+        }
+        if ($status >= 400) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
+        }
+        $reupload = [];
+        foreach (is_array($decoded['reupload'] ?? null) ? $decoded['reupload'] : [] as $item) {
+            if (is_array($item) && is_string($item['external_id'] ?? null) && is_string($item['id'] ?? null)) {
+                $reupload[] = ['external_id' => $item['external_id'], 'id' => $item['id']];
+            }
+        }
+
+        return [
+            'applied' => (int) ($decoded['applied'] ?? 0),
+            'ignored' => (int) ($decoded['ignored'] ?? 0),
+            'reupload' => $reupload,
+        ];
     }
 
     /**

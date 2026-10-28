@@ -43,7 +43,7 @@ test('Chat about this file answers a question', async ({ page }) => {
 
 test('Make searchable by AI, then remove it again', async ({ page }) => {
 	await makeUnsearchable('ada')
-	let dialog = await openFileAction(page, 'Make searchable by AI')
+	const dialog = await openFileAction(page, 'Make searchable by AI')
 	await dialog.getByRole('combobox').click()
 	await page.keyboard.type('Vendors')
 	await page.keyboard.press('Enter')
@@ -52,16 +52,23 @@ test('Make searchable by AI, then remove it again', async ({ page }) => {
 	await expect(dialog.getByText('This file is now searchable by AI')).toBeVisible()
 	await dialog.getByRole('button', { name: 'Done' }).click()
 
-	dialog = await openFileAction(page, 'Make searchable by AI')
+	const bird = page.getByTestId('synaplan-row-bird')
+	await expect(bird).toBeVisible()
+	await expect(bird).toHaveAttribute('title', 'Searchable by AI — in “Vendors”')
+	await bird.click()
+
+	const sidebar = page.getByTestId('synaplan-sidebar-tab')
+	await expect(sidebar).toBeVisible()
+	await expect(sidebar.getByTestId('synaplan-sidebar-state')).toHaveText(
+		'Searchable by AI',
+	)
 	await expect(
-		dialog.getByText('This file is already searchable by AI.', {
-			exact: false,
-		}),
+		sidebar.getByText('In your knowledge folder “Vendors”'),
 	).toBeVisible()
-	await dialog.getByRole('button', { name: 'Remove from AI search' }).click()
-	await expect(
-		dialog.getByText('This file is no longer searchable by AI'),
-	).toBeVisible()
+	await expect(sidebar.getByText('Added by you.')).toBeVisible()
+
+	await sidebar.getByTestId('synaplan-sidebar-remove').click()
+	await expect(bird).toHaveCount(0)
 })
 
 test('an image from the chat is saved to Synaplan/Images', async ({ page }) => {

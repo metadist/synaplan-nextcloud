@@ -78,6 +78,14 @@ const open = ref(false)
 	background: var(--color-primary-element-hover, #0074b3);
 }
 
+:global(body:has(.app-sidebar)) .synaplan-chat-fab {
+	right: 388px;
+}
+
+:global(body:has(.app-sidebar)) .synaplan-chat-launcher-panel {
+	right: 388px;
+}
+
 .synaplan-chat-launcher-panel {
 	position: fixed;
 	right: 24px;

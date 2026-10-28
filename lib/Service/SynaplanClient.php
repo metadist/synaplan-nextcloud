@@ -349,6 +349,8 @@ class SynaplanClient
         ?string $sourceId = null,
         ?string $sourceEtag = null,
         bool $overwrite = false,
+        ?bool $keepSynced = null,
+        ?string $apiKey = null,
     ): array {
         $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . '/api/v1/files/upload';
@@ -391,14 +393,20 @@ class SynaplanClient
         if ($overwrite) {
             $multipart[] = ['name' => 'overwrite', 'contents' => '1'];
         }
+        if ($keepSynced !== null) {
+            $multipart[] = ['name' => 'keep_synced', 'contents' => $keepSynced ? '1' : '0'];
+        }
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->requireApiKey(),
+                'X-API-Key' => $apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey(),
                 'Accept' => 'application/json',
             ],
             'multipart' => $multipart,
             'timeout' => 180,
+            'nextcloud' => [
+                'allow_local_address' => true,
+            ],
         ];
 
         try {
