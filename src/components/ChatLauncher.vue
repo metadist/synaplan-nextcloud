@@ -1,5 +1,8 @@
 <template>
-	<div class="synaplan-chat-launcher">
+	<div
+		class="synaplan-chat-launcher"
+		:class="{ 'synaplan-chat-launcher--beside-sidebar': sidebarOffset > 0 }"
+		:style="besideStyle">
 		<!-- Chat window -->
 		<div
 			v-if="open"
@@ -44,11 +47,83 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '@nextcloud/l10n'
+import { filesSidebarOffset } from '../chat/filesSidebarOffset'
 import ResearchChat from './ResearchChat.vue'
 
 const open = ref(false)
+const sidebarOffset = ref(0)
+
+const besideStyle = computed(() =>
+	sidebarOffset.value > 0
+		? { '--synaplan-files-sidebar': `${sidebarOffset.value}px` }
+		: undefined,
+)
+
+const SIDEBAR_ID = 'app-sidebar-vue'
+
+let watched: HTMLElement | null = null
+let bodyObserver: MutationObserver | null = null
+let sidebarObserver: MutationObserver | null = null
+let resizeObserver: ResizeObserver | null = null
+
+/**
+ * The Files sidebar stays mounted while closed. Re-measure whenever it
+ * appears, or its visibility or width changes.
+ */
+function updateOffset(): void {
+	const offset = filesSidebarOffset(document.getElementById(SIDEBAR_ID))
+	if (offset !== sidebarOffset.value) {
+		sidebarOffset.value = offset
+	}
+}
+
+/**
+ * @param {HTMLElement | null} sidebar The current sidebar element, or null
+ */
+function watchSidebar(sidebar: HTMLElement | null): void {
+	if (sidebar === watched) {
+		return
+	}
+	watched = sidebar
+	sidebarObserver?.disconnect()
+	resizeObserver?.disconnect()
+	sidebarObserver = null
+	resizeObserver = null
+	if (!sidebar) {
+		return
+	}
+	sidebarObserver = new MutationObserver(updateOffset)
+	sidebarObserver.observe(sidebar, {
+		attributes: true,
+		attributeFilter: ['style', 'class', 'hidden'],
+	})
+	resizeObserver = new ResizeObserver(updateOffset)
+	resizeObserver.observe(sidebar)
+}
+
+onMounted(() => {
+	watchSidebar(document.getElementById(SIDEBAR_ID))
+	updateOffset()
+	bodyObserver = new MutationObserver(() => {
+		const sidebar = document.getElementById(SIDEBAR_ID)
+		if (sidebar === watched) {
+			return
+		}
+		watchSidebar(sidebar)
+		updateOffset()
+	})
+	bodyObserver.observe(document.body, { childList: true, subtree: true })
+	window.addEventListener('resize', updateOffset)
+})
+
+onUnmounted(() => {
+	window.removeEventListener('resize', updateOffset)
+	bodyObserver?.disconnect()
+	sidebarObserver?.disconnect()
+	resizeObserver?.disconnect()
+})
 </script>
 
 <style scoped>
@@ -70,20 +145,13 @@ const open = ref(false)
 	z-index: 10000;
 	transition:
 		transform 0.15s ease,
-		background 0.15s ease;
+		background 0.15s ease,
+		right 0.15s ease;
 }
 
 .synaplan-chat-fab:hover {
 	transform: scale(1.06);
 	background: var(--color-primary-element-hover, #0074b3);
-}
-
-:global(body:has(.app-sidebar)) .synaplan-chat-fab {
-	right: 388px;
-}
-
-:global(body:has(.app-sidebar)) .synaplan-chat-launcher-panel {
-	right: 388px;
 }
 
 .synaplan-chat-launcher-panel {
@@ -100,6 +168,16 @@ const open = ref(false)
 	flex-direction: column;
 	overflow: hidden;
 	z-index: 10000;
+}
+
+/* Only while the Files sidebar is open and a usable chat still fits beside it. */
+.synaplan-chat-launcher--beside-sidebar .synaplan-chat-fab,
+.synaplan-chat-launcher--beside-sidebar .synaplan-chat-launcher-panel {
+	right: calc(24px + var(--synaplan-files-sidebar, 0px));
+}
+
+.synaplan-chat-launcher--beside-sidebar .synaplan-chat-launcher-panel {
+	width: min(460px, calc(100vw - 48px - var(--synaplan-files-sidebar, 0px)));
 }
 
 /* High-contrast brand header */
