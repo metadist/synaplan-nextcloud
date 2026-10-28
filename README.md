@@ -161,6 +161,20 @@ make e2e-down     # stop both stacks and delete their data
   moves Nextcloud, `SYNAPLAN_DIR` points at another synaplan checkout.
 - The setup resets the test people, so `make test-e2e` runs again on the same
   stacks.
+- `tests/e2e/synaplan-test-stack.yml` is a Compose overlay for the **Synaplan**
+  test container (`app_test`), not for the Nextcloud plugin:
+  - It adds `redis_test` (`REDIS_DSN`) for the one-time link codes of "Connect
+    your Synaplan account".
+  - It sets `STRIPE_SECRET_KEY: ''` on `app_test` because Synaplan's
+    `backend/.env.test` ships a fake Stripe test key (`sk_test_fakeKey...`) for
+    billing unit tests, which makes Synaplan's `PremiumFeatureGate` require a
+    paid plan before minting API keys (`403 API_PLAN_REQUIRED`). Clearing
+    `STRIPE_SECRET_KEY` switches the Synaplan test container into self-hosted /
+    open-source mode (billing off) so the provisioning journey (`05-provision.spec.ts`)
+    can create accounts and mint per-user API keys. The Nextcloud app itself has
+    no Stripe integration or keys.
+  - It sets `CLOUD_FILES_ENABLED: 'true'` on `app_test` so the cloud file status
+    and sidebar routes are active during E2E runs.
 - A host port of the Synaplan test stack already taken (3308, 11434, …): put a
   compose file that drops it in `E2E_SYNAPLAN_FILES`.
 
