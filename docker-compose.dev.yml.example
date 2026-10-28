@@ -17,7 +17,7 @@
 # /var/www/html look non-empty and the official image skips copying files.
 
 x-nextcloud: &nextcloud
-  image: ${NC_IMAGE:-nextcloud:35-apache@sha256:eee9c9f52a0d623082e8507186ea0c1ca1cf1e4a9075b99865c7f938110cb5d2}
+  image: ${NC_IMAGE:-nextcloud:35-apache@sha256:6f514aae04ad16917124064f7df851720c82b5ccb180b56cb787bed2ed8a7246}
   volumes:
     - nextcloud_data:/var/www/html
     - ./:/mnt/synaplan_integration
