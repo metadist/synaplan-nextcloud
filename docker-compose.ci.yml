@@ -47,7 +47,7 @@ services:
       start_period: 180s
 
   nextcloud-db:
-    image: mariadb:11.8@sha256:c4124d1afa875e47f2892edf26b482fa54f796e2f342d3717a04ca091a22a9bd
+    image: mariadb:12.3@sha256:d46e102fa8b9b72bfcdeb56f9dd538742092119dc8b11f31fe662605cd234cd9
     command: --transaction-isolation=READ-COMMITTED
     environment:
       MARIADB_ROOT_PASSWORD: nextcloud-root
