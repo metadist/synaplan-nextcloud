@@ -6,6 +6,7 @@ import { chatAction } from '@/files_actions/chatAction'
 import { chatFileAction } from '@/files_actions/chatFileAction'
 import { summarizeAction } from '@/files_actions/summarizeAction'
 import { translateAction } from '@/files_actions/translateAction'
+import { watchAction } from '@/files_actions/watchAction'
 
 const PDF = 'application/pdf'
 const DOCX =
@@ -54,5 +55,29 @@ describe.each(cases)('%s', (_name, action, shown, hidden) => {
 			false,
 		)
 		expect(enabled(action, { nodes: [] })).toBe(false)
+	})
+})
+
+describe('watch', () => {
+	const folder = {
+		fileid: 8,
+		basename: 'Invoices',
+		type: 'folder',
+		mime: 'httpd/unix-directory',
+		permissions: Permission.READ,
+	}
+
+	it('is offered for a readable file and a folder, in both call shapes', () => {
+		expect(enabled(watchAction, { nodes: [file(PNG)] })).toBe(true)
+		expect(enabled(watchAction, [file(PNG)], {})).toBe(true)
+		expect(enabled(watchAction, { nodes: [folder] })).toBe(true)
+	})
+
+	it('needs read permission and exactly one item', () => {
+		expect(enabled(watchAction, { nodes: [file(PNG, Permission.NONE)] })).toBe(
+			false,
+		)
+		expect(enabled(watchAction, { nodes: [file(PNG), file(PDF)] })).toBe(false)
+		expect(enabled(watchAction, { nodes: [] })).toBe(false)
 	})
 })

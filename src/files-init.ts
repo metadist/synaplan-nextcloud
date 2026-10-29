@@ -6,6 +6,7 @@ import { chatAction } from './files_actions/chatAction'
 import { chatFileAction } from './files_actions/chatFileAction'
 import { registerFromSynaplanMenu } from './files_actions/fromSynaplanMenu'
 import { readFolderAction } from './files_actions/readFolderAction'
+import { watchAction } from './files_actions/watchAction'
 import {
 	birdRowAction,
 	registerWatchedFolderHeader,
@@ -41,6 +42,7 @@ registerAction(translateAction)
 registerAction(chatAction)
 registerAction(chatFileAction)
 registerAction(readFolderAction)
+registerAction(watchAction)
 registerAction(birdRowAction)
 registerFromSynaplanMenu()
 registerWatchedFolderHeader()

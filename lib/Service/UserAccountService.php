@@ -39,6 +39,8 @@ class UserAccountService
     public const USER_KEY_PREF = KeyStorage::USER_KEY;
     public const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
     public const USER_KEY_ID_PREF = 'synaplan_user_key_id';
+    /** Scopes of the stored key. Empty means a key minted before watching existed. */
+    public const KEY_SCOPES_PREF = 'synaplan_key_scopes';
     public const CONSENT_PREF = 'ai_consent';
     public const CONSENT_AT_PREF = 'ai_consent_at';
     public const LINK_KIND_PREF = 'synaplan_link_kind';
@@ -53,7 +55,7 @@ class UserAccountService
     public const SOURCE = 'nextcloud';
 
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
-    private const USER_KEY_SCOPES = ['chat', 'files', 'rag'];
+    private const USER_KEY_SCOPES = ['chat', 'files', 'rag', 'cloud:watch'];
 
     public function __construct(
         private IClientService $clientService,
@@ -497,6 +499,7 @@ class UserAccountService
 
         $this->keys->setUserKey($user->getUID(), $userKey);
         $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_ACCOUNT_ID_PREF, (string) $synaplanUserId);
+        $this->rememberKeyScopes($user->getUID());
         $mintedKeyId = (string) ($minted['api_key']['id'] ?? '');
         if ($mintedKeyId !== '') {
             $this->config->setUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_ID_PREF, $mintedKeyId);
@@ -509,6 +512,83 @@ class UserAccountService
         ]);
 
         return $userKey;
+    }
+
+    /**
+     * Replace a provisioned key that was minted before watching, without
+     * withdrawing consent. A linked key is left alone: connecting again is
+     * what gives that person the new permission. Returns the new key, or null
+     * when there is nothing to replace.
+     */
+    public function renewProvisionedKey(): ?string
+    {
+        if ($this->synaplanConfig->getMode() !== SynaplanConfig::MODE_PROVISION) {
+            return null;
+        }
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser || !$this->hasConsent($user) || $this->keyIncludesWatch($user->getUID())) {
+            return null;
+        }
+        $uid = $user->getUID();
+        $oldKey = $this->storedKey($uid);
+        if ($oldKey === '') {
+            return null;
+        }
+        $oldKeyId = $this->getStoredApiKeyId($uid);
+
+        try {
+            $minted = $this->provisionAndMint($user);
+        } catch (\Throwable $e) {
+            $this->logger->error('Could not renew the Synaplan key for {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+        $this->revokeReplacedKey($oldKey, $oldKeyId);
+
+        return $minted;
+    }
+
+    private function keyIncludesWatch(string $uid): bool
+    {
+        return str_contains(
+            $this->config->getUserValue($uid, Application::APP_ID, self::KEY_SCOPES_PREF, ''),
+            'cloud:watch',
+        );
+    }
+
+    private function rememberKeyScopes(string $uid): void
+    {
+        $this->config->setUserValue(
+            $uid,
+            Application::APP_ID,
+            self::KEY_SCOPES_PREF,
+            implode(' ', self::USER_KEY_SCOPES),
+        );
+    }
+
+    /**
+     * The key just replaced can still call Synaplan until it is revoked.
+     * Failure here keeps the new key: watching works, and the old key expires
+     * when the person turns AI off.
+     */
+    private function revokeReplacedKey(string $oldKey, string $oldKeyId): void
+    {
+        if ($oldKey === '' || !ctype_digit($oldKeyId)) {
+            return;
+        }
+        try {
+            $id = $oldKeyId;
+            $this->adminRequest('DELETE', '/api/v1/apikeys/' . $id, null, $oldKey);
+        } catch (\Throwable $e) {
+            $this->logger->info('The previous Synaplan key could not be revoked: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

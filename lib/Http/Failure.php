@@ -134,11 +134,28 @@ final class Failure
         $code = is_string($code) && self::isCode(trim($code)) ? trim($code) : null;
         $text = is_string($text) ? trim($text) : '';
         if (self::isCode($text)) {
-            return [$code ?? $text, null];
+            $code ??= $text;
+            $alongside = $decoded['message'] ?? null;
+            $alongside = is_string($alongside) ? trim($alongside) : '';
+
+            return [$code, self::sentence($alongside)];
         }
-        $sentence = $text !== '' && mb_strlen($text) <= self::MESSAGE_MAX_LENGTH ? $text : null;
+        $sentence = self::sentence($text);
 
         return [$code, $sentence];
+    }
+
+    /**
+     * A sentence Synaplan sent beside a code. A machine code, an empty string
+     * and a body long enough to be a page are not one.
+     */
+    private static function sentence(string $text): ?string
+    {
+        if ($text === '' || self::isCode($text) || mb_strlen($text) > self::MESSAGE_MAX_LENGTH) {
+            return null;
+        }
+
+        return $text;
     }
 
     private static function isCode(string $value): bool

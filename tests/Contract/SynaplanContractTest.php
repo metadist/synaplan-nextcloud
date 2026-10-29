@@ -227,6 +227,15 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->searchMemoryContext('budget'),
             fn () => $client->getModels(),
             fn () => $client->getFileGroups(),
+            fn () => $client->watchOptions(),
+            fn () => $this->renewProvisionedKey($accounts),
+            fn () => $client->startWatch([
+                'target_kind' => 'folder',
+                'target_id' => '7',
+                'target_path' => 'Invoices',
+                'preset' => 'keep_searchable',
+                'group_key' => 'Invoices',
+            ]),
             fn () => $client->getFileContent(42),
             fn () => $client->knowledgeStatus(7, 'etag-1'),
             fn () => $client->deleteKnowledgeFile(42),
@@ -286,6 +295,17 @@ final class SynaplanContractTest extends TestCase
                 // fails when a scenario throws before the request goes out.
             }
         }
+    }
+
+    /**
+     * An already provisioned key from before watching is replaced, which
+     * revokes the old key. Consent stays.
+     */
+    private function renewProvisionedKey(UserAccountService $accounts): void
+    {
+        $this->userConfig['ada|ai_consent'] = '1';
+        $this->userConfig['ada|synaplan_user_key_id'] = '7';
+        $accounts->renewProvisionedKey();
     }
 
     private function recordBlockingChat(SynaplanClient $client, IUserSession $session): void

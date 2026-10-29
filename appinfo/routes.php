@@ -28,6 +28,8 @@ return [
         ['name' => 'cloudStatus#status', 'url' => '/api/v1/cloud/status', 'verb' => 'POST'],
         ['name' => 'cloudStatus#detail', 'url' => '/api/v1/cloud/files/{fileId}', 'verb' => 'GET'],
         ['name' => 'cloudStatus#searchable', 'url' => '/api/v1/cloud/searchable', 'verb' => 'GET'],
+        ['name' => 'watch#options', 'url' => '/api/v1/watches/options', 'verb' => 'GET'],
+        ['name' => 'watch#start', 'url' => '/api/v1/watches', 'verb' => 'POST'],
 
         // Client runtime config (language + memory availability) for the chat UI
         ['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],
