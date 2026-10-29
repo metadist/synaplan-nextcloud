@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 1.8.0 – 2026-10-29
+## 1.8.1 – 2026-10-29
 
 ### Added
 - **Watch with Synaplan.** On a folder or a file, choose to keep new files searchable in a knowledge folder, or to run one of your tasks. The choices come from your Synaplan account.
