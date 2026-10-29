@@ -490,4 +490,51 @@ class UserAccountServiceTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertStringEndsWith('/api/v1/admin/users/501/usage|sk_admin_key', $captured);
     }
+
+    public function testAnOldProvisionedKeyIsReplacedWithoutLosingConsent(): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_old';
+        $this->userConfig['alice|synaplan_user_key_id'] = '4';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+        $this->userSession->method('getUser')->willReturn($user);
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 9]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['id' => 11, 'key' => 'sk_new']]));
+        $this->httpClient->method('post')->willReturnCallback(
+            fn (string $url): IResponse => str_contains($url, '/api-keys') ? $mintResp : $provisionResp
+        );
+        $deleted = 0;
+        $this->httpClient->method('delete')->willReturnCallback(
+            function (string $url, array $options) use (&$deleted): IResponse {
+                $deleted++;
+                $this->assertStringEndsWith('/api/v1/apikeys/4', $url);
+                $this->assertSame('sk_old', $options['headers']['X-API-Key']);
+
+                return $this->createStub(IResponse::class);
+            }
+        );
+
+        $service = $this->service();
+
+        $this->assertSame('sk_new', $service->renewProvisionedKey());
+        $this->assertSame('sk_new', $this->userConfig['alice|synaplan_user_api_key']);
+        $this->assertStringContainsString('cloud:watch', $this->userConfig['alice|synaplan_key_scopes']);
+        $this->assertSame('1', $this->userConfig['alice|ai_consent']);
+        $this->assertSame(1, $deleted);
+        $this->assertNull($service->renewProvisionedKey());
+    }
+
+    public function testALinkedKeyIsNotReplaced(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_old';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->renewProvisionedKey());
+    }
 }

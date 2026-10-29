@@ -773,6 +773,25 @@ class SynaplanClient
                 }
             }
 
+            // A provisioned key from before watching answers 403 insufficient_scope.
+            // Mint a replacement once, keeping consent, and repeat this call.
+            if ($this->isInsufficientScope($e) && $this->synaplanConfig->isPerUserAccountsEnabled() && !$this->synaplanConfig->isLinkMode()) {
+                $renewed = $this->userAccounts->renewProvisionedKey();
+                if (is_string($renewed) && $renewed !== '') {
+                    try {
+                        $options['headers']['X-API-Key'] = $renewed;
+                        $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
+                        $decoded = json_decode($response->getBody(), true);
+                        if (is_array($decoded)) {
+                            return $decoded;
+                        }
+                        $e = FailureException::invalidSynaplanAnswer();
+                    } catch (\Exception $retry) {
+                        $e = $retry;
+                    }
+                }
+            }
+
             $this->logger->error('Synaplan API request failed: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
@@ -792,6 +811,23 @@ class SynaplanClient
     private function isUnauthorized(\Exception $e): bool
     {
         return $e->getCode() === Http::STATUS_UNAUTHORIZED;
+    }
+
+    /**
+     * Synaplan answered 403 with the machine code insufficient_scope. The
+     * message of the exception carries the URL, so only the response body counts.
+     */
+    private function isInsufficientScope(\Exception $e): bool
+    {
+        if ($e->getCode() !== Http::STATUS_FORBIDDEN || !method_exists($e, 'getResponse')) {
+            return false;
+        }
+        $response = $e->getResponse();
+        if (!is_object($response) || !method_exists($response, 'getBody')) {
+            return false;
+        }
+
+        return str_contains((string) $response->getBody(), '"insufficient_scope"');
     }
 
     private function doRequest(IClient $client, string $method, string $url, array $options): \OCP\Http\Client\IResponse

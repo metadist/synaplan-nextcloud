@@ -45,6 +45,17 @@ final class FailureTest extends TestCase
         self::assertSame(['insufficient_scope', 'This key may not use this route.'], [$failure->code, $failure->message]);
     }
 
+    public function testAMachineCodeKeepsTheSentenceSentBesideIt(): void
+    {
+        $sentence = 'You can watch 20 folders. Stop one before watching another.';
+        $failure = Failure::fromSynaplanResponse(409, (string) json_encode([
+            'error' => 'watch_cap',
+            'message' => $sentence,
+        ]));
+
+        self::assertSame([409, 'watch_cap', $sentence], [$failure->status, $failure->code, $failure->message]);
+    }
+
     public function testANestedSentenceWithoutCodeIsPassedOnAsTheMessage(): void
     {
         $failure = Failure::fromSynaplanResponse(400, '{"error":{"message":"The prompt is empty."}}');

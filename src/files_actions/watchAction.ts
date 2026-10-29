@@ -23,14 +23,12 @@ export const watchAction: IFileAction = {
 	async exec(...args: unknown[]) {
 		const node = extractNodeFromExec(...args)
 		if (!node) return null
-		const path = (node.path || node.basename).replace(/^\/+/, '')
 		await spawnDialog(
 			defineAsyncComponent(() => import('../components/WatchModal.vue')),
 			{
 				fileId: String(node.fileid),
 				name: node.basename,
 				kind: isFolder(node) ? 'folder' : 'file',
-				targetPath: path || node.basename,
 			},
 		)
 		return null

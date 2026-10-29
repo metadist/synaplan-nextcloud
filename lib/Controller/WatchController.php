@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Controller;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
@@ -20,6 +21,7 @@ class WatchController extends Controller
     public function __construct(
         IRequest $request,
         private SynaplanClient $synaplanClient,
+        private WatchTarget $targets,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -43,35 +45,30 @@ class WatchController extends Controller
     public function start(
         string $targetKind,
         string $targetId,
-        string $targetPath,
         string $preset,
         ?int $taskId = null,
         ?string $groupKey = null,
     ): JSONResponse {
-        if (!in_array($targetKind, ['folder', 'file'], true) || $targetId === '' || $targetPath === '') {
+        if (!in_array($targetKind, ['folder', 'file'], true)) {
             return Failure::fromThrowable(new \InvalidArgumentException('Choose a folder or a file.'))->toResponse();
         }
         if (!in_array($preset, ['keep_searchable', 'task'], true)) {
             return Failure::fromThrowable(new \InvalidArgumentException('Choose what should happen.'))->toResponse();
         }
-
-        $body = [
-            'target_kind' => $targetKind,
-            'target_id' => $targetId,
-            'target_path' => $targetPath,
-            'preset' => $preset,
-        ];
-        if ($preset === 'task') {
-            if ($taskId === null || $taskId <= 0) {
-                return Failure::fromThrowable(new \InvalidArgumentException('Choose one of your tasks.'))->toResponse();
-            }
-            $body['task_id'] = $taskId;
-        }
-        if ($preset === 'keep_searchable' && $groupKey !== null && $groupKey !== '') {
-            $body['group_key'] = $groupKey;
+        if ($preset === 'task' && ($taskId === null || $taskId <= 0)) {
+            return Failure::fromThrowable(new \InvalidArgumentException('Choose one of your tasks.'))->toResponse();
         }
 
         try {
+            $body = $this->targets->resolve($targetKind, $targetId);
+            $body['preset'] = $preset;
+            if ($preset === 'task') {
+                $body['task_id'] = $taskId;
+            }
+            if ($preset === 'keep_searchable' && $groupKey !== null && trim($groupKey) !== '') {
+                $body['group_key'] = trim($groupKey);
+            }
+
             return new JSONResponse([
                 'success' => true,
                 'watch' => $this->synaplanClient->startWatch($body),

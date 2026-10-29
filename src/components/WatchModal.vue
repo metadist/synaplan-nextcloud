@@ -4,7 +4,9 @@
 		:name="t('synaplan_integration', 'Watch “{name}” with Synaplan', { name })"
 		@update:open="onClose">
 		<div class="synaplan-watch-modal">
-			<AiConsentGate @blocked-change="blocked = $event" />
+			<AiConsentGate
+				@blocked-change="blocked = $event"
+				@granted="loadOptions" />
 			<p v-if="loading">
 				{{ t('synaplan_integration', 'Loading...') }}
 			</p>
@@ -128,7 +130,6 @@ const props = defineProps<{
 	fileId: string
 	name: string
 	kind: 'folder' | 'file'
-	targetPath: string
 }>()
 
 const emit = defineEmits<{
@@ -201,7 +202,12 @@ const onNewFolder = (tag: string) => {
 	groupKey.value = name
 }
 
-onMounted(async () => {
+let optionsRequest = 0
+
+const loadOptions = async () => {
+	const mine = ++optionsRequest
+	loading.value = true
+	failure.value = null
 	const fallback = clip(`Nextcloud · ${props.name}`)
 	groupKey.value = fallback
 	folderOptions.value = fallback === '' ? [] : [fallback]
@@ -209,6 +215,7 @@ onMounted(async () => {
 		const { data } = await axios.get(
 			generateUrl('/apps/synaplan_integration/api/v1/watches/options'),
 		)
+		if (mine !== optionsRequest) return
 		if (!data.success) {
 			failure.value = describeFailure(data.error, data.message)
 			return
@@ -230,10 +237,17 @@ onMounted(async () => {
 			groupKey.value = names[0]
 		}
 	} catch (error: unknown) {
+		if (mine !== optionsRequest) return
 		failure.value = failureFromError(error)
 	} finally {
-		loading.value = false
+		if (mine === optionsRequest) {
+			loading.value = false
+		}
 	}
+}
+
+onMounted(() => {
+	loadOptions()
 })
 
 const start = async () => {
@@ -246,7 +260,6 @@ const start = async () => {
 			{
 				targetKind: props.kind,
 				targetId: props.fileId,
-				targetPath: props.targetPath,
 				preset: preset.value,
 				taskId: preset.value === 'task' ? task.value?.id : undefined,
 				groupKey:
