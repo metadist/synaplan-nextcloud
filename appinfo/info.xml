@@ -19,7 +19,7 @@ Bring Synaplan's AI into Nextcloud Files:
 
 Requires a running Synaplan instance. Three ways to connect: one shared account, accounts created by the administrator, or each person connects their own Synaplan account.
 	]]></description>
-	<version>1.7.0</version>
+	<version>1.8.0</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>

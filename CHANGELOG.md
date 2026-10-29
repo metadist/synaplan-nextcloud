@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 1.8.0 – 2026-10-29
+
 ### Added
 - **Watch with Synaplan.** On a folder or a file, choose to keep new files searchable in a knowledge folder, or to run one of your tasks. The choices come from your Synaplan account.
 - **Searchable files in Nextcloud Files.** Files that are searchable by AI show the Synaplan bird in the file list and on the Synaplan page, and the Synaplan sidebar tab shows who added the file, which knowledge folder it is in, and lets you remove it or open it in Synaplan. **Make searchable by AI** offers **Keep it up to date**, and changes, moves, deletions and restores in Nextcloud follow in Synaplan.
