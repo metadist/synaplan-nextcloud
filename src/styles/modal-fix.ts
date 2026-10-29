@@ -20,6 +20,7 @@ const PLUGIN_MODAL_BODIES = [
 	'.synaplan-translate-modal',
 	'.synaplan-chat-modal',
 	'.synaplan-knowledge-modal',
+	'.synaplan-watch-modal',
 ]
 
 /**

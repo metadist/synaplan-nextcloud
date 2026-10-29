@@ -301,6 +301,20 @@ OC.L10N.register(
     "Your administrator still needs to register this Nextcloud with Synaplan." : "Ihre Administration muss diese Nextcloud noch bei Synaplan registrieren.",
     "Your browser does not support video playback." : "Ihr Browser unterstützt keine Videowiedergabe.",
     "characters" : "Zeichen",
-    "{count} activated" : "{count} aktiviert"
+    "{count} activated" : "{count} aktiviert",
+    "Watch with Synaplan…" : "Mit Synaplan beobachten…",
+    "Watch “{name}” with Synaplan" : "„{name}“ mit Synaplan beobachten",
+    "What should happen when this file changes?" : "Was soll passieren, wenn sich diese Datei ändert?",
+    "What should happen with new files?" : "Was soll mit neuen Dateien passieren?",
+    "Keep them searchable" : "Durchsuchbar halten",
+    "Use one of my tasks" : "Eine meiner Aufgaben verwenden",
+    "You have no tasks you start yourself." : "Sie haben keine Aufgaben, die Sie selbst starten.",
+    "Synaplan is watching “{name}”." : "Synaplan beobachtet „{name}“.",
+    "Start watching" : "Beobachten starten",
+    "“{task}” will run for every new file in “{folder}”." : "„{task}“ wird für jede neue Datei in „{folder}“ ausgeführt.",
+    "New and changed files become searchable by AI in your knowledge folder “{folder}”." : "Neue und geänderte Dateien werden in Ihrem Wissensordner „{folder}“ KI-durchsuchbar.",
+    "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Neue Versionen dieser Datei werden in Ihrem Wissensordner „{folder}“ KI-durchsuchbar.",
+    "“{task}” will run for a new copy of this file." : "„{task}“ wird für eine neue Kopie dieser Datei ausgeführt.",
+    "Keep it searchable" : "Es durchsuchbar halten"
 },
 "nplurals=2; plural=(n != 1);");

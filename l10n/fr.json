@@ -300,7 +300,21 @@
 		"Your administrator still needs to register this Nextcloud with Synaplan.": "Votre administrateur doit encore enregistrer ce Nextcloud auprès de Synaplan.",
 		"Your browser does not support video playback.": "Votre navigateur ne prend pas en charge la lecture vidéo.",
 		"characters": "caractères",
-		"{count} activated": "{count} activés"
+		"{count} activated": "{count} activés",
+		"Watch with Synaplan…": "Surveiller avec Synaplan…",
+		"Watch “{name}” with Synaplan": "Surveiller « {name} » avec Synaplan",
+		"What should happen when this file changes?": "Que doit-il se passer quand ce fichier change ?",
+		"What should happen with new files?": "Que doit-il se passer avec les nouveaux fichiers ?",
+		"Keep them searchable": "Les garder recherchables",
+		"Use one of my tasks": "Utiliser une de mes tâches",
+		"You have no tasks you start yourself.": "Vous n’avez aucune tâche que vous lancez vous-même.",
+		"Synaplan is watching “{name}”.": "Synaplan surveille « {name} ».",
+		"Start watching": "Commencer la surveillance",
+		"“{task}” will run for every new file in “{folder}”.": "« {task} » s’exécutera pour chaque nouveau fichier de « {folder} ».",
+		"New and changed files become searchable by AI in your knowledge folder “{folder}”.": "Les fichiers nouveaux et modifiés deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
+		"New versions of this file become searchable by AI in your knowledge folder “{folder}”.": "Les nouvelles versions de ce fichier deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
+		"“{task}” will run for a new copy of this file.": "« {task} » s’exécutera pour une nouvelle copie de ce fichier.",
+		"Keep it searchable": "Le garder recherchable"
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

@@ -301,6 +301,20 @@ OC.L10N.register(
     "Your administrator still needs to register this Nextcloud with Synaplan." : "Yöneticinizin bu Nextcloud'u henüz Synaplan'a kaydetmesi gerekiyor.",
     "Your browser does not support video playback." : "Tarayıcınız video oynatmayı desteklemiyor.",
     "characters" : "karakter",
-    "{count} activated" : "{count} etkin"
+    "{count} activated" : "{count} etkin",
+    "Watch with Synaplan…" : "Synaplan ile izle…",
+    "Watch “{name}” with Synaplan" : "“{name}” öğesini Synaplan ile izle",
+    "What should happen when this file changes?" : "Bu dosya değiştiğinde ne olsun?",
+    "What should happen with new files?" : "Yeni dosyalarda ne olsun?",
+    "Keep them searchable" : "Aranabilir tut",
+    "Use one of my tasks" : "Görevlerimden birini kullan",
+    "You have no tasks you start yourself." : "Kendiniz başlattığınız bir görev yok.",
+    "Synaplan is watching “{name}”." : "Synaplan “{name}” öğesini izliyor.",
+    "Start watching" : "İzlemeye başla",
+    "“{task}” will run for every new file in “{folder}”." : "“{task}”, “{folder}” içindeki her yeni dosya için çalışır.",
+    "New and changed files become searchable by AI in your knowledge folder “{folder}”." : "Yeni ve değişen dosyalar “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
+    "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Bu dosyanın yeni sürümleri “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
+    "“{task}” will run for a new copy of this file." : "“{task}”, bu dosyanın yeni bir kopyası için çalışır.",
+    "Keep it searchable" : "Aranabilir tut"
 },
 "nplurals=2; plural=(n > 1);");

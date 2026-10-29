@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Watch with Synaplan.** On a folder or a file, choose to keep new files searchable in a knowledge folder, or to run one of your tasks. The choices come from your Synaplan account.
 - **Searchable files in Nextcloud Files.** Files that are searchable by AI show the Synaplan bird in the file list and on the Synaplan page, and the Synaplan sidebar tab shows who added the file, which knowledge folder it is in, and lets you remove it or open it in Synaplan. **Make searchable by AI** offers **Keep it up to date**, and changes, moves, deletions and restores in Nextcloud follow in Synaplan.
 - **Who is who.** Registering this Nextcloud also works when the administrator creates the accounts, and tells Synaplan which server this is. Accounts that already exist are linked to this server once, in the background. Removing, disabling or enabling a person tells Synaplan about that person only. A Synaplan account that is still used somewhere else is kept.
 - **Organisation login** is listed with the other ways people use Synaplan, and says it needs the Nextcloud app user_oidc.

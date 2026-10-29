@@ -53,7 +53,7 @@ class UserAccountService
     public const SOURCE = 'nextcloud';
 
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
-    private const USER_KEY_SCOPES = ['chat', 'files', 'rag'];
+    private const USER_KEY_SCOPES = ['chat', 'files', 'rag', 'cloud:watch'];
 
     public function __construct(
         private IClientService $clientService,

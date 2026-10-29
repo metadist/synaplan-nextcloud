@@ -259,6 +259,29 @@ class SynaplanClient
     }
 
     /**
+     * Tasks, shortcuts, knowledge folders and languages for the watch dialog.
+     *
+     * @return array<string, mixed>
+     * @throws \Exception on API error
+     */
+    public function watchOptions(): array
+    {
+        return $this->request('GET', '/api/v1/cloud/watches/options');
+    }
+
+    /**
+     * Start watching a folder or a file.
+     *
+     * @param array{target_kind: string, target_id: string, target_path: string, preset: string, task_id?: int, group_key?: string} $body
+     * @return array<string, mixed>
+     * @throws \Exception on API error
+     */
+    public function startWatch(array $body): array
+    {
+        return $this->request('POST', '/api/v1/cloud/watches', $body);
+    }
+
+    /**
      * Get the extracted text content of an uploaded file.
      *
      * @param int $fileId Synaplan file ID (returned from uploadFile)

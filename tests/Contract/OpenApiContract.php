@@ -77,6 +77,9 @@ final class OpenApiContract
             if ($method === 'POST' && $template === '/api/v1/platform-links/sources/events') {
                 return $this->sourceEventsViolations($method, $template, $body);
             }
+            if ($method === 'POST' && $template === '/api/v1/cloud/watches') {
+                return $this->watchCreateViolations($method, $template, $body);
+            }
 
             return ["$method $template: sends a $contentType body the spec does not describe"];
         }
@@ -188,6 +191,41 @@ final class OpenApiContract
         if ($status !== null && !in_array($status, ['delivered', 'failed'], true)) {
             $rendered = is_scalar($status) ? (string) $status : 'invalid';
             $violations[] = "$method $template: 'status' = '$rendered' is not one of delivered, failed";
+        }
+
+        return $violations;
+    }
+
+    /**
+     * The pinned spec lists the route and does not describe its body yet.
+     *
+     * @param array<string, mixed> $body
+     * @return list<string>
+     */
+    private function watchCreateViolations(string $method, string $template, array $body): array
+    {
+        $violations = [];
+        $allowed = ['target_kind', 'target_id', 'target_path', 'preset', 'task_id', 'group_key'];
+        foreach (array_keys($body) as $field) {
+            if (!in_array($field, $allowed, true)) {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        foreach (['target_kind', 'target_id', 'target_path', 'preset'] as $field) {
+            if (!isset($body[$field]) || !is_string($body[$field]) || $body[$field] === '') {
+                $violations[] = "$method $template: required field '$field' is not sent";
+            }
+        }
+        $kinds = ['folder', 'file'];
+        if (isset($body['target_kind']) && is_string($body['target_kind']) && !in_array($body['target_kind'], $kinds, true)) {
+            $violations[] = "$method $template: 'target_kind' = '{$body['target_kind']}' is not one of " . implode(', ', $kinds);
+        }
+        $presets = ['keep_searchable', 'task'];
+        if (isset($body['preset']) && is_string($body['preset']) && !in_array($body['preset'], $presets, true)) {
+            $violations[] = "$method $template: 'preset' = '{$body['preset']}' is not one of " . implode(', ', $presets);
+        }
+        if (($body['preset'] ?? null) === 'task' && (!isset($body['task_id']) || !is_int($body['task_id']))) {
+            $violations[] = "$method $template: required field 'task_id' is not sent";
         }
 
         return $violations;
