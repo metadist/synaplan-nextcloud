@@ -36,25 +36,35 @@ test('a copy from Synaplan lands in Synaplan/Documents of the person it names', 
 	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
 	const uploaded = await synaplan.post('/api/v1/files/upload', {
 		multipart: {
-			'files[]': { name, mimeType: 'text/plain', buffer: Buffer.from(`copy of ${name}`) },
+			'files[]': {
+				name,
+				mimeType: 'text/plain',
+				buffer: Buffer.from(`copy of ${name}`),
+			},
 			process_level: 'extract',
 		},
 	})
 	expect(uploaded.ok(), 'uploading to Synaplan').toBe(true)
-	const fileId = ((await uploaded.json()) as { files: Array<{ id: number }> }).files[0].id
+	const fileId = ((await uploaded.json()) as { files: Array<{ id: number }> })
+		.files[0].id
 	const [link] = await linksOf(synaplan, UID)
 	expect(link, 'the person is linked from this Nextcloud').toBeTruthy()
 
 	const sent = await synaplan.post(`/api/v1/files/${fileId}/send`, {
 		data: { destination: 'platform', identity_id: link.id },
 	})
-	const body = (await sent.json()) as { reference?: string, context?: { state?: string } }
+	const body = (await sent.json()) as {
+		reference?: string
+		context?: { state?: string }
+	}
 	expect(sent.status(), JSON.stringify(body)).toBe(200)
 	expect(body.context?.state).toBe('delivered')
 	expect(body.reference).toBe(`/Synaplan/Documents/${name}`)
 
 	const person = await nextcloudAs(UID)
-	const copy = await person.get(`/remote.php/dav/files/${UID}/Synaplan/Documents/${name}`)
+	const copy = await person.get(
+		`/remote.php/dav/files/${UID}/Synaplan/Documents/${name}`,
+	)
 	expect(await copy.text()).toBe(`copy of ${name}`)
 	await person.delete(`/remote.php/dav/files/${UID}/Synaplan/Documents/${name}`)
 	await synaplan.delete(`/api/v1/files/${fileId}`)
@@ -65,12 +75,21 @@ test('a copy from Synaplan lands in Synaplan/Documents of the person it names', 
 test('Synaplan reads a folder by path only when the person allows it', async () => {
 	const folder = `Invoices-${Date.now()}`
 	const person = await nextcloudAs(UID)
-	expect((await person.fetch(`/remote.php/dav/files/${UID}/${folder}`, { method: 'MKCOL' })).ok()).toBe(true)
+	expect(
+		(
+			await person.fetch(`/remote.php/dav/files/${UID}/${folder}`, {
+				method: 'MKCOL',
+			})
+		).ok(),
+	).toBe(true)
 	for (const file of ['invoice-1.txt', 'invoice-2.txt']) {
-		const put = await person.put(`/remote.php/dav/files/${UID}/${folder}/${file}`, {
-			data: `${file} content`,
-			headers: { 'Content-Type': 'text/plain' },
-		})
+		const put = await person.put(
+			`/remote.php/dav/files/${UID}/${folder}/${file}`,
+			{
+				data: `${file} content`,
+				headers: { 'Content-Type': 'text/plain' },
+			},
+		)
 		expect(put.ok(), `uploading ${file}`).toBe(true)
 	}
 	const setScope = async (mode: string) => {
@@ -103,7 +122,11 @@ test('Synaplan reads a folder by path only when the person allows it', async () 
  *
  * @param folder the folder path in Ada's files
  */
-function openFolderRead(folder: string): { state: string, sent: number, names: string[] } {
+function openFolderRead(folder: string): {
+	state: string
+	sent: number
+	names: string[]
+} {
 	let out: string
 	try {
 		out = execFileSync('docker', [
