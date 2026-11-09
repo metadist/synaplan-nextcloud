@@ -273,7 +273,7 @@ final class SynaplanContractTest extends TestCase
                 'skipped' => [],
             ]),
             fn () => $links->reportReadScope('ada', 'allowed', [['id' => '3', 'path' => 'Invoices']]),
-            fn () => $links->notifyKeys(),
+            fn () => $links->notificationTrust(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
             fn () => $links->adoptIdentity('ada', 'sk_ada'),

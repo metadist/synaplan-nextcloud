@@ -337,14 +337,28 @@ class PlatformLinkService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * The issuer Synaplan's notifications carry and the keys they are signed
+     * with, from Synaplan's public configuration and JWK Set. Both are read at
+     * the configured address; the issuer is Synaplan's public URL, which may
+     * differ from it.
+     *
+     * @return array{issuer: string, keys: list<array{publicKey: string, kid: string}>}
      */
-    public function notifyKeys(): array
+    public function notificationTrust(): array
     {
-        $decoded = $this->request('GET', '/api/v1/platform-links/instances/self', null, $this->instanceHeaders());
-        $keys = $decoded['notify_keys'] ?? [];
+        $configuration = $this->request('GET', '/.well-known/synaplan-configuration', null, []);
+        $jwks = $this->request('GET', '/.well-known/jwks.json', null, []);
+        $keys = [];
+        foreach (is_array($jwks['keys'] ?? null) ? $jwks['keys'] : [] as $jwk) {
+            if (is_array($jwk) && ($jwk['kty'] ?? null) === 'OKP' && ($jwk['crv'] ?? null) === 'Ed25519' && is_string($jwk['x'] ?? null)) {
+                $keys[] = ['publicKey' => 'ed25519:' . $jwk['x'], 'kid' => is_string($jwk['kid'] ?? null) ? $jwk['kid'] : ''];
+            }
+        }
 
-        return is_array($keys) ? array_values(array_filter($keys, 'is_array')) : [];
+        return [
+            'issuer' => is_string($configuration['issuer'] ?? null) ? $configuration['issuer'] : '',
+            'keys' => $keys,
+        ];
     }
 
     /**
