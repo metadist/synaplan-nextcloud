@@ -287,9 +287,18 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->registrationStatus(),
             fn () => $links->announceDelivery('https://files.example.org/apps/synaplan_integration/api/v1/inbound'),
             fn () => $oauth->connect('ada', 'code-1', 'verifier-1', 'https://files.example.org/apps/synaplan_integration/link/callback'),
-            fn () => $this->expireAccessToken('ada') && $oauth->accessToken('ada') !== '',
-            fn () => $links->whoAmI('ada'),
-            fn () => $oauth->revoke('ada'),
+            function () use ($oauth): void {
+                $this->expireAccessToken('ada');
+                $oauth->accessToken('ada');
+            },
+            function () use ($links): void {
+                $this->expireAccessToken('ada');
+                $links->whoAmI('ada');
+            },
+            function () use ($oauth): void {
+                $this->expireAccessToken('ada');
+                $oauth->revoke('ada');
+            },
             fn () => $links->disconnectUid('ada'),
             fn () => $links->forgetRegistration(),
             fn () => $this->recordChatStream($client, $session),
@@ -386,9 +395,11 @@ final class SynaplanContractTest extends TestCase
 
         $response = $this->createStub(IResponse::class);
         $response->method('getStatusCode')->willReturn(200);
-        $response->method('getBody')->willReturn((string) json_encode(
-            $path === '/api/v1/config/capabilities' ? self::CAPABILITIES : self::RESPONSE,
-        ));
+        $response->method('getBody')->willReturn((string) json_encode(match ($path) {
+            '/api/v1/config/capabilities' => self::CAPABILITIES,
+            '/oauth/token' => ['access_token' => 'access-1', 'refresh_token' => 'refresh-2', 'expires_in' => 900, 'token_type' => 'Bearer'],
+            default => self::RESPONSE,
+        }));
 
         return $response;
     }
@@ -448,7 +459,6 @@ final class SynaplanContractTest extends TestCase
             openssl_pkey_export($key, $private);
             $this->appConfig['oauth_private_key'] = (string) $private;
         }
-        $this->userConfig['ada|synaplan_oauth_refresh'] = 'refresh-1';
         $user = $this->createStub(IUserConfig::class);
         $user->method('getValueString')->willReturnCallback(
             fn (string $uid, string $app, string $key, string $default = ''): string => $this->userConfig[$uid . '|' . $key] ?? $default,
@@ -458,6 +468,11 @@ final class SynaplanContractTest extends TestCase
                 $this->userConfig[$uid . '|' . $key] = $value;
 
                 return true;
+            },
+        );
+        $user->method('deleteUserConfig')->willReturnCallback(
+            function (string $uid, string $app, string $key): void {
+                unset($this->userConfig[$uid . '|' . $key]);
             },
         );
         $app = $this->createStub(IAppConfig::class);
@@ -475,12 +490,10 @@ final class SynaplanContractTest extends TestCase
         return new OAuthClient($this->recordingClients(), $app, $config, $user, $synaplanConfig, new NullLogger());
     }
 
-    private function expireAccessToken(string $uid): bool
+    private function expireAccessToken(string $uid): void
     {
         $this->userConfig[$uid . '|synaplan_oauth_expires'] = '0';
         $this->userConfig[$uid . '|synaplan_oauth_refresh'] = 'refresh-1';
-
-        return true;
     }
 
     /**
