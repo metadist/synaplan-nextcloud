@@ -27,7 +27,7 @@ class SourceEventsJobTest extends TestCase
     {
         $this->links->expects($this->once())
             ->method('reportSourceEvents')
-            ->with([['id' => '42', 'event' => 'changed', 'version' => 'e2', 'path' => 'Specs/spec.pdf']])
+            ->with([['id' => '42', 'event' => 'changed', 'version' => 'e2', 'path' => 'Specs/spec.pdf']], 'ada')
             ->willReturn([
                 'applied' => 1,
                 'ignored' => 0,
@@ -36,6 +36,15 @@ class SourceEventsJobTest extends TestCase
         $this->jobs->expects($this->once())
             ->method('add')
             ->with(ReuploadJob::class, ['uid' => 'ada', 'id' => '42']);
+
+        $job = new SourceEventsJob($this->createStub(ITimeFactory::class), $this->links, $this->jobs);
+        $method = new \ReflectionMethod(SourceEventsJob::class, 'run');
+        $method->invoke($job, ['uid' => 'ada', 'id' => '42', 'event' => 'changed', 'version' => 'e2', 'path' => 'Specs/spec.pdf']);
+    }
+
+    public function testAnEventQueuedWithoutAPersonIsDropped(): void
+    {
+        $this->links->expects($this->never())->method('reportSourceEvents');
 
         $job = new SourceEventsJob($this->createStub(ITimeFactory::class), $this->links, $this->jobs);
         $method = new \ReflectionMethod(SourceEventsJob::class, 'run');

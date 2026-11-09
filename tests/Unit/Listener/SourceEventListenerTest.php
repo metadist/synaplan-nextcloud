@@ -15,6 +15,7 @@ use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\FileInfo;
 use OCP\Files\Node;
 use OCP\IConfig;
+use OCP\IUser;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -45,9 +46,14 @@ class SourceEventListenerTest extends TestCase
         return new SourceEventListener($this->synaplanConfig, $this->config, $this->jobs);
     }
 
-    private function fileNode(int $id, string $path, string $etag = 'etag-1'): Node&MockObject
+    private function fileNode(int $id, string $path, string $etag = 'etag-1', ?string $owner = null): Node&MockObject
     {
         $node = $this->createMock(Node::class);
+        if ($owner !== null) {
+            $user = $this->createMock(IUser::class);
+            $user->method('getUID')->willReturn($owner);
+            $node->method('getOwner')->willReturn($user);
+        }
         $node->method('getType')->willReturn(FileInfo::TYPE_FILE);
         $node->method('getId')->willReturn($id);
         $node->method('getPath')->willReturn($path);
@@ -60,17 +66,31 @@ class SourceEventListenerTest extends TestCase
     {
         $this->jobs->expects($this->once())->method('add')->with(
             SourceEventsJob::class,
-            ['id' => '42', 'event' => 'changed', 'version' => 'etag-2', 'path' => 'Specs/spec.pdf'],
+            ['uid' => 'ada', 'id' => '42', 'event' => 'changed', 'version' => 'etag-2', 'path' => 'Specs/spec.pdf', 'owner' => ''],
         );
 
         $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/ada/files/Specs/spec.pdf', 'etag-2')));
+    }
+
+    public function testASharedFileIsReportedForTheEditorAndTheOwner(): void
+    {
+        $queued = [];
+        $this->jobs->expects($this->exactly(2))->method('add')->willReturnCallback(
+            static function (string $job, array $argument) use (&$queued): void {
+                $queued[] = $argument['uid'];
+            },
+        );
+
+        $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/bob/files/Shared/spec.pdf', 'etag-2', 'ada')));
+
+        self::assertSame(['bob', 'ada'], $queued);
     }
 
     public function testRenamedFileFromTrashQueuesRestoredEvent(): void
     {
         $this->jobs->expects($this->once())->method('add')->with(
             SourceEventsJob::class,
-            ['id' => '42', 'event' => 'restored', 'version' => 'etag-2', 'path' => 'Specs/spec.pdf'],
+            ['uid' => 'ada', 'id' => '42', 'event' => 'restored', 'version' => 'etag-2', 'path' => 'Specs/spec.pdf', 'owner' => ''],
         );
 
         $source = $this->fileNode(42, '/ada/files_trashbin/files/spec.pdf.d123');

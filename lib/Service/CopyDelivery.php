@@ -56,17 +56,19 @@ class CopyDelivery
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function handle(string $id): array
+    public function handle(string $id, string $uid): array
     {
-        $claim = $this->links->claimDelivery($id);
+        $claim = $this->links->claimDelivery($id, $uid);
         if (isset($claim['status_code']) && (int) $claim['status_code'] !== 200) {
             // Another worker claimed it, or it expired. Leave it pending.
             return ['status' => 202, 'body' => ['state' => 'pending']];
         }
 
-        $result = $this->write($claim);
+        $result = (string) ($claim['external_id'] ?? '') === $uid
+            ? $this->write($claim)
+            : ['status' => 'failed', 'error_code' => 'not_found'];
         try {
-            $this->links->reportDelivery($id, $result);
+            $this->links->reportDelivery($id, $uid, $result);
         } catch (\Throwable $e) {
             $this->logger->warning('Could not report a Synaplan copy: {message}', [
                 'app' => Application::APP_ID,
@@ -105,7 +107,7 @@ class CopyDelivery
         if ($uid === '' || $this->users->get($uid) === null) {
             return ['status' => 'failed', 'error_code' => 'not_found'];
         }
-        $bytes = $this->links->downloadDelivery((string) ($claim['download_path'] ?? ''));
+        $bytes = $this->links->downloadDelivery((string) ($claim['download_path'] ?? ''), $uid);
         if ($bytes === null) {
             return ['status' => 'failed', 'error_code' => 'unreachable'];
         }

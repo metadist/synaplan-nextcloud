@@ -33,7 +33,7 @@ class SourceEventListener implements IEventListener
 {
     public const DEV_MUTE = 'dev_mute_events';
 
-    /** @var array<int, list<array{id: string, event: string, version: string, path: string}>> */
+    /** @var array<int, list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>> */
     private array $pendingDeletedDescendants = [];
 
     public function __construct(
@@ -63,12 +63,14 @@ class SourceEventListener implements IEventListener
         }
 
         foreach ($this->mapEvents($event) as $mapped) {
-            $this->jobs->add(SourceEventsJob::class, $mapped);
+            foreach ($this->people($mapped) as $uid) {
+                $this->jobs->add(SourceEventsJob::class, ['uid' => $uid] + $mapped);
+            }
         }
     }
 
     /**
-     * @return list<array{id: string, event: string, version: string, path: string}>
+     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
      */
     private function mapEvents(Event $event): array
     {
@@ -119,7 +121,7 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * @return list<array{id: string, event: string, version: string, path: string}>
+     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
      */
     private function descendantPayloads(Folder $folder, string $kind): array
     {
@@ -164,6 +166,12 @@ class SourceEventListener implements IEventListener
             if ($relative === null) {
                 return null;
             }
+            $owner = '';
+            try {
+                $owner = (string) $node->getOwner()?->getUID();
+            } catch (\Throwable) {
+                $owner = '';
+            }
             $etag = '';
             try {
                 $etag = (string) $node->getEtag();
@@ -176,6 +184,8 @@ class SourceEventListener implements IEventListener
                 'event' => $kind,
                 'version' => substr($etag, 0, 255),
                 'path' => substr($relative, 0, 255),
+                'uid' => $this->pathUser($node->getPath()),
+                'owner' => $owner,
             ];
         } catch (\Throwable) {
             return null;
@@ -185,6 +195,24 @@ class SourceEventListener implements IEventListener
     /**
      * Strips "/<uid>/files/" and ignores trash, uploads, thumbnails and appdata.
      */
+    /**
+     * Synaplan applies a source event to the copies of the person whose key
+     * reports it. A file is reported for the person in whose files it
+     * changed and, for a shared file, for its owner too.
+     *
+     * @param array<string, string> $mapped
+     * @return list<string>
+     */
+    private function people(array $mapped): array
+    {
+        return array_values(array_unique(array_filter([$mapped['uid'] ?? '', $mapped['owner'] ?? ''], static fn (string $uid): bool => $uid !== '')));
+    }
+
+    private function pathUser(string $fullPath): string
+    {
+        return preg_match('#^/([^/]+)/files/#', $fullPath, $match) === 1 ? $match[1] : '';
+    }
+
     private function userRelativePath(string $fullPath): ?string
     {
         if (preg_match('#^/[^/]+/files/(.+)$#', $fullPath, $match) !== 1) {

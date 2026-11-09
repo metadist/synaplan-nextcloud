@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -27,6 +28,7 @@ final class InboundControllerTest extends TestCase
     private NotifyKeyCache&MockObject $keys;
     private CopyDelivery&MockObject $copies;
     private FolderRead&MockObject $reads;
+    private PlatformLinkService&MockObject $links;
     private UserAccountService&MockObject $accounts;
     private InboundController $controller;
 
@@ -46,6 +48,8 @@ final class InboundControllerTest extends TestCase
         $this->keys->method('keys')->willReturn([['publicKey' => $fixture['public_key']]]);
         $this->copies = $this->createMock(CopyDelivery::class);
         $this->reads = $this->createMock(FolderRead::class);
+        $this->links = $this->createMock(PlatformLinkService::class);
+        $this->links->method('canActFor')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
         $this->accounts = $this->createMock(UserAccountService::class);
 
         $time = $this->createMock(ITimeFactory::class);
@@ -58,6 +62,7 @@ final class InboundControllerTest extends TestCase
             new MemorySeenNotifications(),
             $this->copies,
             $this->reads,
+            $this->links,
             $this->accounts,
             new ArrayCacheFactory(),
             $time,
@@ -65,15 +70,15 @@ final class InboundControllerTest extends TestCase
         );
     }
 
-    public function testAValidDeliveryIsClaimedOnce(): void
+    public function testAValidDeliveryIsClaimedOnceForThePersonItNames(): void
     {
-        $this->copies->expects($this->once())->method('handle')->with('9')->willReturn([
+        $this->copies->expects($this->once())->method('handle')->with('9', 'ada')->willReturn([
             'status' => 200,
             'body' => ['status' => 'delivered', 'remote_path' => '/Synaplan/Documents/plan.docx'],
         ]);
-        $this->keys->expects($this->never())->method('refresh');
 
-        $response = $this->controller->receive($this->json('valid'));
+        $body = $this->signed($this->notice('delivery', '9', 'ada'));
+        $response = $this->controller->receive($body);
 
         self::assertSame(Http::STATUS_OK, $response->getStatus());
         self::assertSame('delivered', $response->getData()['status']);
@@ -86,11 +91,25 @@ final class InboundControllerTest extends TestCase
             'body' => ['status' => 'delivered'],
         ]);
 
-        $this->controller->receive($this->json('valid'));
-        $again = $this->controller->receive($this->json('valid'));
+        $body = $this->signed($this->notice('delivery', '9', 'ada'));
+        $this->controller->receive($body);
+        $again = $this->controller->receive($body);
 
         self::assertSame(Http::STATUS_UNAUTHORIZED, $again->getStatus());
         self::assertSame(NotificationSignature::REPLAY, $again->getData()['error']);
+    }
+
+    public function testACopyOrReadForSomeoneWithoutAKeyIsNotClaimed(): void
+    {
+        $this->copies->expects($this->never())->method('handle');
+        $this->reads->expects($this->never())->method('handle');
+
+        foreach ([['delivery', 'bob'], ['pickup', 'bob'], ['delivery', '']] as [$type, $person]) {
+            $body = $this->signed($this->notice($type, '9' . $person, $person));
+            $response = $this->controller->receive($body);
+            self::assertSame(Http::STATUS_CONFLICT, $response->getStatus(), $type . ' ' . $person);
+            self::assertSame('not_linked', $response->getData()['error']);
+        }
     }
 
     public function testWrongKeyWrongInstanceAndStaleDoNotCallOut(): void
@@ -133,18 +152,27 @@ final class InboundControllerTest extends TestCase
     public function testPickupIsReadAndAccepted(): void
     {
         $this->copies->expects($this->never())->method('handle');
-        $this->reads->expects($this->once())->method('handle')->with('15');
+        $this->reads->expects($this->once())->method('handle')->with('15', 'ada');
 
-        $body = $this->signed([
-            'type' => 'pickup',
-            'id' => '15',
-            'instance_id' => 'pi_abc',
-            'ts' => self::NOW,
-            'kid' => 'test',
-        ]);
+        $body = $this->signed($this->notice('pickup', '15', 'ada'));
         $response = $this->controller->receive($body);
 
         self::assertSame(Http::STATUS_ACCEPTED, $response->getStatus());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function notice(string $type, string $id, string $person): array
+    {
+        return [
+            'type' => $type,
+            'id' => $id,
+            'instance_id' => 'pi_abc',
+            'ts' => self::NOW,
+            'kid' => 'test',
+            'external_id' => $person,
+        ];
     }
 
     private function json(string $name): string
@@ -183,6 +211,7 @@ final class InboundControllerTest extends TestCase
             new MemorySeenNotifications(),
             $this->copies,
             $this->reads,
+            $this->links,
             $this->accounts,
             new ArrayCacheFactory(),
             $time,

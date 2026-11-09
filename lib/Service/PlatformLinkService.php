@@ -195,15 +195,16 @@ class PlatformLinkService
     }
 
     /**
-     * Tell Synaplan that files on this Nextcloud changed, moved, were deleted
-     * or came back from the trash. Returns the list of copies to re-upload.
+     * Tell Synaplan that files of one person changed, moved, were deleted or
+     * came back from the trash, with that person's key. Synaplan applies them
+     * to that person's copies only. Returns the list of copies to re-upload.
      *
      * @param list<array{id: string, event: string, version: string, path: string}> $events
      * @return array{applied: int, ignored: int, reupload: list<array{external_id: string, id: string}>, retry?: bool}
      */
-    public function reportSourceEvents(array $events): array
+    public function reportSourceEvents(array $events, string $uid): array
     {
-        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '') {
+        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '' || !$this->canActFor($uid)) {
             return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
         }
         try {
@@ -211,7 +212,7 @@ class PlatformLinkService
                 'POST',
                 '/api/v1/platform-links/sources/events',
                 ['events' => $events],
-                array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+                array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
                 true,
                 true,
             );
@@ -349,19 +350,19 @@ class PlatformLinkService
     /**
      * @return array<string, mixed>
      */
-    public function claimDelivery(string $id): array
+    public function claimDelivery(string $id, string $uid): array
     {
         return $this->request(
             'POST',
             '/api/v1/platform-links/deliveries/' . rawurlencode($id) . '/claim',
             null,
-            $this->instanceHeaders(),
+            $this->personHeaders($uid),
             false,
             true,
         );
     }
 
-    public function downloadDelivery(string $downloadPath): ?string
+    public function downloadDelivery(string $downloadPath, string $uid): ?string
     {
         if (!str_starts_with($downloadPath, '/api/') || str_contains($downloadPath, '..') || str_contains($downloadPath, '://')) {
             return null;
@@ -369,7 +370,7 @@ class PlatformLinkService
         $client = $this->clientService->newClient();
         try {
             $response = $client->get($this->synaplanConfig->getBaseUrl() . $downloadPath, [
-                'headers' => $this->instanceHeaders(),
+                'headers' => $this->personHeaders($uid),
                 'timeout' => 30,
                 'nextcloud' => ['allow_local_address' => true],
             ]);
@@ -391,13 +392,13 @@ class PlatformLinkService
     /**
      * @return array<string, mixed>
      */
-    public function claimPickup(string $id): array
+    public function claimPickup(string $id, string $uid): array
     {
         return $this->request(
             'POST',
             '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/claim',
             null,
-            $this->instanceHeaders(),
+            $this->personHeaders($uid),
             false,
             true,
         );
@@ -407,13 +408,13 @@ class PlatformLinkService
      * @param list<array<string, mixed>> $items
      * @return array<string, mixed>
      */
-    public function submitPickupListing(string $id, array $items): array
+    public function submitPickupListing(string $id, string $uid, array $items): array
     {
         return $this->request(
             'POST',
             '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/listing',
             ['items' => $items],
-            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
         );
@@ -424,6 +425,7 @@ class PlatformLinkService
      */
     public function uploadPickupFile(
         string $id,
+        string $uid,
         string $remoteId,
         string $version,
         string $bytes,
@@ -436,7 +438,7 @@ class PlatformLinkService
         $response = $client->post(
             $this->synaplanConfig->getBaseUrl() . $path,
             [
-                'headers' => $this->instanceHeaders(),
+                'headers' => $this->personHeaders($uid),
                 'multipart' => [
                     ['name' => 'id', 'contents' => $remoteId],
                     ['name' => 'version', 'contents' => $version],
@@ -455,13 +457,13 @@ class PlatformLinkService
     /**
      * @param array<string, mixed> $result
      */
-    public function reportPickupResult(string $id, array $result): void
+    public function reportPickupResult(string $id, string $uid, array $result): void
     {
         $this->request(
             'POST',
             '/api/v1/platform-links/pickups/' . rawurlencode($id) . '/result',
             $result,
-            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
         );
@@ -475,11 +477,14 @@ class PlatformLinkService
      */
     public function reportReadScope(string $uid, string $mode, array $folders): bool
     {
+        if (!$this->canActFor($uid)) {
+            return false;
+        }
         $result = $this->request(
             'PUT',
             '/api/v1/platform-links/read-scope',
             ['external_id' => $uid, 'mode' => $mode, 'folders' => $folders],
-            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
         );
@@ -490,13 +495,13 @@ class PlatformLinkService
     /**
      * @param array<string, mixed> $result
      */
-    public function reportDelivery(string $id, array $result): void
+    public function reportDelivery(string $id, string $uid, array $result): void
     {
         $this->request(
             'POST',
             '/api/v1/platform-links/deliveries/' . rawurlencode($id) . '/result',
             $result,
-            array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']),
+            array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
         );
@@ -601,6 +606,31 @@ class PlatformLinkService
     /**
      * @return array<string, string>
      */
+    /**
+     * Whether this person can be acted for: their own Synaplan key is held.
+     */
+    public function canActFor(string $uid): bool
+    {
+        return $uid !== '' && $this->userAccounts->getStoredApiKey($uid) !== '';
+    }
+
+    /**
+     * Calls done for one person carry that person's own key. Synaplan takes
+     * the cloud from the key and checks that the copy, folder read or file
+     * belongs to that person; the instance credential plays no part.
+     *
+     * @return array<string, string>
+     */
+    private function personHeaders(string $uid): array
+    {
+        $key = $uid !== '' ? $this->userAccounts->getStoredApiKey($uid) : '';
+        if ($key === '') {
+            throw new \RuntimeException('No Synaplan key is held for this person.');
+        }
+
+        return ['Accept' => 'application/json', 'X-API-Key' => $key];
+    }
+
     private function instanceHeaders(): array
     {
         return [
