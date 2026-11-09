@@ -36,8 +36,12 @@ This guide covers the features shipped for the hosting scenario:
 2. Set the **Synaplan URL** and paste the **admin API key**.
 3. Under **How users connect**, pick **Accounts created by the administrator**
    (`provision`) or **Connect your Synaplan account** (`link`).
-4. In `link` mode click **Register this instance** (once). People then open
-   **Personal settings → Synaplan → Connect Synaplan**, sign in, and confirm.
+4. In `link` mode click **Register this instance** (once). This Nextcloud
+   registers as Synaplan's OAuth2 client with a key pair it makes itself; no
+   secret from Synaplan is stored. Paste the registration token your Synaplan
+   administrator gave you (`PLATFORM_LINKS_REGISTRATION_TOKEN`) to be active at
+   once; without it the registration may wait for their approval. People then
+   open **Personal settings → Synaplan → Connect Synaplan**, sign in, and allow.
 5. Click **Save**, then **Test connection**.
 
 In **link** mode people open **Personal settings → Synaplan → Connect Synaplan**
@@ -259,9 +263,10 @@ Notes:
 2. **Connect your Synaplan account**
    - Under **How users connect**, choose **Connect your Synaplan account** and
      click **Save**; the registration and Connect only appear in this mode.
-   - Click **Register this instance**; it reports **Registered and ready**.
+   - Click **Register this instance** (with Synaplan's registration token, if
+     it gave you one); it reports **Registered and ready**.
    - As a person with a Synaplan account: Personal settings → Synaplan →
-     **Connect Synaplan**, sign in, confirm, then **Summarize with Synaplan** on
+     **Connect Synaplan**, sign in, allow, then **Summarize with Synaplan** on
      a file.
    - Disconnect that link in Synaplan: the next Summarize asks to connect again.
 3. **OpenAI-compatible backbone**
