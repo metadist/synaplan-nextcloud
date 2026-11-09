@@ -59,4 +59,16 @@ final class NotificationSignatureTest extends TestCase
 
         self::assertSame(NotificationSignature::WRONG_ISSUER, $reason);
     }
+
+    public function testATokenExpiresAtExp(): void
+    {
+        $fixture = json_decode((string) file_get_contents(__DIR__ . '/../../fixtures/notify-vectors.json'), true);
+        self::assertIsArray($fixture);
+        $token = $fixture['vectors'][0]['token'];
+        $exp = NotificationSignature::claims($token)['exp'];
+        $keys = [['publicKey' => $fixture['public_key']]];
+
+        self::assertSame(NotificationSignature::OK, NotificationSignature::verify($token, $fixture['issuer'], $fixture['receiver_instance_id'], $keys, $exp - 1));
+        self::assertSame(NotificationSignature::STALE, NotificationSignature::verify($token, $fixture['issuer'], $fixture['receiver_instance_id'], $keys, $exp));
+    }
 }

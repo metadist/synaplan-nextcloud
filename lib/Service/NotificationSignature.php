@@ -48,7 +48,7 @@ final class NotificationSignature
         }
         $iat = $claims['iat'] ?? null;
         $exp = $claims['exp'] ?? null;
-        if (!is_int($iat) || !is_int($exp) || $now > $exp || $iat > $now + self::SKEW_SECONDS) {
+        if (!is_int($iat) || !is_int($exp) || $now >= $exp || $iat > $now + self::SKEW_SECONDS) {
             return self::STALE;
         }
 
