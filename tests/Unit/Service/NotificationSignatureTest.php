@@ -17,11 +17,11 @@ final class NotificationSignatureTest extends TestCase
 
         foreach ($fixture['vectors'] as $vector) {
             $reason = NotificationSignature::verify(
-                $vector['body'],
+                $vector['token'],
+                $fixture['issuer'],
                 $fixture['receiver_instance_id'],
                 $keys,
                 $fixture['now'],
-                $fixture['window_seconds'],
             );
             self::assertSame($vector['expect'], $reason, $vector['name']);
         }
@@ -29,13 +29,34 @@ final class NotificationSignatureTest extends TestCase
 
     public function testUnsignedIsRejected(): void
     {
+        $fixture = json_decode((string) file_get_contents(__DIR__ . '/../../fixtures/notify-vectors.json'), true);
+        self::assertIsArray($fixture);
+        [$header, $payload] = explode('.', $fixture['vectors'][0]['token']);
+
         $reason = NotificationSignature::verify(
-            ['type' => 'delivery', 'id' => '9', 'instance_id' => 'pi_abc', 'ts' => 1700000000],
-            'pi_abc',
-            [['publicKey' => 'ed25519:4dwtgZJhZVjjcxGFKBtTeZtGdpEFmUcp_rz0xfgPGFM']],
-            1700000000,
+            $header . '.' . $payload . '.',
+            $fixture['issuer'],
+            $fixture['receiver_instance_id'],
+            [['publicKey' => $fixture['public_key']]],
+            $fixture['now'],
         );
 
         self::assertSame(NotificationSignature::BAD_SIGNATURE, $reason);
+    }
+
+    public function testAnUnknownIssuerIsRejected(): void
+    {
+        $fixture = json_decode((string) file_get_contents(__DIR__ . '/../../fixtures/notify-vectors.json'), true);
+        self::assertIsArray($fixture);
+
+        $reason = NotificationSignature::verify(
+            $fixture['vectors'][0]['token'],
+            '',
+            $fixture['receiver_instance_id'],
+            [['publicKey' => $fixture['public_key']]],
+            $fixture['now'],
+        );
+
+        self::assertSame(NotificationSignature::WRONG_ISSUER, $reason);
     }
 }

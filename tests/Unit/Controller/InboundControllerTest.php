@@ -24,6 +24,7 @@ use Psr\Log\NullLogger;
 final class InboundControllerTest extends TestCase
 {
     private const NOW = 1700000000;
+    private const ISSUER = 'https://synaplan.example';
 
     private NotifyKeyCache&MockObject $keys;
     private CopyDelivery&MockObject $copies;
@@ -46,6 +47,7 @@ final class InboundControllerTest extends TestCase
 
         $this->keys = $this->createMock(NotifyKeyCache::class);
         $this->keys->method('keys')->willReturn([['publicKey' => $fixture['public_key']]]);
+        $this->keys->method('issuer')->willReturn($fixture['issuer']);
         $this->copies = $this->createMock(CopyDelivery::class);
         $this->reads = $this->createMock(FolderRead::class);
         $this->links = $this->createMock(PlatformLinkService::class);
@@ -117,7 +119,7 @@ final class InboundControllerTest extends TestCase
         $this->copies->expects($this->never())->method('handle');
         $this->keys->expects($this->never())->method('refresh');
 
-        foreach (['wrong_key', 'wrong_instance', 'stale'] as $name) {
+        foreach (['wrong_key', 'wrong_issuer', 'wrong_instance', 'stale'] as $name) {
             $response = $this->controller->receive($this->json($name));
             self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus(), $name);
         }
@@ -138,11 +140,12 @@ final class InboundControllerTest extends TestCase
         $this->copies->expects($this->never())->method('handle');
 
         $body = $this->signed([
+            'iss' => self::ISSUER,
+            'aud' => 'pi_abc',
             'type' => 'identity_revoked',
             'id' => '2267',
-            'instance_id' => 'pi_abc',
-            'ts' => self::NOW,
-            'kid' => 'test',
+            'iat' => self::NOW,
+            'exp' => self::NOW + 300,
         ]);
         $response = $this->controller->receive($body);
 
@@ -166,12 +169,13 @@ final class InboundControllerTest extends TestCase
     private function notice(string $type, string $id, string $person): array
     {
         return [
+            'iss' => self::ISSUER,
+            'aud' => 'pi_abc',
+            'sub' => $person,
             'type' => $type,
             'id' => $id,
-            'instance_id' => 'pi_abc',
-            'ts' => self::NOW,
-            'kid' => 'test',
-            'external_id' => $person,
+            'iat' => self::NOW,
+            'exp' => self::NOW + 300,
         ];
     }
 
@@ -179,16 +183,16 @@ final class InboundControllerTest extends TestCase
     {
         foreach ($this->fixture['vectors'] as $vector) {
             if ($vector['name'] === $name) {
-                return (string) json_encode($vector['body']);
+                return (string) $vector['token'];
             }
         }
         self::fail('Missing vector ' . $name);
     }
 
     /**
-     * @param array<string, mixed> $body
+     * @param array<string, mixed> $claims
      */
-    private function signed(array $body): string
+    private function signed(array $claims): string
     {
         $pair = sodium_crypto_sign_keypair();
         $secret = sodium_crypto_sign_secretkey($pair);
@@ -196,9 +200,11 @@ final class InboundControllerTest extends TestCase
         $encoded = 'ed25519:' . rtrim(strtr(base64_encode($public), '+/', '-_'), '=');
         $this->keys = $this->createMock(NotifyKeyCache::class);
         $this->keys->method('keys')->willReturn([['publicKey' => $encoded]]);
+        $this->keys->method('issuer')->willReturn(self::ISSUER);
 
-        $signature = sodium_crypto_sign_detached(NotificationSignature::canonical($body), $secret);
-        $body['sig'] = 'ed25519:' . rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+        $b64 = static fn (string $raw): string => rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
+        $signingInput = $b64((string) json_encode(['alg' => 'EdDSA', 'typ' => 'synaplan-notification+jwt', 'kid' => 'test']))
+            . '.' . $b64((string) json_encode($claims));
 
         $config = $this->createMock(SynaplanConfig::class);
         $config->method('getLinkInstanceId')->willReturn('pi_abc');
@@ -218,7 +224,7 @@ final class InboundControllerTest extends TestCase
             new NullLogger(),
         );
 
-        return (string) json_encode($body);
+        return $signingInput . '.' . $b64(sodium_crypto_sign_detached($signingInput, $secret));
     }
 }
 
