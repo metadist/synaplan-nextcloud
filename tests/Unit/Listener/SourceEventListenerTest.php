@@ -30,6 +30,7 @@ class SourceEventListenerTest extends TestCase
 
     /** @var array<string, string> */
     private array $appConfig = [];
+    private bool $registered = true;
 
     protected function setUp(): void
     {
@@ -38,8 +39,7 @@ class SourceEventListenerTest extends TestCase
         $this->jobs = $this->createMock(IJobList::class);
         $this->rootFolder = $this->createMock(IRootFolder::class);
 
-        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_nc');
-        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:secret');
+        $this->synaplanConfig->method('isRegistered')->willReturnCallback(fn (): bool => $this->registered);
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = ''): string => $this->appConfig[$key] ?? $default
         );
@@ -128,6 +128,14 @@ class SourceEventListenerTest extends TestCase
     public function testDevMuteEventsSkipsQueuing(): void
     {
         $this->appConfig[SourceEventListener::DEV_MUTE] = '1';
+        $this->jobs->expects($this->never())->method('add');
+
+        $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/ada/files/Specs/spec.pdf')));
+    }
+
+    public function testAnUnregisteredNextcloudQueuesNothing(): void
+    {
+        $this->registered = false;
         $this->jobs->expects($this->never())->method('add');
 
         $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/ada/files/Specs/spec.pdf')));

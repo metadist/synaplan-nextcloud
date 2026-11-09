@@ -54,6 +54,24 @@
 						emit('update:deliveryUrl', String($event))
 					" />
 			</div>
+			<div v-if="!linkRegistered" class="sp-input">
+				<NcTextField
+					id="synaplan-registration-token"
+					:model-value="registrationToken"
+					:label="
+						t(
+							'synaplan_integration',
+							'Registration token from Synaplan (optional)',
+						)
+					"
+					type="password"
+					:disabled="saving"
+					:style="{ width: '100%' }"
+					data-testid="synaplan-registration-token"
+					@update:model-value="
+						emit('update:registrationToken', String($event))
+					" />
+			</div>
 		</div>
 		<div :style="{ display: 'flex', gap: '16px', margin: '12px 0' }">
 			<span
@@ -93,6 +111,7 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 const props = defineProps<{
 	mode: 'shared' | 'provision' | 'link'
 	deliveryUrl: string
+	registrationToken: string
 	saving: boolean
 	linkRegistered: boolean
 	linkInstanceId: string
@@ -104,6 +123,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	'update:deliveryUrl': [value: string]
+	'update:registrationToken': [value: string]
 	register: []
 	forget: []
 }>()

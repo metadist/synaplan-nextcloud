@@ -3,7 +3,6 @@ import {
 	SYNAPLAN_PERSON,
 	connectFromSettings,
 	ensureConnected,
-	keyIdsOf,
 	linksOf,
 	logIn,
 	openFileAction,
@@ -36,21 +35,16 @@ test('after a disconnect in Synaplan, the next action says how to reconnect', as
 	await expect(page.getByRole('link', { name: 'Connect Synaplan' })).toBeVisible()
 })
 
-// Synaplan keeps listing the link after its key is gone; only the key is
-// checked here until the core removes the link with its key.
-test('a disconnect in Nextcloud revokes the key in Synaplan', async ({ page }) => {
+test('a disconnect in Nextcloud ends the link in Synaplan', async ({ page }) => {
 	await resetPerson('ada')
 	await logIn(page, 'ada')
 	await connectFromSettings(page)
 	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
-	const [link] = await linksOf(synaplan, 'ada')
-	const keyId = link?.key_id
-	expect(keyId, 'the link holds a key').toBeTruthy()
-	expect(await keyIdsOf(synaplan)).toContain(keyId)
+	expect((await linksOf(synaplan, 'ada')).length, 'ada is linked').toBe(1)
 
 	await page.getByRole('button', { name: 'Disconnect' }).click()
 
 	await expect(page.getByText('Not connected')).toBeVisible()
-	await expect.poll(async () => keyIdsOf(synaplan)).not.toContain(keyId)
+	await expect.poll(async () => (await linksOf(synaplan, 'ada')).length).toBe(0)
 	await synaplan.dispose()
 })

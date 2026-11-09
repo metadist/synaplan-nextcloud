@@ -117,13 +117,21 @@ class SynaplanConfig
     }
 
     /**
-     * Link mode with a stored instance registration (id + secret).
+     * Link mode with this Nextcloud registered as Synaplan's OAuth2 client
+     * (client id and its key id).
      */
     public function isLinkAvailable(): bool
     {
-        return $this->isLinkMode()
-            && $this->getLinkInstanceId() !== ''
-            && $this->getLinkInstanceSecretCipher() !== '';
+        return $this->isLinkMode() && $this->isRegistered();
+    }
+
+    /**
+     * This Nextcloud is registered as Synaplan's OAuth2 client.
+     */
+    public function isRegistered(): bool
+    {
+        return $this->getLinkInstanceId() !== ''
+            && (string) $this->config->getAppValue(Application::APP_ID, 'oauth_kid', '') !== '';
     }
 
     /**
@@ -140,14 +148,6 @@ class SynaplanConfig
     public function getLinkInstanceId(): string
     {
         return (string) $this->config->getAppValue(Application::APP_ID, 'link_instance_id', '');
-    }
-
-    /**
-     * Encrypted instance secret (ICrypto). Decrypt in PlatformLinkService.
-     */
-    public function getLinkInstanceSecretCipher(): string
-    {
-        return (string) $this->config->getAppValue(Application::APP_ID, 'link_instance_secret', '');
     }
 
     public function isMemoriesEnabled(): bool

@@ -315,6 +315,7 @@ OC.L10N.register(
     "New and changed files become searchable by AI in your knowledge folder “{folder}”." : "Les fichiers nouveaux et modifiés deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Les nouvelles versions de ce fichier deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
     "“{task}” will run for a new copy of this file." : "« {task} » s’exécutera pour une nouvelle copie de ce fichier.",
-    "Keep it searchable" : "Le garder recherchable"
+    "Keep it searchable" : "Le garder recherchable",
+    "Registration token from Synaplan (optional)" : "Jeton d’enregistrement de Synaplan (facultatif)"
 },
 "nplurals=2; plural=(n > 1);");

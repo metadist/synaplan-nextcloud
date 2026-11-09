@@ -315,6 +315,7 @@ OC.L10N.register(
     "New and changed files become searchable by AI in your knowledge folder “{folder}”." : "Yeni ve değişen dosyalar “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Bu dosyanın yeni sürümleri “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
     "“{task}” will run for a new copy of this file." : "“{task}”, bu dosyanın yeni bir kopyası için çalışır.",
-    "Keep it searchable" : "Aranabilir tut"
+    "Keep it searchable" : "Aranabilir tut",
+    "Registration token from Synaplan (optional)" : "Synaplan kayıt belirteci (isteğe bağlı)"
 },
 "nplurals=2; plural=(n > 1);");

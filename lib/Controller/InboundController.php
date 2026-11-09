@@ -76,7 +76,7 @@ class InboundController extends Controller
 
         return match ($type) {
             'delivery' => $this->delivered($this->copies->handle($id, $person)),
-            'identity_revoked' => $this->revoked($id),
+            'identity_revoked' => $this->revoked($person),
             'pickup' => $this->read($id, $person),
             default => new JSONResponse([], Http::STATUS_NO_CONTENT),
         };
@@ -126,9 +126,9 @@ class InboundController extends Controller
         return new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED);
     }
 
-    private function revoked(string $linkId): JSONResponse
+    private function revoked(string $person): JSONResponse
     {
-        $this->accounts->revokeLinkedKey($linkId);
+        $this->accounts->linkEnded($person);
 
         return new JSONResponse([], Http::STATUS_NO_CONTENT);
     }

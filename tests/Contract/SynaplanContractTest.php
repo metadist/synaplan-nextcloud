@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Http\SseProxyResponse;
 use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -17,12 +18,14 @@ use OCP\Files\IRootFolder;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
+use OCP\App\IAppManager;
+use OCP\Config\IUserConfig;
+use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
-use OCP\Security\ICrypto;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -69,7 +72,8 @@ final class SynaplanContractTest extends TestCase
         'api_key' => 'sk_admin',
         'per_user_accounts' => '1',
         'link_instance_id' => 'instance-1',
-        'link_instance_secret' => 'enc:secret-1',
+        'oauth_kid' => 'kid-1',
+        'notify_issuer' => self::BASE_URL,
     ];
 
     /** Ada activated AI, so her calls go out with her own key. */
@@ -202,14 +206,16 @@ final class SynaplanContractTest extends TestCase
         $synaplanConfig = new SynaplanConfig($config, $keys);
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($this->ada());
-        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto());
+        $oauth = $this->oauthClient($config, $synaplanConfig);
+        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $oauth);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
         $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,
             $this->urlGenerator(),
-            $this->crypto(),
+            $oauth,
+            $this->createStub(IAppManager::class),
             $synaplanConfig,
             $accounts,
             new NullLogger(),
@@ -276,12 +282,16 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->notificationTrust(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
-            fn () => $links->adoptIdentity('ada', 'sk_ada'),
-            fn () => $links->reportLifecycle('ada', 'deleted'),
-            fn () => $links->registerInstance('sk_admin'),
-            fn () => $links->instanceStatus(),
-            fn () => $links->exchange('code-1'),
+            fn () => $accounts->deleteProvisionedAccount('ada'),
+            fn () => $links->register('registration-token'),
+            fn () => $links->registrationStatus(),
+            fn () => $links->announceDelivery('https://files.example.org/apps/synaplan_integration/api/v1/inbound'),
+            fn () => $oauth->connect('ada', 'code-1', 'verifier-1', 'https://files.example.org/apps/synaplan_integration/link/callback'),
+            fn () => $this->expireAccessToken('ada') && $oauth->accessToken('ada') !== '',
+            fn () => $links->whoAmI('ada'),
+            fn () => $oauth->revoke('ada'),
             fn () => $links->disconnectUid('ada'),
+            fn () => $links->forgetRegistration(),
             fn () => $this->recordChatStream($client, $session),
         ];
         foreach ($scenarios as $scenario) {
@@ -426,13 +436,51 @@ final class SynaplanContractTest extends TestCase
         return $urls;
     }
 
-    private function crypto(): ICrypto
+    /**
+     * The OAuth2 client over the same in-memory config, with a real key so
+     * assertions can be signed.
+     */
+    private function oauthClient(IConfig $config, SynaplanConfig $synaplanConfig): OAuthClient
     {
-        $crypto = $this->createStub(ICrypto::class);
-        $crypto->method('encrypt')->willReturnCallback(fn (string $plain): string => 'enc:' . $plain);
-        $crypto->method('decrypt')->willReturnCallback(fn (string $cipher): string => substr($cipher, 4));
+        if (!isset($this->appConfig['oauth_private_key'])) {
+            $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+            self::assertNotFalse($key);
+            openssl_pkey_export($key, $private);
+            $this->appConfig['oauth_private_key'] = (string) $private;
+        }
+        $this->userConfig['ada|synaplan_oauth_refresh'] = 'refresh-1';
+        $user = $this->createStub(IUserConfig::class);
+        $user->method('getValueString')->willReturnCallback(
+            fn (string $uid, string $app, string $key, string $default = ''): string => $this->userConfig[$uid . '|' . $key] ?? $default,
+        );
+        $user->method('setValueString')->willReturnCallback(
+            function (string $uid, string $app, string $key, string $value): bool {
+                $this->userConfig[$uid . '|' . $key] = $value;
 
-        return $crypto;
+                return true;
+            },
+        );
+        $app = $this->createStub(IAppConfig::class);
+        $app->method('getValueString')->willReturnCallback(
+            fn (string $appId, string $key, string $default = ''): string => $this->appConfig[$key] ?? $default,
+        );
+        $app->method('setValueString')->willReturnCallback(
+            function (string $appId, string $key, string $value): bool {
+                $this->appConfig[$key] = $value;
+
+                return true;
+            },
+        );
+
+        return new OAuthClient($this->recordingClients(), $app, $config, $user, $synaplanConfig, new NullLogger());
+    }
+
+    private function expireAccessToken(string $uid): bool
+    {
+        $this->userConfig[$uid . '|synaplan_oauth_expires'] = '0';
+        $this->userConfig[$uid . '|synaplan_oauth_refresh'] = 'refresh-1';
+
+        return true;
     }
 
     /**

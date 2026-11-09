@@ -48,6 +48,9 @@ async function waitUntilReady(url: string): Promise<void> {
 	await context.dispose()
 }
 
+/** The initial access token the Synaplan test stack accepts (synaplan-test-stack.yml). */
+const REGISTRATION_TOKEN = 'nextcloud-e2e-registration'
+
 /**
  * Connects the app to the Synaplan test stack the way an administrator
  * does: a Synaplan API key in the admin settings, "Connect your Synaplan
@@ -82,7 +85,9 @@ export default async function globalSetup(): Promise<void> {
 	})
 
 	const admin = await nextcloudAs('admin')
-	const registered = await admin.post(`${APP}/api/v1/settings/register-instance`)
+	const registered = await admin.post(`${APP}/api/v1/settings/register-instance`, {
+		data: { registration_token: REGISTRATION_TOKEN },
+	})
 	const registration = (await registered.json()) as {
 		error?: string
 		status?: string

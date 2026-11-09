@@ -355,6 +355,7 @@
 
 			<AdminRegistration
 				:delivery-url="deliveryUrl"
+				:registration-token="registrationToken"
 				:mode="mode"
 				:saving="saving"
 				:link-registered="linkRegistered"
@@ -364,6 +365,7 @@
 				:primary-btn-style="primaryBtnStyle"
 				:secondary-btn-style="secondaryBtnStyle"
 				@update:delivery-url="deliveryUrl = $event"
+				@update:registration-token="registrationToken = $event"
 				@register="registerInstance"
 				@forget="forgetInstance" />
 
@@ -465,6 +467,7 @@ const readFolderCap = ref('20')
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
+const registrationToken = ref('')
 const registering = ref(false)
 
 const hasAdminKey = computed(() =>
@@ -757,6 +760,7 @@ async function registerInstance() {
 	try {
 		const { data } = await axios.post(
 			`${baseUrl}/api/v1/settings/register-instance`,
+			{ registration_token: registrationToken.value },
 		)
 		if (data.success) {
 			linkRegistered.value = true

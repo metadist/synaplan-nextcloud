@@ -10,7 +10,6 @@ use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserSession;
-use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -46,7 +45,6 @@ class UserAccountService
     public const LINK_KIND_PREF = 'synaplan_link_kind';
     public const LINK_EMAIL_PREF = 'synaplan_link_email';
     public const LINKED_AT_PREF = 'synaplan_linked_at';
-    public const LINK_ID_PREF = 'synaplan_link_id';
     /** Durable: survives disconnect / 401 so a removed linked person is reported, not dropped silently. */
     public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
 
@@ -64,7 +62,7 @@ class UserAccountService
         private SynaplanConfig $synaplanConfig,
         private LoggerInterface $logger,
         private KeyStorage $keys,
-        private ICrypto $crypto,
+        private OAuthClient $oauth,
     ) {
     }
 
@@ -147,6 +145,7 @@ class UserAccountService
     {
         $user = $this->userSession->getUser();
         if ($user instanceof IUser) {
+            $this->oauth->forget($user->getUID());
             $this->clearLinkPrefsForUid($user->getUID());
         }
     }
@@ -157,7 +156,6 @@ class UserAccountService
             self::LINK_KIND_PREF,
             self::LINK_EMAIL_PREF,
             self::LINKED_AT_PREF,
-            self::LINK_ID_PREF,
             self::USER_KEY_ID_PREF,
             self::CONSENT_PREF,
             self::CONSENT_AT_PREF,
@@ -167,26 +165,19 @@ class UserAccountService
     }
 
     /**
-     * Persist a successful handshake. A link is consent.
+     * Remember that the person connected (the grant itself is kept by
+     * {@see OAuthClient}). Connecting is consent.
      *
-     * @param array{api_key: array{id?: int|string, key?: string}, user: array{id?: int|string, email?: string}, link_id?: int|string} $exchange
+     * @param array{id?: int|string, email?: string} $account who they are in Synaplan
      */
-    public function storeLinkedAccount(IUser $user, array $exchange): void
+    public function storeLinkedAccount(IUser $user, array $account): void
     {
         $uid = $user->getUID();
-        $key = (string) ($exchange['api_key']['key'] ?? '');
-        $keyId = (string) ($exchange['api_key']['id'] ?? '');
-        $synaplanUserId = (string) ($exchange['user']['id'] ?? '');
-        $email = (string) ($exchange['user']['email'] ?? '');
-        $linkId = (string) ($exchange['link_id'] ?? '');
+        $synaplanUserId = (string) ($account['id'] ?? '');
+        $email = (string) ($account['email'] ?? '');
         $now = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
 
-        if ($key !== '') {
-            $this->keys->setUserKey($uid, $key);
-        }
-        if ($keyId !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, $keyId);
-        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF);
         if ($synaplanUserId !== '') {
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, $synaplanUserId);
         }
@@ -194,9 +185,6 @@ class UserAccountService
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_LINKED);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_EMAIL_PREF, $email);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINKED_AT_PREF, $now);
-        if ($linkId !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ID_PREF, $linkId);
-        }
         $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_PREF, '1');
         $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF, $now);
     }
@@ -207,6 +195,9 @@ class UserAccountService
     public function getLinkKind(string $uid): ?string
     {
         // Read the key first: a key that no longer decrypts takes the link with it.
+        if ($this->oauth->isConnected($uid)) {
+            return self::KIND_LINKED;
+        }
         $key = $this->storedKey($uid);
         $kind = $this->config->getUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, '');
         if ($kind === self::KIND_LINKED || $kind === self::KIND_PROVISIONED) {
@@ -372,6 +363,16 @@ class UserAccountService
      */
     private function storedKey(string $uid): string
     {
+        if ($this->oauth->isConnected($uid)) {
+            $token = $this->oauth->accessToken($uid);
+            // '' with the grant still held is a passing failure (Synaplan
+            // unreachable): the person stays connected.
+            if ($token === '' && !$this->oauth->isConnected($uid)) {
+                $this->clearLinkPrefsForUid($uid);
+            }
+
+            return $token;
+        }
         $key = $this->keys->getUserKey($uid);
         if ($key === null && $this->synaplanConfig->isLinkMode()) {
             $this->clearLinkPrefsForUid($uid);
@@ -398,18 +399,15 @@ class UserAccountService
     }
 
     /**
-     * Synaplan removed this link. Drop the stored key for whoever holds it.
+     * Synaplan ended this person's link: forget their grant and link here.
      */
-    public function revokeLinkedKey(string $linkId): void
+    public function linkEnded(string $uid): void
     {
-        if ($linkId === '') {
+        if ($uid === '') {
             return;
         }
-        foreach ($this->config->getUsersForUserValue(Application::APP_ID, self::LINK_ID_PREF, $linkId) as $uid) {
-            if ($uid !== '') {
-                $this->deactivateUser($uid);
-            }
-        }
+        $this->oauth->forget($uid);
+        $this->deactivateUser($uid);
     }
 
     /**
@@ -423,12 +421,37 @@ class UserAccountService
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->oauth->forget($uid);
         $this->clearLinkPrefsForUid($uid);
 
         $this->logger->info('Admin deactivated AI for user {uid}', [
             'app' => Application::APP_ID,
             'uid' => $uid,
         ]);
+    }
+
+    /**
+     * Ask Synaplan to delete the account it provisioned for this person, with
+     * the admin key. Synaplan keeps an account the person also uses
+     * otherwise (a password, another link). Failures are logged: the person
+     * is gone here either way.
+     */
+    public function deleteProvisionedAccount(string $uid): void
+    {
+        $adminKey = $this->synaplanConfig->getAdminApiKey();
+        $synaplanUserId = $this->getSynaplanUserId($uid);
+        if ($adminKey === '' || $synaplanUserId === null) {
+            return;
+        }
+        try {
+            $this->adminRequest('DELETE', '/api/v1/admin/users/' . $synaplanUserId, null, $adminKey);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not delete the Synaplan account of {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -457,8 +480,8 @@ class UserAccountService
             return null;
         }
 
-        $credential = $this->instanceHeaders();
-        $externalId = $credential === []
+        $instanceId = $this->synaplanConfig->getLinkInstanceId();
+        $externalId = $instanceId === ''
             ? $this->synaplanConfig->getInstanceId() . ':' . $user->getUID()
             : $user->getUID();
         $email = $user->getEMailAddress();
@@ -471,10 +494,11 @@ class UserAccountService
         try {
             $account = $this->adminRequest('POST', '/api/v1/admin/users', [
                 'source' => self::SOURCE,
+                'instance_id' => $instanceId !== '' ? $instanceId : null,
                 'external_id' => $externalId,
                 'email' => $email,
                 'display_name' => $user->getDisplayName(),
-            ], $adminKey, $credential);
+            ], $adminKey);
         } catch (\Throwable $e) {
             if ($this->isConflict($e)) {
                 throw new EmailConflictException();
@@ -488,9 +512,10 @@ class UserAccountService
         }
 
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
+            'instance_id' => $instanceId !== '' ? $instanceId : null,
             'name' => 'nextcloud-' . $user->getUID(),
             'scopes' => self::USER_KEY_SCOPES,
-        ], $adminKey, $credential);
+        ], $adminKey);
 
         $userKey = (string) ($minted['api_key']['key'] ?? '');
         if ($userKey === '') {
@@ -589,34 +614,6 @@ class UserAccountService
                 'message' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * Instance credential when this Nextcloud is registered, otherwise none.
-     * Provisioning then keeps the legacy external id.
-     *
-     * @return array<string, string>
-     */
-    private function instanceHeaders(): array
-    {
-        $id = $this->synaplanConfig->getLinkInstanceId();
-        $cipher = $this->synaplanConfig->getLinkInstanceSecretCipher();
-        if ($id === '' || $cipher === '') {
-            return [];
-        }
-        try {
-            $secret = $this->crypto->decrypt($cipher);
-        } catch (\Throwable) {
-            $secret = $cipher;
-        }
-        if ($secret === '') {
-            return [];
-        }
-
-        return [
-            'X-Instance-Id' => $id,
-            'X-Instance-Secret' => $secret,
-        ];
     }
 
     /**

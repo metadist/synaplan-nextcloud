@@ -238,14 +238,3 @@ export async function linksOf(
 	)
 }
 
-/**
- * Ids of the Synaplan person's API keys that still work.
- *
- * @param synaplan API client signed in as the Synaplan person
- */
-export async function keyIdsOf(synaplan: APIRequestContext): Promise<number[]> {
-	const response = await synaplan.get('/api/v1/apikeys')
-	expect(response.ok(), 'listing the Synaplan API keys').toBe(true)
-	const body = (await response.json()) as { api_keys: Array<{ id: number }> }
-	return body.api_keys.map((key) => key.id)
-}

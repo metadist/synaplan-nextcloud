@@ -50,8 +50,7 @@ class SourceEventListener implements IEventListener
         if ($this->config->getAppValue(Application::APP_ID, self::DEV_MUTE, '0') === '1') {
             return;
         }
-        if ($this->synaplanConfig->getLinkInstanceId() === ''
-            || $this->synaplanConfig->getLinkInstanceSecretCipher() === '') {
+        if (!$this->synaplanConfig->isRegistered()) {
             return;
         }
 

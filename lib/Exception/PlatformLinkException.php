@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Exception;
 
 /**
- * Handshake or instance-registration failure with a machine-readable code
- * used by the callback redirect (`state` | `exchange` | `instance_pending`).
+ * A failed exchange with Synaplan's OAuth2 server, with a machine-readable
+ * code; the connect callback puts it into its redirect.
  */
 class PlatformLinkException extends \RuntimeException
 {
     public const CODE_STATE = 'state';
     public const CODE_EXCHANGE = 'exchange';
     public const CODE_INSTANCE_PENDING = 'instance_pending';
+    /** Synaplan ended the grant (revoked, or the link was disconnected there). */
+    public const CODE_GRANT_ENDED = 'grant_ended';
+    public const CODE_UNREACHABLE = 'unreachable';
+    public const CODE_NOT_REGISTERED = 'not_registered';
 
     public function __construct(
         string $message,

@@ -134,10 +134,20 @@ final class InboundControllerTest extends TestCase
         self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus());
     }
 
-    public function testIdentityRevokedDeletesTheStoredKey(): void
+    public function testIdentityRevokedEndsTheLinkOfThePersonItNames(): void
     {
-        $this->accounts->expects($this->once())->method('revokeLinkedKey')->with('2267');
+        $this->accounts->expects($this->once())->method('linkEnded')->with('ada');
         $this->copies->expects($this->never())->method('handle');
+
+        $body = $this->signed($this->notice('identity_revoked', '2267', 'ada'));
+        $response = $this->controller->receive($body);
+
+        self::assertSame(Http::STATUS_NO_CONTENT, $response->getStatus());
+    }
+
+    public function testIdentityRevokedWithoutAPersonEndsNoLink(): void
+    {
+        $this->accounts->expects($this->once())->method('linkEnded')->with('');
 
         $body = $this->signed([
             'iss' => self::ISSUER,
