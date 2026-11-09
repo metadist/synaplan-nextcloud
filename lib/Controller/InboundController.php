@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -37,6 +38,7 @@ class InboundController extends Controller
         private SeenNotificationStore $seen,
         private CopyDelivery $copies,
         private FolderRead $reads,
+        private PlatformLinkService $links,
         private UserAccountService $accounts,
         private ICacheFactory $cacheFactory,
         private ITimeFactory $time,
@@ -65,11 +67,18 @@ class InboundController extends Controller
 
         $type = (string) $notification['type'];
         $id = (string) $notification['id'];
+        // A copy or a folder read is done for the person the signed notice
+        // names, with that person's own key. Without one nobody here may act,
+        // and Synaplan is told so before anything is claimed.
+        $person = is_string($notification['external_id'] ?? null) ? $notification['external_id'] : '';
+        if (in_array($type, ['delivery', 'pickup'], true) && !$this->links->canActFor($person)) {
+            return new JSONResponse(['error' => 'not_linked'], Http::STATUS_CONFLICT);
+        }
 
         return match ($type) {
-            'delivery' => $this->delivered($this->copies->handle($id)),
+            'delivery' => $this->delivered($this->copies->handle($id, $person)),
             'identity_revoked' => $this->revoked($id),
-            'pickup' => $this->read($id),
+            'pickup' => $this->read($id, $person),
             default => new JSONResponse([], Http::STATUS_NO_CONTENT),
         };
     }
@@ -112,9 +121,9 @@ class InboundController extends Controller
         return new JSONResponse($result['body'], $status);
     }
 
-    private function read(string $id): JSONResponse
+    private function read(string $id, string $person): JSONResponse
     {
-        $this->reads->handle($id);
+        $this->reads->handle($id, $person);
 
         return new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED);
     }

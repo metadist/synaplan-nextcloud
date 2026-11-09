@@ -69,11 +69,16 @@ export default async function globalSetup(): Promise<void> {
 	}
 	await synaplan.dispose()
 
+	// Synaplan's container reaches this Nextcloud on the Docker host, under
+	// a name Synaplan's test environment accepts for plain-http delivery.
+	const inbound = new URL(`${APP}/api/v1/inbound`, NC_URL)
+	inbound.hostname = 'host.docker.internal'
 	await saveSettings({
 		api_key_local: apiKey.key,
 		active_env: 'local',
 		mode: 'link',
 		link_auto_provision: false,
+		delivery_url: inbound.toString(),
 	})
 
 	const admin = await nextcloudAs('admin')

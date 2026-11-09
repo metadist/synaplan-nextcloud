@@ -29,6 +29,7 @@ final class FolderReadTest extends TestCase
     protected function setUp(): void
     {
         $this->links = $this->createMock(PlatformLinkService::class);
+        $this->links->method('canActFor')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
         $this->scope = $this->createMock(ReadScope::class);
         $this->jobs = $this->createMock(IJobList::class);
         $users = $this->createMock(IUserManager::class);
@@ -83,28 +84,48 @@ final class FolderReadTest extends TestCase
         $this->scope->method('mayRead')->with('ada', 'Invoices')->willReturn(false);
         $this->links->method('claimPickup')->willReturn($this->claim());
         $this->links->expects($this->never())->method('submitPickupListing');
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'outside_scope',
         ));
 
-        $this->reads->handle('15');
+        $this->reads->handle('15', 'ada');
+    }
+
+    public function testAReadIsNotClaimedWithoutThePersonsKey(): void
+    {
+        $this->links->expects($this->never())->method('claimPickup');
+
+        $this->reads->handle('15', 'bob');
+    }
+
+    public function testAClaimNamingSomeoneElseIsRefusedBeforeAnyListing(): void
+    {
+        $claim = $this->claim();
+        $claim['external_id'] = 'bob';
+        $this->links->method('claimPickup')->willReturn($claim);
+        $this->links->expects($this->never())->method('submitPickupListing');
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'not_found',
+        ));
+
+        $this->reads->handle('15', 'ada');
     }
 
     public function testAnAllowedFolderIsListedAndTheAskedFileIsSent(): void
     {
         $this->scope->method('mayRead')->willReturn(true);
         $this->links->method('claimPickup')->willReturn($this->claim());
-        $this->links->expects($this->once())->method('submitPickupListing')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('submitPickupListing')->with('15', 'ada', $this->callback(
             static fn (array $items): bool => ($items[0]['id'] ?? '') === '7' && ($items[0]['name'] ?? '') === 'a.txt',
         ))->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
-        $this->links->expects($this->once())->method('uploadPickupFile')->with('15', '7', 'etag-1', 'hello', 'a.txt', 'text/plain', $this->greaterThan(0))
+        $this->links->expects($this->once())->method('uploadPickupFile')->with('15', 'ada', '7', 'etag-1', 'hello', 'a.txt', 'text/plain', $this->greaterThan(0))
             ->willReturn(['status_code' => 200]);
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'done' && $body['sent'] === 1 && $body['listed'] === 1,
         ));
         $this->jobs->expects($this->never())->method('add');
 
-        $this->reads->handle('15');
+        $this->reads->handle('15', 'ada');
     }
 
     public function testAFileChangedSinceTheListingIsNotSentUnderItsOldVersion(): void
@@ -114,12 +135,12 @@ final class FolderReadTest extends TestCase
         $this->links->method('claimPickup')->willReturn($this->claim());
         $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
         $this->links->expects($this->never())->method('uploadPickupFile');
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'partial'
                 && ($body['skipped'][0]['reason'] ?? '') === 'changed_since_listing',
         ));
 
-        $this->reads->handle('15');
+        $this->reads->handle('15', 'ada');
     }
 
     public function testASelectorThatEscapesItsFolderIsRefused(): void
@@ -128,18 +149,18 @@ final class FolderReadTest extends TestCase
         $claim['selector'] = ['folder_path' => 'Invoices/../HR', 'recursive' => false];
         $this->links->method('claimPickup')->willReturn($claim);
         $this->links->expects($this->never())->method('submitPickupListing');
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'not_found',
         ));
 
-        $this->reads->handle('15');
+        $this->reads->handle('15', 'ada');
     }
 
     public function testAQueuedUploadRechecksTheSettingBeforeReading(): void
     {
         $this->scope->method('mayRead')->willReturn(false);
         $this->links->expects($this->never())->method('uploadPickupFile');
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'partial'
                 && ($body['skipped'][0]['reason'] ?? '') === 'outside_scope',
         ));
@@ -159,12 +180,12 @@ final class FolderReadTest extends TestCase
         $this->links->method('claimPickup')->willReturn($this->claim());
         $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
         $this->links->method('uploadPickupFile')->willThrowException(new \RuntimeException('timed out'));
-        $this->links->expects($this->once())->method('reportPickupResult')->with('15', $this->callback(
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'partial'
                 && ($body['skipped'][0]['reason'] ?? '') === 'unreachable',
         ));
 
-        $this->reads->handle('15');
+        $this->reads->handle('15', 'ada');
     }
 
     /**
