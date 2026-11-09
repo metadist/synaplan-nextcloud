@@ -282,7 +282,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->notificationTrust(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
-            fn () => $accounts->deleteProvisionedAccount('ada'),
+            fn () => $links->reportLifecycle('ada', 'disabled'),
             fn () => $links->register('registration-token'),
             fn () => $links->registrationStatus(),
             fn () => $links->announceDelivery('https://files.example.org/apps/synaplan_integration/api/v1/inbound'),

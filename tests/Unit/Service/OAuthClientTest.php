@@ -551,4 +551,17 @@ class OAuthClientTest extends TestCase
             $this->assertStringStartsWith('Bearer ey', (string) $request['options']['headers']['Authorization']);
         }
     }
+
+    public function testALifecycleChangeIsReportedWithAnAssertion(): void
+    {
+        $this->registered();
+        $this->respond = static fn (): array => [200, ['success' => true]];
+
+        $this->client()->reportLifecycle('ada', 'disabled');
+
+        $this->assertSame('POST', $this->requests[0]['method']);
+        $this->assertSame('https://synaplan.example/oauth/register/client-1/lifecycle', $this->requests[0]['url']);
+        $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $this->json(0));
+        $this->assertStringStartsWith('Bearer ey', (string) $this->requests[0]['options']['headers']['Authorization']);
+    }
 }

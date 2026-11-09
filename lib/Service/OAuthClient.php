@@ -111,6 +111,19 @@ class OAuthClient
     }
 
     /**
+     * Tell Synaplan a person here was deleted, disabled or enabled again.
+     * Synaplan pauses, resumes or ends their link; a disabled person resumes
+     * without connecting again.
+     */
+    public function reportLifecycle(string $externalId, string $event): void
+    {
+        $this->json('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
+            'external_id' => $externalId,
+            'event' => $event,
+        ], $this->assertionHeader());
+    }
+
+    /**
      * Leave Synaplan: every grant of this client ends there, and the key and
      * client id go here.
      */

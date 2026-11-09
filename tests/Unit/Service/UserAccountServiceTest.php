@@ -438,46 +438,6 @@ class UserAccountServiceTest extends TestCase
         $this->service()->clearLinkPrefs();
     }
 
-    public function testDeleteProvisionedAccountUsesTheAdminKey(): void
-    {
-        $this->userConfig['alice|synaplan_user_id'] = '501';
-        $captured = [];
-        $this->httpClient->expects($this->once())->method('delete')->willReturnCallback(
-            function (string $url, array $options) use (&$captured): IResponse {
-                $captured = [$url, $options['headers']['X-API-Key'] ?? null];
-                $response = $this->createStub(IResponse::class);
-                $response->method('getStatusCode')->willReturn(200);
-                $response->method('getBody')->willReturn('{}');
-
-                return $response;
-            }
-        );
-
-        $this->service()->deleteProvisionedAccount('alice');
-
-        $this->assertStringEndsWith('/api/v1/admin/users/501', $captured[0]);
-        $this->assertSame('sk_admin_key', $captured[1]);
-    }
-
-    public function testDeleteProvisionedAccountNeedsAnAccountAndTheAdminKey(): void
-    {
-        $this->httpClient->expects($this->never())->method('delete');
-        $this->service()->deleteProvisionedAccount('nobody');
-
-        $this->userConfig['alice|synaplan_user_id'] = '501';
-        $this->appConfig['api_key_local'] = '';
-        $this->service()->deleteProvisionedAccount('alice');
-    }
-
-    public function testDeleteProvisionedAccountLogsAFailureAndCarriesOn(): void
-    {
-        $this->userConfig['alice|synaplan_user_id'] = '501';
-        $this->httpClient->method('delete')->willThrowException(new \RuntimeException('down'));
-        $this->logger->expects($this->once())->method('warning');
-
-        $this->service()->deleteProvisionedAccount('alice');
-    }
-
     public function testGetLinkStatusOnlyReportsActiveLinkedKind(): void
     {
         $this->appConfig['mode'] = 'link';

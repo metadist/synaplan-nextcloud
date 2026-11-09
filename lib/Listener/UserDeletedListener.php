@@ -32,15 +32,15 @@ class UserDeletedListener implements IEventListener
     {
         $uid = $event->getUser()->getUID();
         $kind = $this->userAccounts->getLinkKind($uid);
-        $key = $kind === UserAccountService::KIND_PROVISIONED ? $this->userAccounts->getStoredApiKey($uid) : '';
-        if ($kind === UserAccountService::KIND_PROVISIONED) {
-            // Synaplan deletes an account it only kept for this person here,
-            // and keeps one the person also uses otherwise.
-            $this->userAccounts->deleteProvisionedAccount($uid);
+        $linked = $kind === UserAccountService::KIND_LINKED || $this->userAccounts->wasLinked($uid);
+        $key = $this->userAccounts->getStoredApiKey($uid);
+        // Decide before disconnect clears the stored credential.
+        if ($linked || $key !== '' || $kind !== null || $this->userAccounts->getSynaplanUserId($uid) !== null) {
+            // Synaplan ends the link, and deletes an account it only kept for
+            // this person here.
+            $this->platformLinks?->reportLifecycle($uid, 'deleted');
         }
-        if ($kind !== null || $key !== '') {
-            // A connected person's grant is revoked, which ends their link in
-            // Synaplan; a provisioned key is revoked. Local preferences go.
+        if ($linked || $key !== '') {
             $this->platformLinks?->disconnectUid($uid);
         }
     }

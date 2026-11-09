@@ -36,10 +36,17 @@ class UserChangedListener implements IEventListener
             return;
         }
         $uid = $event->getUser()->getUID();
-        // A disabled person's grant ends, which ends their link in Synaplan.
-        // After they are enabled again they connect once more.
-        if (!$now && $this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED) {
-            $this->platformLinks->disconnectUid($uid);
+        if (!$this->hasIdentity($uid)) {
+            return;
         }
+        $this->platformLinks->reportLifecycle($uid, $now ? 'enabled' : 'disabled');
+    }
+
+    private function hasIdentity(string $uid): bool
+    {
+        return $this->userAccounts->wasLinked($uid)
+            || $this->userAccounts->getLinkKind($uid) !== null
+            || $this->userAccounts->getStoredApiKey($uid) !== ''
+            || $this->userAccounts->getSynaplanUserId($uid) !== null;
     }
 }

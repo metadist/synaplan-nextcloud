@@ -431,30 +431,6 @@ class UserAccountService
     }
 
     /**
-     * Ask Synaplan to delete the account it provisioned for this person, with
-     * the admin key. Synaplan keeps an account the person also uses
-     * otherwise (a password, another link). Failures are logged: the person
-     * is gone here either way.
-     */
-    public function deleteProvisionedAccount(string $uid): void
-    {
-        $adminKey = $this->synaplanConfig->getAdminApiKey();
-        $synaplanUserId = $this->getSynaplanUserId($uid);
-        if ($adminKey === '' || $synaplanUserId === null) {
-            return;
-        }
-        try {
-            $this->adminRequest('DELETE', '/api/v1/admin/users/' . $synaplanUserId, null, $adminKey);
-        } catch (\Throwable $e) {
-            $this->logger->warning('Could not delete the Synaplan account of {uid}: {message}', [
-                'app' => Application::APP_ID,
-                'uid' => $uid,
-                'message' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
      * Fetch per-user usage from Synaplan (admin API) for a provisioned account.
      *
      * @return array<string, mixed>

@@ -432,6 +432,27 @@ class PlatformLinkService
     }
 
     /**
+     * Tell Synaplan a person here was deleted, disabled or enabled again.
+     * A failure is logged: the change here stands either way.
+     */
+    public function reportLifecycle(string $externalId, string $event): void
+    {
+        if ($externalId === '' || !$this->oauth->isRegistered()) {
+            return;
+        }
+        try {
+            $this->oauth->reportLifecycle($externalId, $event);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not tell Synaplan that {uid} was {event}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $externalId,
+                'event' => $event,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Who the person is in Synaplan, asked with their own credential.
      *
      * @return array{id?: int|string, email?: string}

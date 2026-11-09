@@ -21,6 +21,7 @@ class UserChangedListenerTest extends TestCase
     {
         $this->userAccounts = $this->createMock(UserAccountService::class);
         $this->platformLinks = $this->createMock(PlatformLinkService::class);
+        $this->userAccounts->method('getSynaplanUserId')->willReturn(9);
     }
 
     private function listener(): UserChangedListener
@@ -36,50 +37,35 @@ class UserChangedListenerTest extends TestCase
         return new UserChangedEvent($user, $feature, $value, $old);
     }
 
-    public function testDisablingAConnectedPersonEndsTheirLink(): void
+    public function testDisableReportsLifecycle(): void
     {
-        $this->userAccounts->method('getLinkKind')->with('ada')->willReturn(UserAccountService::KIND_LINKED);
-        $this->platformLinks->expects($this->once())->method('disconnectUid')->with('ada');
+        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('ada', 'disabled');
 
         $this->listener()->handle($this->event('enabled', false, true));
     }
 
-    public function testEnablingLeavesTheLinkAlone(): void
+    public function testEnableReportsLifecycle(): void
     {
-        $this->userAccounts->method('getLinkKind')->willReturn(UserAccountService::KIND_LINKED);
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
+        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('ada', 'enabled');
 
         $this->listener()->handle($this->event('enabled', true, false));
     }
 
-    public function testAnUnchangedStateIsIgnored(): void
-    {
-        $this->userAccounts->expects($this->never())->method('getLinkKind');
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
-
-        $this->listener()->handle($this->event('enabled', false, false));
-    }
-
     public function testOtherChangesAreIgnored(): void
     {
-        $this->userAccounts->expects($this->never())->method('getLinkKind');
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
+        $this->platformLinks->expects($this->never())->method('reportLifecycle');
 
         $this->listener()->handle($this->event('displayName', 'Ada', 'Ada Example'));
     }
 
-    public function testDisablingAProvisionedPersonKeepsTheirKey(): void
-    {
-        $this->userAccounts->method('getLinkKind')->willReturn(UserAccountService::KIND_PROVISIONED);
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
-
-        $this->listener()->handle($this->event('enabled', false, true));
-    }
-
     public function testAPersonWithNoIdentityIsIgnored(): void
     {
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('wasLinked')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->willReturn(null);
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
+        $this->userAccounts->method('getStoredApiKey')->willReturn('');
+        $this->userAccounts->method('getSynaplanUserId')->willReturn(null);
+        $this->platformLinks->expects($this->never())->method('reportLifecycle');
 
         $this->listener()->handle($this->event('enabled', false, true));
     }
