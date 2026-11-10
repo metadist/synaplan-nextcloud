@@ -511,6 +511,40 @@ class OAuthClientTest extends TestCase
         $this->assertTrue($client->isConnected('ada'));
     }
 
+    public function testARefreshWhoseAnswerGotLostIsAskedAgainAtOnce(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $calls = 0;
+        $this->respond = static function () use (&$calls): array {
+            if (++$calls === 1) {
+                throw new \RuntimeException('Operation timed out');
+            }
+
+            return [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]];
+        };
+
+        $this->assertSame('at-new', $this->client()->accessToken('ada'));
+        $this->assertCount(2, $this->requests);
+        $this->assertSame('rt-old', $this->form(1)['refresh_token']);
+        $this->assertNotSame($this->form(0)['client_assertion'], $this->form(1)['client_assertion'], 'an assertion is good for one request');
+        $this->assertSame('rt-new', $this->user['ada|synaplan_oauth_refresh']);
+    }
+
+    public function testAnUnreachableSynaplanIsAskedOnceMoreAndTheGrantKept(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = static function (): array {
+            throw new \RuntimeException('Connection refused');
+        };
+        $client = $this->client();
+
+        $this->assertSame('', $client->accessToken('ada'));
+        $this->assertCount(2, $this->requests);
+        $this->assertSame('rt-old', $this->user['ada|synaplan_oauth_refresh']);
+    }
+
     public function testARefusedClientKeepsThePersonsGrant(): void
     {
         $this->registered();

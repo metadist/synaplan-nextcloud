@@ -234,7 +234,7 @@ class OAuthClient
                 return $access;
             }
             try {
-                $tokens = $this->token(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
+                $tokens = $this->refresh($refresh);
             } catch (PlatformLinkException $e) {
                 if ($e->getErrorCode() === PlatformLinkException::CODE_GRANT_ENDED) {
                     $this->forget($uid);
@@ -247,6 +247,27 @@ class OAuthClient
             return (string) ($tokens['access_token'] ?? '');
         } finally {
             $this->locks->releaseLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
+        }
+    }
+
+    /**
+     * Synaplan may have rotated the refresh token although its answer never
+     * arrived. It accepts the replaced token for a minute more, so asking
+     * again at once keeps the grant that the next attempt would have lost.
+     *
+     * @return array<string, mixed>
+     */
+    private function refresh(string $refresh): array
+    {
+        $params = ['grant_type' => 'refresh_token', 'refresh_token' => $refresh];
+        try {
+            return $this->token($params);
+        } catch (PlatformLinkException $e) {
+            if ($e->getErrorCode() !== PlatformLinkException::CODE_UNREACHABLE) {
+                throw $e;
+            }
+
+            return $this->token($params);
         }
     }
 
@@ -389,8 +410,8 @@ class OAuthClient
             'sub' => $clientId,
             'aud' => $this->issuer(),
             'jti' => bin2hex(random_bytes(16)),
-            // Synaplan allows no clock skew on iat; a clock running ahead here
-            // would make every assertion "not yet valid".
+            // Synaplan allows a minute of clock skew; backdating iat adds room
+            // for a clock here that runs further ahead.
             'iat' => time() - 30,
             'exp' => time() + 60,
         ], JSON_UNESCAPED_SLASHES));
