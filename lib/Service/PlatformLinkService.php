@@ -618,9 +618,6 @@ class PlatformLinkService
     }
 
     /**
-     * @return array<string, string>
-     */
-    /**
      * Whether this person can be acted for: their own Synaplan key is held.
      */
     public function canActFor(string $uid): bool
@@ -645,6 +642,9 @@ class PlatformLinkService
         return ['Accept' => 'application/json', 'X-API-Key' => $key];
     }
 
+    /**
+     * @return array<string, string>
+     */
     private function instanceHeaders(): array
     {
         return [
