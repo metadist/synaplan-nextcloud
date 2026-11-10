@@ -49,7 +49,7 @@ async function waitUntilReady(url: string): Promise<void> {
 }
 
 /** The initial access token the Synaplan test stack accepts (synaplan-test-stack.yml). */
-const REGISTRATION_TOKEN = 'nextcloud-e2e-registration'
+const REGISTRATION_TOKEN = 'nextcloud-e2e-initial-access-token-0001'
 
 /**
  * Connects the app to the Synaplan test stack the way an administrator

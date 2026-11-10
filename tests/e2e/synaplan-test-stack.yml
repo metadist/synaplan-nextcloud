@@ -31,7 +31,7 @@ services:
             REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
             CLOUD_FILES_ENABLED: 'true'
-            PLATFORM_LINKS_REGISTRATION_TOKEN: nextcloud-e2e-registration
+            PLATFORM_LINKS_REGISTRATION_TOKEN: nextcloud-e2e-initial-access-token-0001
         depends_on:
             redis_test:
                 condition: service_healthy
