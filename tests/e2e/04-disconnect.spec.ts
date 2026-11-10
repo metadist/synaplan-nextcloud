@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import {
 	SYNAPLAN_PERSON,
+	allowOnSynaplan,
 	connectFromSettings,
 	ensureConnected,
 	linksOf,
@@ -10,7 +11,9 @@ import {
 	synaplanAs,
 } from './support'
 
-test('after a disconnect in Synaplan, the next action says how to reconnect', async ({
+// Synaplan tells this Nextcloud right away (identity_revoked), so the next
+// action asks to connect again instead of failing, and connecting works.
+test('after a disconnect in Synaplan, the next action asks to connect again', async ({
 	page,
 }) => {
 	await logIn(page, 'ada')
@@ -23,16 +26,16 @@ test('after a disconnect in Synaplan, the next action says how to reconnect', as
 		const removed = await synaplan.delete(`/api/v1/me/platform-links/${link.id}`)
 		expect(removed.ok(), `disconnecting link ${link.id}`).toBe(true)
 	}
-	await synaplan.dispose()
 
 	const dialog = await openFileAction(page, 'Summarize with Synaplan')
-	await dialog.getByRole('button', { name: 'Summarize', exact: true }).click()
-
-	const note = dialog.locator('.notecard')
-	await expect(note).toContainText('Connect your Synaplan account first.')
-	await note.getByRole('link', { name: 'Open Synaplan settings' }).click()
-	await expect(page.getByText('Not connected')).toBeVisible()
-	await expect(page.getByRole('link', { name: 'Connect Synaplan' })).toBeVisible()
+	await expect(
+		dialog.getByRole('button', { name: 'Summarize', exact: true }),
+	).toHaveCount(0)
+	await dialog.getByRole('button', { name: 'Connect my Synaplan account' }).click()
+	await allowOnSynaplan(page)
+	await expect(page.getByText(/Connected as/)).toBeVisible()
+	expect((await linksOf(synaplan, 'ada')).length, 'ada is linked again').toBe(1)
+	await synaplan.dispose()
 })
 
 test('a disconnect in Nextcloud ends the link in Synaplan', async ({ page }) => {
