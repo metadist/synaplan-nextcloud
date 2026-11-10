@@ -18,6 +18,7 @@ use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\FileInfo;
 use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\IConfig;
 
@@ -40,6 +41,7 @@ class SourceEventListener implements IEventListener
         private SynaplanConfig $synaplanConfig,
         private IConfig $config,
         private IJobList $jobs,
+        private IRootFolder $rootFolder,
     ) {
     }
 
@@ -63,10 +65,47 @@ class SourceEventListener implements IEventListener
         }
 
         foreach ($this->mapEvents($event) as $mapped) {
-            foreach ($this->people($mapped) as $uid) {
-                $this->jobs->add(SourceEventsJob::class, ['uid' => $uid] + $mapped);
+            foreach ($this->perPerson($mapped) as $job) {
+                $this->jobs->add(SourceEventsJob::class, $job);
             }
         }
+    }
+
+    /**
+     * Synaplan applies a source event to the copies of the person whose key
+     * reports it, and a move renames the copy to the path it reports. A file
+     * is reported for the person in whose files it changed, with their path,
+     * and, for a shared file, for its owner too, with the owner's path.
+     *
+     * @param array{id: string, event: string, version: string, path: string, uid: string, owner: string} $mapped
+     * @return list<array{uid: string, id: string, event: string, version: string, path: string}>
+     */
+    private function perPerson(array $mapped): array
+    {
+        $event = ['id' => $mapped['id'], 'event' => $mapped['event'], 'version' => $mapped['version']];
+        $jobs = [];
+        if ($mapped['uid'] !== '') {
+            $jobs[] = ['uid' => $mapped['uid']] + $event + ['path' => $mapped['path']];
+        }
+        if ($mapped['owner'] !== '' && $mapped['owner'] !== $mapped['uid']) {
+            $jobs[] = ['uid' => $mapped['owner']] + $event + ['path' => $this->ownerPath($mapped['owner'], (int) $mapped['id'])];
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Where the owner sees a shared node, '' when it is gone (deleted).
+     */
+    private function ownerPath(string $owner, int $id): string
+    {
+        try {
+            $node = $this->rootFolder->getUserFolder($owner)->getFirstNodeById($id);
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $node instanceof Node ? substr($this->userRelativePath($node->getPath()) ?? '', 0, 255) : '';
     }
 
     /**
@@ -149,7 +188,7 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * @return array{id: string, event: string, version: string, path: string}|null
+     * @return array{id: string, event: string, version: string, path: string, uid: string, owner: string}|null
      */
     private function payload(Node $node, string $kind, bool $allowFolder): ?array
     {
@@ -192,27 +231,14 @@ class SourceEventListener implements IEventListener
         }
     }
 
-    /**
-     * Strips "/<uid>/files/" and ignores trash, uploads, thumbnails and appdata.
-     */
-    /**
-     * Synaplan applies a source event to the copies of the person whose key
-     * reports it. A file is reported for the person in whose files it
-     * changed and, for a shared file, for its owner too.
-     *
-     * @param array<string, string> $mapped
-     * @return list<string>
-     */
-    private function people(array $mapped): array
-    {
-        return array_values(array_unique(array_filter([$mapped['uid'] ?? '', $mapped['owner'] ?? ''], static fn (string $uid): bool => $uid !== '')));
-    }
-
     private function pathUser(string $fullPath): string
     {
         return preg_match('#^/([^/]+)/files/#', $fullPath, $match) === 1 ? $match[1] : '';
     }
 
+    /**
+     * Strips "/<uid>/files/" and ignores trash, uploads, thumbnails and appdata.
+     */
     private function userRelativePath(string $fullPath): ?string
     {
         if (preg_match('#^/[^/]+/files/(.+)$#', $fullPath, $match) !== 1) {
