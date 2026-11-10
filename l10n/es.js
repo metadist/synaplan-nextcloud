@@ -316,6 +316,6 @@ OC.L10N.register(
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Las nuevas versiones de este archivo quedan consultables por IA en tu carpeta de conocimiento «{folder}».",
     "“{task}” will run for a new copy of this file." : "«{task}» se ejecutará para una copia nueva de este archivo.",
     "Keep it searchable" : "Mantenerlo consultable",
-    "Registration token from Synaplan (optional)" : "Token de registro de Synaplan (opcional)"
+    "Registration code from Synaplan (optional)" : "Código de registro de Synaplan (opcional)"
 },
 "nplurals=2; plural=(n != 1);");

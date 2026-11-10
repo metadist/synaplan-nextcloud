@@ -61,7 +61,7 @@
 					:label="
 						t(
 							'synaplan_integration',
-							'Registration token from Synaplan (optional)',
+							'Registration code from Synaplan (optional)',
 						)
 					"
 					type="password"

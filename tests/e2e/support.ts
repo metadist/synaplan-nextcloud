@@ -237,4 +237,3 @@ export async function linksOf(
 			&& link.external_id === uid,
 	)
 }
-
