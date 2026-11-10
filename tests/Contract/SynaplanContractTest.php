@@ -26,6 +26,7 @@ use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -487,7 +488,7 @@ final class SynaplanContractTest extends TestCase
             },
         );
 
-        return new OAuthClient($this->recordingClients(), $app, $config, $user, $synaplanConfig, new NullLogger());
+        return new OAuthClient($this->recordingClients(), $app, $config, $user, $this->createStub(ILockingProvider::class), $synaplanConfig, new NullLogger());
     }
 
     private function expireAccessToken(string $uid): void

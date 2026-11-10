@@ -10,6 +10,8 @@ use OCP\Config\IUserConfig;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -34,12 +36,16 @@ class OAuthClient
     private const REFRESH = 'synaplan_oauth_refresh';
     private const ACCESS = 'synaplan_oauth_access';
     private const EXPIRES = 'synaplan_oauth_expires';
+    /** The client id the grant belongs to: a new registration voids it. */
+    private const GRANT_CLIENT = 'synaplan_oauth_client';
+    private const REFRESH_WAIT_SECONDS = 10;
 
     public function __construct(
         private IClientService $clientService,
         private IAppConfig $appConfig,
         private IConfig $config,
         private IUserConfig $userConfig,
+        private ILockingProvider $locks,
         private SynaplanConfig $synaplanConfig,
         private LoggerInterface $logger,
     ) {
@@ -66,7 +72,7 @@ class OAuthClient
      */
     public function register(array $metadata, string $registrationToken): array
     {
-        $this->newKey();
+        [$private, $kid] = $this->newKey();
         $headers = $registrationToken !== '' ? ['Authorization' => 'Bearer ' . $registrationToken] : [];
         $answer = $this->json('POST', '/oauth/register', [
             'software_id' => 'nextcloud',
@@ -75,7 +81,7 @@ class OAuthClient
             'redirect_uris' => [$metadata['redirect_uri']],
             'grant_types' => ['authorization_code', 'refresh_token'],
             'token_endpoint_auth_method' => 'private_key_jwt',
-            'jwks' => ['keys' => [$this->publicJwk()]],
+            'jwks' => ['keys' => [$this->publicJwk($private, $kid)]],
             'delivery_url' => $metadata['delivery_url'],
             'app_capabilities' => $metadata['capabilities'],
             'server_id' => $metadata['server_id'],
@@ -84,6 +90,9 @@ class OAuthClient
         if (!is_string($clientId) || $clientId === '') {
             throw new PlatformLinkException('Synaplan did not register this Nextcloud.', PlatformLinkException::CODE_EXCHANGE);
         }
+        // Kept only now: a refused registration leaves a working one as it was.
+        $this->appConfig->setValueString(Application::APP_ID, self::KEY, $private, sensitive: true);
+        $this->appConfig->setValueString(Application::APP_ID, self::KID, $kid);
         $this->config->setAppValue(Application::APP_ID, self::CLIENT_ID, $clientId);
 
         return $answer;
@@ -195,27 +204,66 @@ class OAuthClient
      */
     public function accessToken(string $uid): string
     {
-        $access = $this->secret($uid, self::ACCESS);
-        $expires = (int) $this->userConfig->getValueString($uid, Application::APP_ID, self::EXPIRES);
-        if ($access !== '' && $expires > time() + 30) {
+        $access = $this->currentAccess($uid);
+        if ($access !== '' || $this->secret($uid, self::REFRESH) === '') {
             return $access;
         }
-        $refresh = $this->secret($uid, self::REFRESH);
-        if ($refresh === '') {
-            return '';
+        // A refresh token works once (rotation): two requests refreshing with
+        // the same one would end the grant. One refreshes, the others wait
+        // and take its token.
+        $lock = Application::APP_ID . '/oauth-refresh/' . $uid;
+        if (!$this->acquire($lock)) {
+            $this->userConfig->clearCache($uid);
+
+            return $this->currentAccess($uid);
         }
         try {
-            $tokens = $this->token(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
-        } catch (PlatformLinkException $e) {
-            if ($e->getErrorCode() === PlatformLinkException::CODE_GRANT_ENDED) {
-                $this->forget($uid);
+            $this->userConfig->clearCache($uid);
+            $access = $this->currentAccess($uid);
+            $refresh = $this->secret($uid, self::REFRESH);
+            if ($access !== '' || $refresh === '') {
+                return $access;
             }
+            try {
+                $tokens = $this->token(['grant_type' => 'refresh_token', 'refresh_token' => $refresh]);
+            } catch (PlatformLinkException $e) {
+                if ($e->getErrorCode() === PlatformLinkException::CODE_GRANT_ENDED) {
+                    $this->forget($uid);
+                }
 
-            return '';
+                return '';
+            }
+            $this->remember($uid, $tokens);
+
+            return (string) ($tokens['access_token'] ?? '');
+        } finally {
+            $this->locks->releaseLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
         }
-        $this->remember($uid, $tokens);
+    }
 
-        return (string) ($tokens['access_token'] ?? '');
+    private function currentAccess(string $uid): string
+    {
+        $access = $this->secret($uid, self::ACCESS);
+        $expires = (int) $this->userConfig->getValueString($uid, Application::APP_ID, self::EXPIRES);
+
+        return $access !== '' && $expires > time() + 30 ? $access : '';
+    }
+
+    private function acquire(string $lock): bool
+    {
+        $deadline = microtime(true) + self::REFRESH_WAIT_SECONDS;
+        while (true) {
+            try {
+                $this->locks->acquireLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
+
+                return true;
+            } catch (LockedException) {
+                if (microtime(true) >= $deadline) {
+                    return false;
+                }
+                usleep(100_000);
+            }
+        }
     }
 
     /**
@@ -241,7 +289,7 @@ class OAuthClient
 
     public function forget(string $uid): void
     {
-        foreach ([self::REFRESH, self::ACCESS, self::EXPIRES] as $key) {
+        foreach ([self::REFRESH, self::ACCESS, self::EXPIRES, self::GRANT_CLIENT] as $key) {
             $this->userConfig->deleteUserConfig($uid, Application::APP_ID, $key);
         }
     }
@@ -269,10 +317,21 @@ class OAuthClient
         $this->userConfig->setValueString($uid, Application::APP_ID, self::REFRESH, $refresh, flags: IUserConfig::FLAG_SENSITIVE);
         $this->userConfig->setValueString($uid, Application::APP_ID, self::ACCESS, $access, flags: IUserConfig::FLAG_SENSITIVE);
         $this->userConfig->setValueString($uid, Application::APP_ID, self::EXPIRES, (string) (time() + (int) ($tokens['expires_in'] ?? 0)));
+        $this->userConfig->setValueString($uid, Application::APP_ID, self::GRANT_CLIENT, $this->clientId());
     }
 
+    /**
+     * A grant of an earlier registration counts as none: Synaplan ended it
+     * with that registration.
+     *
+     * @phpstan-impure another request may have rotated the grant meanwhile
+     */
     private function secret(string $uid, string $key): string
     {
+        $client = $this->clientId();
+        if ($client === '' || $this->userConfig->getValueString($uid, Application::APP_ID, self::GRANT_CLIENT) !== $client) {
+            return '';
+        }
         $value = $this->userConfig->getValueString($uid, Application::APP_ID, $key);
 
         return str_starts_with($value, '$UserConfigEncryption$') ? '' : $value;
@@ -331,22 +390,25 @@ class OAuthClient
         return rtrim($issuer, '/');
     }
 
-    private function newKey(): void
+    /**
+     * @return array{0: string, 1: string} the private key (PEM) and its key id
+     */
+    private function newKey(): array
     {
         $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         if ($key === false || !openssl_pkey_export($key, $private)) {
             throw new PlatformLinkException('Could not create the Synaplan client key.', PlatformLinkException::CODE_EXCHANGE);
         }
-        $this->appConfig->setValueString(Application::APP_ID, self::KEY, (string) $private, sensitive: true);
-        $this->appConfig->setValueString(Application::APP_ID, self::KID, bin2hex(random_bytes(8)));
+
+        return [(string) $private, bin2hex(random_bytes(8))];
     }
 
     /**
      * @return array<string, string>
      */
-    private function publicJwk(): array
+    private function publicJwk(string $privatePem, string $kid): array
     {
-        $private = openssl_pkey_get_private($this->appConfig->getValueString(Application::APP_ID, self::KEY));
+        $private = openssl_pkey_get_private($privatePem);
         $details = $private === false ? false : openssl_pkey_get_details($private);
         if (!is_array($details) || !isset($details['rsa']['n'], $details['rsa']['e'])) {
             throw new PlatformLinkException('The Synaplan client key is unreadable.', PlatformLinkException::CODE_EXCHANGE);
@@ -354,7 +416,7 @@ class OAuthClient
 
         return [
             'kty' => 'RSA',
-            'kid' => $this->appConfig->getValueString(Application::APP_ID, self::KID),
+            'kid' => $kid,
             'use' => 'sig',
             'alg' => 'RS256',
             'n' => self::b64($details['rsa']['n']),
@@ -417,9 +479,18 @@ class OAuthClient
         $body = is_array($decoded) ? $decoded : [];
         if ($status >= 400) {
             $error = is_string($body['error'] ?? null) ? $body['error'] : '';
-            $code = in_array($error, ['invalid_grant', 'invalid_client'], true) || $status === 401
+            // Only invalid_grant is about the person's grant. invalid_client
+            // (a key or registration problem) concerns everybody and must not
+            // cost each person their connection.
+            $code = $error === 'invalid_grant'
                 ? PlatformLinkException::CODE_GRANT_ENDED
                 : PlatformLinkException::CODE_EXCHANGE;
+            if ($error === 'invalid_client') {
+                $this->logger->warning('Synaplan does not accept this Nextcloud as its client ({path}); check the registration in the admin settings.', [
+                    'app' => Application::APP_ID,
+                    'path' => $path,
+                ]);
+            }
             throw new PlatformLinkException(
                 is_string($body['error_description'] ?? null) ? $body['error_description'] : 'Synaplan refused the request (' . $status . ').',
                 $code,

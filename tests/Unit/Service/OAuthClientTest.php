@@ -13,6 +13,8 @@ use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -30,6 +32,8 @@ class OAuthClientTest extends TestCase
     private array $requests = [];
     /** @var \Closure(string, string, array<string, mixed>): array{0: int, 1: array<string, mixed>} */
     private \Closure $respond;
+    /** @var \Closure(string): void */
+    private \Closure $onLock;
 
     public static function setUpBeforeClass(): void
     {
@@ -46,6 +50,8 @@ class OAuthClientTest extends TestCase
         $this->sensitive = [];
         $this->requests = [];
         $this->respond = static fn (): array => [200, []];
+        $this->onLock = static function (): void {
+        };
     }
 
     private function client(): OAuthClient
@@ -123,7 +129,12 @@ class OAuthClientTest extends TestCase
         $synaplanConfig = $this->createStub(SynaplanConfig::class);
         $synaplanConfig->method('getBaseUrl')->willReturn('https://synaplan.example');
 
-        return new OAuthClient($clientService, $appConfig, $config, $userConfig, $synaplanConfig, new NullLogger());
+        $locks = $this->createStub(ILockingProvider::class);
+        $locks->method('acquireLock')->willReturnCallback(
+            fn (string $path) => ($this->onLock)($path)
+        );
+
+        return new OAuthClient($clientService, $appConfig, $config, $userConfig, $locks, $synaplanConfig, new NullLogger());
     }
 
     private function registered(): void
@@ -139,6 +150,7 @@ class OAuthClientTest extends TestCase
         $this->user['ada|synaplan_oauth_refresh'] = $refresh;
         $this->user['ada|synaplan_oauth_access'] = $access;
         $this->user['ada|synaplan_oauth_expires'] = (string) $expires;
+        $this->user['ada|synaplan_oauth_client'] = 'client-1';
     }
 
     /**
@@ -291,6 +303,23 @@ class OAuthClientTest extends TestCase
             $this->assertSame(PlatformLinkException::CODE_EXCHANGE, $e->getErrorCode());
         }
         $this->assertArrayNotHasKey('link_instance_id', $this->app);
+        $this->assertArrayNotHasKey('oauth_private_key', $this->app);
+    }
+
+    public function testARefusedRegistrationKeepsTheWorkingOne(): void
+    {
+        $this->registered();
+        $this->respond = static fn (): array => [400, ['error' => 'invalid_client_metadata']];
+
+        try {
+            $this->client()->register(self::metadata(), '');
+            $this->fail('A refused registration must throw.');
+        } catch (PlatformLinkException) {
+        }
+
+        $this->assertSame('client-1', $this->app['link_instance_id']);
+        $this->assertSame(self::$privateKey, $this->app['oauth_private_key']);
+        $this->assertSame('kid-1', $this->app['oauth_kid']);
     }
 
     public function testTheClientAssertionIsSignedWithTheRegisteredKey(): void
@@ -465,6 +494,48 @@ class OAuthClientTest extends TestCase
         $this->assertSame('', $client->accessToken('ada'));
         $this->assertSame('rt-old', $this->user['ada|synaplan_oauth_refresh']);
         $this->assertTrue($client->isConnected('ada'));
+    }
+
+    public function testARefusedClientKeepsThePersonsGrant(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = static fn (): array => [401, ['error' => 'invalid_client']];
+        $client = $this->client();
+
+        $this->assertSame('', $client->accessToken('ada'));
+        $this->assertTrue($client->isConnected('ada'));
+    }
+
+    public function testARefreshUnderWayElsewhereIsWaitedForAndItsTokenTaken(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $first = true;
+        $this->onLock = function (string $path) use (&$first): void {
+            if ($first) {
+                $first = false;
+                // The other request finishes its refresh while this one waits.
+                $this->connected('rt-new', 'at-new', time() + 300);
+
+                throw new LockedException($path);
+            }
+        };
+
+        $this->assertSame('at-new', $this->client()->accessToken('ada'));
+        $this->assertSame([], $this->requests);
+    }
+
+    public function testAGrantOfAnEarlierRegistrationIsNone(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() + 600);
+        $this->user['ada|synaplan_oauth_client'] = 'client-0';
+        $client = $this->client();
+
+        $this->assertFalse($client->isConnected('ada'));
+        $this->assertSame('', $client->accessToken('ada'));
+        $this->assertSame([], $this->requests);
     }
 
     public function testAccessTokenWithoutAGrantAsksNothing(): void
