@@ -58,7 +58,18 @@ class CopyDelivery
      */
     public function handle(string $id, string $uid): array
     {
-        $claim = $this->links->claimDelivery($id, $uid);
+        try {
+            $claim = $this->links->claimDelivery($id, $uid);
+        } catch (\Throwable $e) {
+            // The person's credential is gone or Synaplan is unreachable:
+            // the copy stays pending for Synaplan to offer again.
+            $this->logger->warning('Could not claim a Synaplan copy: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['status' => 202, 'body' => ['state' => 'pending']];
+        }
         if (isset($claim['status_code']) && (int) $claim['status_code'] !== 200) {
             // Another worker claimed it, or it expired. Leave it pending.
             return ['status' => 202, 'body' => ['state' => 'pending']];

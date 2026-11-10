@@ -51,7 +51,9 @@ class NotifyKeyCache
         } catch (\Throwable) {
             return;
         }
-        if ($trust['issuer'] === '') {
+        // A half answer keeps the last good trust: without keys every
+        // notification would be refused until the next refresh.
+        if ($trust['issuer'] === '' || $trust['keys'] === []) {
             return;
         }
         $this->config->setAppValue(Application::APP_ID, self::ISSUER, $trust['issuer']);
