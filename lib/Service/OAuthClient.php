@@ -269,6 +269,9 @@ class OAuthClient
     /**
      * End the person's grant at Synaplan (which ends their link there) and
      * forget it here.
+     *
+     * @throws PlatformLinkException when Synaplan could not be told; the
+     *                               grant is kept so disconnecting can be retried
      */
     public function revoke(string $uid): void
     {
@@ -276,12 +279,16 @@ class OAuthClient
         if ($refresh !== '' && $this->isRegistered()) {
             try {
                 $this->form('/oauth/revoke', ['token' => $refresh] + $this->assertionFields());
-            } catch (\Throwable $e) {
-                $this->logger->warning('Could not revoke the Synaplan grant of {uid}: {message}', [
-                    'app' => Application::APP_ID,
-                    'uid' => $uid,
-                    'message' => $e->getMessage(),
-                ]);
+            } catch (PlatformLinkException $e) {
+                if ($e->getErrorCode() !== PlatformLinkException::CODE_GRANT_ENDED) {
+                    $this->logger->warning('Could not revoke the Synaplan grant of {uid}: {message}', [
+                        'app' => Application::APP_ID,
+                        'uid' => $uid,
+                        'message' => $e->getMessage(),
+                    ]);
+
+                    throw $e;
+                }
             }
         }
         $this->forget($uid);
@@ -365,7 +372,9 @@ class OAuthClient
             'sub' => $clientId,
             'aud' => $this->issuer(),
             'jti' => bin2hex(random_bytes(16)),
-            'iat' => time(),
+            // Synaplan allows no clock skew on iat; a clock running ahead here
+            // would make every assertion "not yet valid".
+            'iat' => time() - 30,
             'exp' => time() + 60,
         ], JSON_UNESCAPED_SLASHES));
         $private = $this->appConfig->getValueString(Application::APP_ID, self::KEY);

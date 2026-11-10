@@ -338,7 +338,8 @@ class OAuthClientTest extends TestCase
         $this->assertSame('client-1', $payload['iss']);
         $this->assertSame('client-1', $payload['sub']);
         $this->assertSame('https://issuer.example', $payload['aud']);
-        $this->assertSame(60, $payload['exp'] - $payload['iat']);
+        $this->assertLessThanOrEqual(time() - 30, $payload['iat']);
+        $this->assertSame(90, $payload['exp'] - $payload['iat']);
         $this->assertNotSame('', $payload['jti']);
     }
 
@@ -575,15 +576,30 @@ class OAuthClientTest extends TestCase
         $this->assertFalse($client->isConnected('ada'));
     }
 
-    public function testRevokeForgetsTheGrantEvenWhenSynaplanFails(): void
+    public function testRevokeKeepsTheGrantWhenSynaplanCannotBeTold(): void
     {
         $this->registered();
         $this->connected();
         $this->respond = static fn (): array => [500, []];
 
-        $this->client()->revoke('ada');
+        try {
+            $this->client()->revoke('ada');
+            $this->fail('A failed revocation must be reported.');
+        } catch (PlatformLinkException) {
+        }
 
         $this->assertCount(1, $this->requests);
+        $this->assertSame('rt-old', $this->user['ada|synaplan_oauth_refresh']);
+    }
+
+    public function testRevokeOfAGrantSynaplanAlreadyEndedForgetsIt(): void
+    {
+        $this->registered();
+        $this->connected();
+        $this->respond = static fn (): array => [400, ['error' => 'invalid_grant']];
+
+        $this->client()->revoke('ada');
+
         $this->assertSame([], $this->user);
     }
 
