@@ -317,6 +317,7 @@ OC.L10N.register(
     "“{task}” will run for a new copy of this file." : "„{task}“ läuft für eine neue Kopie dieser Datei.",
     "Keep it searchable" : "Es durchsuchbar halten",
     "Registration code from Synaplan (optional)" : "Registrierungscode von Synaplan (optional)",
-    "You did not allow the connection. Nothing was connected." : "Du hast die Verbindung nicht erlaubt. Es wurde nichts verbunden."
+    "You did not allow the connection. Nothing was connected." : "Du hast die Verbindung nicht erlaubt. Es wurde nichts verbunden.",
+    "Synaplan cannot be reached right now. Please try again later." : "Synaplan ist gerade nicht erreichbar. Bitte versuch es später noch einmal."
 },
 "nplurals=2; plural=(n != 1);");

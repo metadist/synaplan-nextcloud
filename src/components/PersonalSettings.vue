@@ -456,6 +456,12 @@ function applyQueryBanner() {
 			'This Nextcloud is waiting for approval by the Synaplan administrator.',
 		)
 		bannerType.value = 'warning'
+	} else if (error === 'unreachable') {
+		banner.value = t(
+			'synaplan_integration',
+			'Synaplan cannot be reached right now. Please try again later.',
+		)
+		bannerType.value = 'error'
 	} else if (error === 'denied') {
 		banner.value = t(
 			'synaplan_integration',

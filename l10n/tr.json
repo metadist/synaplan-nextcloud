@@ -316,7 +316,8 @@
 		"“{task}” will run for a new copy of this file.": "“{task}”, bu dosyanın yeni bir kopyası için çalışır.",
 		"Keep it searchable": "Aranabilir tut",
 		"Registration code from Synaplan (optional)": "Synaplan kayıt kodu (isteğe bağlı)",
-		"You did not allow the connection. Nothing was connected.": "Bağlantıya izin vermediniz. Hiçbir şey bağlanmadı."
+		"You did not allow the connection. Nothing was connected.": "Bağlantıya izin vermediniz. Hiçbir şey bağlanmadı.",
+		"Synaplan cannot be reached right now. Please try again later.": "Synaplan şu anda erişilemiyor. Lütfen daha sonra tekrar deneyin."
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

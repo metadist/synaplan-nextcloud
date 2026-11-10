@@ -194,10 +194,10 @@ class UserAccountService
      */
     public function getLinkKind(string $uid): ?string
     {
-        // Read the key first: a key that no longer decrypts takes the link with it.
         if ($this->oauth->isConnected($uid)) {
             return self::KIND_LINKED;
         }
+        // Read the key first: a key that no longer decrypts takes the link with it.
         $key = $this->storedKey($uid);
         $kind = $this->config->getUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, '');
         if ($kind === self::KIND_LINKED || $kind === self::KIND_PROVISIONED) {
