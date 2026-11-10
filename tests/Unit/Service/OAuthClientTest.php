@@ -715,6 +715,7 @@ class OAuthClientTest extends TestCase
         $bearer = (string) $this->requests[0]['options']['headers']['Authorization'];
         $this->assertStringStartsWith('Bearer ', $bearer);
         $this->assertSame('client-1', self::decodeJwt(substr($bearer, 7))[1]['sub']);
+        $this->assertSame('https://issuer.example/oauth/register/client-1', self::decodeJwt(substr($bearer, 7))[1]['aud']);
         $this->assertArrayNotHasKey('link_instance_id', $this->app);
         $this->assertArrayNotHasKey('oauth_private_key', $this->app);
         $this->assertArrayNotHasKey('oauth_kid', $this->app);
@@ -735,7 +736,9 @@ class OAuthClientTest extends TestCase
         $this->assertSame('https://synaplan.example/oauth/register/client-1', $this->requests[1]['url']);
         $this->assertSame(['delivery_url' => 'https://files.example.org/inbound'], $this->json(1));
         foreach ($this->requests as $request) {
-            $this->assertStringStartsWith('Bearer ey', (string) $request['options']['headers']['Authorization']);
+            $bearer = (string) $request['options']['headers']['Authorization'];
+            $this->assertStringStartsWith('Bearer ey', $bearer);
+            $this->assertSame('https://issuer.example/oauth/register/client-1', self::decodeJwt(substr($bearer, 7))[1]['aud']);
         }
     }
 
@@ -749,6 +752,8 @@ class OAuthClientTest extends TestCase
         $this->assertSame('POST', $this->requests[0]['method']);
         $this->assertSame('https://synaplan.example/oauth/register/client-1/lifecycle', $this->requests[0]['url']);
         $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $this->json(0));
-        $this->assertStringStartsWith('Bearer ey', (string) $this->requests[0]['options']['headers']['Authorization']);
+        $bearer = (string) $this->requests[0]['options']['headers']['Authorization'];
+        $this->assertStringStartsWith('Bearer ey', $bearer);
+        $this->assertSame('https://issuer.example/oauth/register/client-1/lifecycle', self::decodeJwt(substr($bearer, 7))[1]['aud']);
     }
 }

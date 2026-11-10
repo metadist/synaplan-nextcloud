@@ -379,7 +379,10 @@ class OAuthClient
     }
 
     /**
-     * A call about this registration, signed as the client (RFC 7592).
+     * A call about this registration, signed as the client (RFC 7592). Its
+     * assertion names the endpoint it is for: Synaplan does not take the
+     * bare issuer here, so an assertion made for the token endpoint cannot
+     * change the registration.
      *
      * @param array<string, mixed>|null $body
      *
@@ -387,7 +390,7 @@ class OAuthClient
      */
     private function asClient(string $method, string $path, ?array $body = null): array
     {
-        return $this->json($method, $path, $body, ['Authorization' => 'Bearer ' . $this->assertion()], true);
+        return $this->json($method, $path, $body, ['Authorization' => 'Bearer ' . $this->assertion($path)], true);
     }
 
     /**
@@ -399,16 +402,17 @@ class OAuthClient
     }
 
     /**
-     * A one-minute client assertion, addressed to Synaplan's issuer.
+     * A one-minute client assertion, addressed to Synaplan's issuer, or to
+     * the endpoint at path under it.
      */
-    public function assertion(): string
+    public function assertion(string $path = ''): string
     {
         $clientId = $this->clientId();
         $header = self::b64((string) json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => $this->appConfig->getValueString(Application::APP_ID, self::KID)]));
         $payload = self::b64((string) json_encode([
             'iss' => $clientId,
             'sub' => $clientId,
-            'aud' => $this->issuer(),
+            'aud' => $this->issuer() . $path,
             'jti' => bin2hex(random_bytes(16)),
             // Synaplan allows a minute of clock skew; backdating iat adds room
             // for a clock here that runs further ahead.
