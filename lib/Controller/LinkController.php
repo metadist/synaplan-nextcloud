@@ -61,7 +61,7 @@ class LinkController extends Controller
             ]));
         }
 
-        if (!$this->synaplanConfig->isLinkAvailable()) {
+        if (!$this->synaplanConfig->isLinkAvailable() || $this->platformLinks->isWaitingForApproval()) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_INSTANCE_PENDING,
             ]));

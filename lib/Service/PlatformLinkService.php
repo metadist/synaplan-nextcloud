@@ -24,6 +24,7 @@ use Psr\Log\LoggerInterface;
 class PlatformLinkService
 {
     public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events'];
+    private const REGISTRATION_STATUS = 'link_registration_status';
 
     public function __construct(
         private IClientService $clientService,
@@ -315,6 +316,7 @@ class PlatformLinkService
     {
         $this->oauth->unregister();
         $this->config->deleteAppValue(Application::APP_ID, 'link_instance_secret');
+        $this->config->deleteAppValue(Application::APP_ID, self::REGISTRATION_STATUS);
     }
 
     public function disconnect(IUser $user): void
@@ -387,11 +389,32 @@ class PlatformLinkService
             'server_id' => $this->synaplanConfig->getInstanceId(),
             'version' => $this->appManager->getAppVersion(Application::APP_ID),
         ], $registrationToken);
+        $status = is_string($answer['status'] ?? null) ? $answer['status'] : '';
+        $this->config->setAppValue(Application::APP_ID, self::REGISTRATION_STATUS, $status);
 
         return [
             'instance_id' => $this->oauth->clientId(),
-            'status' => is_string($answer['status'] ?? null) ? $answer['status'] : '',
+            'status' => $status,
         ];
+    }
+
+    /**
+     * Whether Synaplan still holds this registration for its administrator's
+     * approval. Asked again only while it was pending, so people are told
+     * here instead of meeting an error page in Synaplan.
+     */
+    public function isWaitingForApproval(): bool
+    {
+        if ($this->config->getAppValue(Application::APP_ID, self::REGISTRATION_STATUS, '') !== 'pending') {
+            return false;
+        }
+        try {
+            $status = $this->registrationStatus()['status'] ?? '';
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return $status === 'pending';
     }
 
     /**
@@ -405,9 +428,13 @@ class PlatformLinkService
             return null;
         }
         $answer = $this->oauth->configuration();
+        $status = is_string($answer['status'] ?? null) ? $answer['status'] : '';
+        if ($status !== '') {
+            $this->config->setAppValue(Application::APP_ID, self::REGISTRATION_STATUS, $status);
+        }
 
         return [
-            'status' => is_string($answer['status'] ?? null) ? $answer['status'] : '',
+            'status' => $status,
             'host' => $this->publicHostFromUrl(is_string($answer['client_uri'] ?? null) ? $answer['client_uri'] : ''),
             'delivery_url' => is_string($answer['delivery_url'] ?? null) ? $answer['delivery_url'] : '',
             'reachable' => is_bool($answer['reachable'] ?? null) ? $answer['reachable'] : null,

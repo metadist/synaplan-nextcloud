@@ -282,6 +282,18 @@ class LinkControllerTest extends TestCase
         $this->assertStringContainsString('link_error=instance_pending', $response->getRedirectURL());
     }
 
+    public function testStartWhileSynaplanHoldsTheRegistrationForApprovalSaysSo(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(true);
+        $this->platformLinks->method('isWaitingForApproval')->willReturn(true);
+        $this->oauth->expects($this->never())->method('authorizeUrl');
+
+        $response = $this->controller()->start();
+
+        $this->assertStringContainsString('link_error=instance_pending', $response->getRedirectURL());
+    }
+
     public function testStartSendsThePersonToAuthorizeAndKeepsTheVerifier(): void
     {
         $this->userSession->method('getUser')->willReturn($this->user());
