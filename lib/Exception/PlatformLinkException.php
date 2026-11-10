@@ -15,6 +15,12 @@ class PlatformLinkException extends \RuntimeException
     public const CODE_INSTANCE_PENDING = 'instance_pending';
     /** Synaplan ended the grant (revoked, or the link was disconnected there). */
     public const CODE_GRANT_ENDED = 'grant_ended';
+    /**
+     * Synaplan does not accept this Nextcloud as its client: the registration
+     * was revoked or removed there. It ends for everybody until an
+     * administrator registers again.
+     */
+    public const CODE_CLIENT_REFUSED = 'client_refused';
     public const CODE_UNREACHABLE = 'unreachable';
     public const CODE_NOT_REGISTERED = 'not_registered';
     /** The person did not allow the connection on Synaplan's consent page. */

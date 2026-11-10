@@ -147,6 +147,12 @@ const instanceStatusLabel = computed(() => {
 			? t('synaplan_integration', 'Registered and ready ({host}).', { host })
 			: t('synaplan_integration', 'Registered and ready.')
 	}
+	if (props.linkInstance?.status === 'refused') {
+		return t(
+			'synaplan_integration',
+			'Synaplan no longer accepts this registration. Forget it and register again.',
+		)
+	}
 	if (props.linkInstanceId) {
 		return t('synaplan_integration', 'Registered. Checking status…')
 	}

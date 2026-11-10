@@ -617,6 +617,58 @@ class OAuthClientTest extends TestCase
         $this->assertSame([], $this->user);
     }
 
+    public function testRevokeAtASynaplanThatRefusesThisClientForgetsTheGrant(): void
+    {
+        $this->registered();
+        $this->connected();
+        $this->respond = static fn (): array => [401, ['error' => 'invalid_client']];
+        $client = $this->client();
+
+        $client->revoke('ada');
+
+        $this->assertCount(1, $this->requests);
+        $this->assertSame([], $this->user);
+        $this->assertFalse($client->isConnected('ada'));
+    }
+
+    public function testARefusedClientIsToldApartFromAnotherRefusal(): void
+    {
+        $this->registered();
+        $client = $this->client();
+
+        // The assertion is the bearer on the registration's own address.
+        $this->respond = static fn (): array => [401, ['error' => 'invalid_token']];
+        $this->assertSame(PlatformLinkException::CODE_CLIENT_REFUSED, $this->codeOf(static fn () => $client->configuration()));
+
+        $this->respond = static fn (): array => [401, ['error' => 'invalid_client']];
+        $this->assertSame(PlatformLinkException::CODE_CLIENT_REFUSED, $this->codeOf(static fn () => $client->authorizeUrl('ada', 's', 'https://cb', false)));
+
+        $this->respond = static fn (): array => [429, ['error' => 'too_many_requests']];
+        $this->assertSame(PlatformLinkException::CODE_EXCHANGE, $this->codeOf(static fn () => $client->configuration()));
+    }
+
+    public function testAMissingRegistrationCodeIsNotARefusedClient(): void
+    {
+        $this->respond = static fn (): array => [401, ['error' => 'invalid_token']];
+        $client = $this->client();
+
+        $this->assertSame(
+            PlatformLinkException::CODE_EXCHANGE,
+            $this->codeOf(static fn () => $client->register(self::metadata(), '')),
+        );
+    }
+
+    private function codeOf(callable $call): string
+    {
+        try {
+            $call();
+        } catch (PlatformLinkException $e) {
+            return $e->getErrorCode();
+        }
+
+        return '';
+    }
+
     public function testUnregisterEndsTheRegistrationAndDropsTheKey(): void
     {
         $this->registered();

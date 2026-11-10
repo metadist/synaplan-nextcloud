@@ -25,6 +25,8 @@ class PlatformLinkService
 {
     public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events'];
     private const REGISTRATION_STATUS = 'link_registration_status';
+    /** Synaplan no longer accepts this registration; its own statuses are pending and active. */
+    public const STATUS_REFUSED = 'refused';
 
     public function __construct(
         private IClientService $clientService,
@@ -418,7 +420,9 @@ class PlatformLinkService
     }
 
     /**
-     * The registration as Synaplan has it, or null when there is none.
+     * The registration as Synaplan has it, or null when there is none. A
+     * Synaplan that no longer accepts this client (revoked or removed there)
+     * answers the question itself with a refusal, which is the status then.
      *
      * @return array{status: string, host: string, delivery_url: string, reachable: ?bool}|null
      */
@@ -427,7 +431,16 @@ class PlatformLinkService
         if (!$this->oauth->isRegistered()) {
             return null;
         }
-        $answer = $this->oauth->configuration();
+        try {
+            $answer = $this->oauth->configuration();
+        } catch (PlatformLinkException $e) {
+            if ($e->getErrorCode() !== PlatformLinkException::CODE_CLIENT_REFUSED) {
+                throw $e;
+            }
+            $this->config->setAppValue(Application::APP_ID, self::REGISTRATION_STATUS, self::STATUS_REFUSED);
+
+            return ['status' => self::STATUS_REFUSED, 'host' => '', 'delivery_url' => '', 'reachable' => null];
+        }
         $status = is_string($answer['status'] ?? null) ? $answer['status'] : '';
         if ($status !== '') {
             $this->config->setAppValue(Application::APP_ID, self::REGISTRATION_STATUS, $status);

@@ -8,6 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Connecting goes through Synaplan's OAuth2 server.** This Nextcloud registers with a key pair it makes itself, and a person allows the connection on Synaplan's consent page. No secret from Synaplan is kept here any more. An optional registration code from Synaplan makes the registration active at once; without it a Synaplan administrator approves it.
+- When Synaplan no longer accepts this Nextcloud's registration (revoked or removed there), the admin settings say so, a person who connects is told to ask the administrator, and a connected person can still disconnect.
 - Copies, folder reads, read settings and file changes are sent with the person's own credential, and Synaplan's notifications are checked as signed tokens.
 
 ### Upgrading

@@ -317,7 +317,9 @@
 		"Keep it searchable": "Es durchsuchbar halten",
 		"Registration code from Synaplan (optional)": "Registrierungscode von Synaplan (optional)",
 		"You did not allow the connection. Nothing was connected.": "Du hast die Verbindung nicht erlaubt. Es wurde nichts verbunden.",
-		"Synaplan cannot be reached right now. Please try again later.": "Synaplan ist gerade nicht erreichbar. Bitte versuch es später noch einmal."
+		"Synaplan cannot be reached right now. Please try again later.": "Synaplan ist gerade nicht erreichbar. Bitte versuch es später noch einmal.",
+		"Synaplan no longer accepts this registration. Forget it and register again.": "Synaplan nimmt diese Registrierung nicht mehr an. Vergiss sie und registriere neu.",
+		"Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again.": "Synaplan nimmt diese Nextcloud nicht mehr an. Bitte deine Administration, sie neu zu registrieren."
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

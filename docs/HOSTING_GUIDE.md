@@ -83,6 +83,12 @@ as that user.
   the next action says **Connect your Synaplan account first.** with a link to
   Personal settings → Synaplan, which shows **Connect Synaplan** again. No new
   account is created.
+- If the Synaplan administrator revokes or removes **this Nextcloud's
+  registration**, every connection ends in Synaplan. The admin settings show
+  **Synaplan no longer accepts this registration. Forget it and register
+  again.**; a person who connects is told to ask the administrator, and a
+  connected person can still disconnect. After registering again, people
+  connect again.
 - **Disconnect** in Personal settings → Synaplan revokes the person’s key in
   Synaplan.
 - A key that no longer decrypts (for example after the Nextcloud server secret

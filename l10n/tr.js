@@ -318,6 +318,8 @@ OC.L10N.register(
     "Keep it searchable" : "Aranabilir tut",
     "Registration code from Synaplan (optional)" : "Synaplan kayıt kodu (isteğe bağlı)",
     "You did not allow the connection. Nothing was connected." : "Bağlantıya izin vermediniz. Hiçbir şey bağlanmadı.",
-    "Synaplan cannot be reached right now. Please try again later." : "Synaplan şu anda erişilemiyor. Lütfen daha sonra tekrar deneyin."
+    "Synaplan cannot be reached right now. Please try again later." : "Synaplan şu anda erişilemiyor. Lütfen daha sonra tekrar deneyin.",
+    "Synaplan no longer accepts this registration. Forget it and register again." : "Synaplan bu kaydı artık kabul etmiyor. Kaydı unutun ve yeniden kaydedin.",
+    "Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again." : "Synaplan bu Nextcloud'u artık kabul etmiyor. Yöneticinizden yeniden kaydetmesini isteyin."
 },
 "nplurals=2; plural=(n > 1);");

@@ -106,7 +106,7 @@ class OAuthClient
      */
     public function configuration(): array
     {
-        return $this->json('GET', '/oauth/register/' . rawurlencode($this->clientId()), null, $this->assertionHeader());
+        return $this->asClient('GET', '/oauth/register/' . rawurlencode($this->clientId()));
     }
 
     /**
@@ -116,7 +116,7 @@ class OAuthClient
      */
     public function updateConfiguration(array $changes): array
     {
-        return $this->json('PUT', '/oauth/register/' . rawurlencode($this->clientId()), $changes, $this->assertionHeader());
+        return $this->asClient('PUT', '/oauth/register/' . rawurlencode($this->clientId()), $changes);
     }
 
     /**
@@ -126,10 +126,10 @@ class OAuthClient
      */
     public function reportLifecycle(string $externalId, string $event): void
     {
-        $this->json('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
+        $this->asClient('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
             'external_id' => $externalId,
             'event' => $event,
-        ], $this->assertionHeader());
+        ]);
     }
 
     /**
@@ -140,7 +140,7 @@ class OAuthClient
     {
         if ($this->isRegistered()) {
             try {
-                $this->json('DELETE', '/oauth/register/' . rawurlencode($this->clientId()), null, $this->assertionHeader());
+                $this->asClient('DELETE', '/oauth/register/' . rawurlencode($this->clientId()));
             } catch (\Throwable $e) {
                 $this->logger->warning('Could not unregister from Synaplan: {message}', ['app' => Application::APP_ID, 'message' => $e->getMessage()]);
             }
@@ -279,6 +279,10 @@ class OAuthClient
      * End the person's grant at Synaplan (which ends their link there) and
      * forget it here.
      *
+     * A Synaplan that no longer accepts this Nextcloud ended every grant with
+     * the registration and takes no revocation from it, so the person leaves
+     * here without it.
+     *
      * @throws PlatformLinkException when Synaplan could not be told; the
      *                               grant is kept so disconnecting can be retried
      */
@@ -289,7 +293,7 @@ class OAuthClient
             try {
                 $this->form('/oauth/revoke', ['token' => $refresh] + $this->assertionFields());
             } catch (PlatformLinkException $e) {
-                if ($e->getErrorCode() !== PlatformLinkException::CODE_GRANT_ENDED) {
+                if (!in_array($e->getErrorCode(), [PlatformLinkException::CODE_GRANT_ENDED, PlatformLinkException::CODE_CLIENT_REFUSED], true)) {
                     $this->logger->warning('Could not revoke the Synaplan grant of {uid}: {message}', [
                         'app' => Application::APP_ID,
                         'uid' => $uid,
@@ -354,11 +358,15 @@ class OAuthClient
     }
 
     /**
-     * @return array<string, string>
+     * A call about this registration, signed as the client (RFC 7592).
+     *
+     * @param array<string, mixed>|null $body
+     *
+     * @return array<string, mixed>
      */
-    private function assertionHeader(): array
+    private function asClient(string $method, string $path, ?array $body = null): array
     {
-        return ['Authorization' => 'Bearer ' . $this->assertion()];
+        return $this->json($method, $path, $body, ['Authorization' => 'Bearer ' . $this->assertion()], true);
     }
 
     /**
@@ -448,7 +456,7 @@ class OAuthClient
      *
      * @return array<string, mixed>
      */
-    private function json(string $method, string $path, ?array $body, array $headers): array
+    private function json(string $method, string $path, ?array $body, array $headers, bool $asClient = false): array
     {
         $options = [
             'headers' => $headers + ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
@@ -457,10 +465,12 @@ class OAuthClient
             $options['body'] = json_encode($body, JSON_UNESCAPED_SLASHES);
         }
 
-        return $this->send($method, $path, $options);
+        return $this->send($method, $path, $options, $asClient);
     }
 
     /**
+     * Every form goes to an endpoint that authenticates the client.
+     *
      * @param array<string, string> $fields
      *
      * @return array<string, mixed>
@@ -470,15 +480,16 @@ class OAuthClient
         return $this->send('POST', $path, [
             'headers' => ['Accept' => 'application/json', 'Content-Type' => 'application/x-www-form-urlencoded'],
             'body' => http_build_query($fields),
-        ]);
+        ], true);
     }
 
     /**
      * @param array<string, mixed> $options
+     * @param bool $asClient whether the request is signed as the client
      *
      * @return array<string, mixed>
      */
-    private function send(string $method, string $path, array $options): array
+    private function send(string $method, string $path, array $options, bool $asClient): array
     {
         $options += [
             'timeout' => 30,
@@ -497,13 +508,16 @@ class OAuthClient
         $body = is_array($decoded) ? $decoded : [];
         if ($status >= 400) {
             $error = is_string($body['error'] ?? null) ? $body['error'] : '';
-            // Only invalid_grant is about the person's grant. invalid_client
-            // (a key or registration problem) concerns everybody and must not
-            // cost each person their connection.
-            $code = $error === 'invalid_grant'
-                ? PlatformLinkException::CODE_GRANT_ENDED
-                : PlatformLinkException::CODE_EXCHANGE;
-            if ($error === 'invalid_client') {
+            // Only invalid_grant is about the person's grant. A 401 to a
+            // signed request (invalid_client, or invalid_token where the
+            // assertion is the bearer) is about the registration: it concerns
+            // everybody and must not cost each person their connection.
+            $code = match (true) {
+                $error === 'invalid_grant' => PlatformLinkException::CODE_GRANT_ENDED,
+                $asClient && $status === 401 => PlatformLinkException::CODE_CLIENT_REFUSED,
+                default => PlatformLinkException::CODE_EXCHANGE,
+            };
+            if ($code === PlatformLinkException::CODE_CLIENT_REFUSED) {
                 $this->logger->warning('Synaplan does not accept this Nextcloud as its client ({path}); check the registration in the admin settings.', [
                     'app' => Application::APP_ID,
                     'path' => $path,

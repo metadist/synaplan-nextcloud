@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
@@ -109,6 +110,49 @@ class PlatformLinkServiceTest extends TestCase
             'delivery_url' => 'https://files.example.org/inbound',
             'reachable' => true,
         ], $status);
+    }
+
+    public function testARegistrationSynaplanNoLongerAcceptsIsRefused(): void
+    {
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('A client assertion of this client is required.', PlatformLinkException::CODE_CLIENT_REFUSED),
+        );
+        $this->config->expects($this->once())->method('setAppValue')
+            ->with(Application::APP_ID, 'link_registration_status', 'refused');
+
+        $this->assertSame([
+            'status' => 'refused',
+            'host' => '',
+            'delivery_url' => '',
+            'reachable' => null,
+        ], $this->service()->registrationStatus());
+    }
+
+    public function testAnUnansweredStatusQuestionIsNotARefusal(): void
+    {
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE),
+        );
+        $this->config->expects($this->never())->method('setAppValue');
+
+        $this->expectException(PlatformLinkException::class);
+
+        $this->service()->registrationStatus();
+    }
+
+    public function testARefusedRegistrationNoLongerWaitsForApproval(): void
+    {
+        $this->config->method('getAppValue')->willReturnCallback(
+            static fn (string $app, string $key, string $default = ''): string => $key === 'link_registration_status' ? 'pending' : $default
+        );
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('A client assertion of this client is required.', PlatformLinkException::CODE_CLIENT_REFUSED),
+        );
+
+        $this->assertFalse($this->service()->isWaitingForApproval());
     }
 
     public function testRegistrationStatusIsNullWhenNotRegistered(): void
