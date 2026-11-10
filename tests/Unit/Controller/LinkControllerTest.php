@@ -132,6 +132,22 @@ class LinkControllerTest extends TestCase
         $this->assertStringContainsString('link_error=exchange', $response->getRedirectURL());
     }
 
+    public function testCallbackAfterTheConsentWasDeniedConnectsNothing(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->primeState('abc123');
+        $this->request->method('getParam')->willReturnMap([
+            ['code', '', ''],
+            ['state', '', 'abc123'],
+            ['error', null, 'access_denied'],
+        ]);
+        $this->oauth->expects($this->never())->method('connect');
+
+        $response = $this->controller()->callback();
+
+        $this->assertStringContainsString('link_error=' . PlatformLinkException::CODE_DENIED, $response->getRedirectURL());
+    }
+
     public function testCallbackReportsWhySynaplanRefused(): void
     {
         $this->userSession->method('getUser')->willReturn($this->user());

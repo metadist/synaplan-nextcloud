@@ -316,6 +316,7 @@ OC.L10N.register(
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Bu dosyanın yeni sürümleri “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
     "“{task}” will run for a new copy of this file." : "“{task}”, bu dosyanın yeni bir kopyası için çalışır.",
     "Keep it searchable" : "Aranabilir tut",
-    "Registration code from Synaplan (optional)" : "Synaplan kayıt kodu (isteğe bağlı)"
+    "Registration code from Synaplan (optional)" : "Synaplan kayıt kodu (isteğe bağlı)",
+    "You did not allow the connection. Nothing was connected." : "Bağlantıya izin vermediniz. Hiçbir şey bağlanmadı."
 },
 "nplurals=2; plural=(n > 1);");

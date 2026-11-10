@@ -17,6 +17,8 @@ class PlatformLinkException extends \RuntimeException
     public const CODE_GRANT_ENDED = 'grant_ended';
     public const CODE_UNREACHABLE = 'unreachable';
     public const CODE_NOT_REGISTERED = 'not_registered';
+    /** The person did not allow the connection on Synaplan's consent page. */
+    public const CODE_DENIED = 'denied';
 
     public function __construct(
         string $message,

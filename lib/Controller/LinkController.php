@@ -109,6 +109,12 @@ class LinkController extends Controller
             ]));
         }
 
+        if ($this->request->getParam('error') === 'access_denied') {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => PlatformLinkException::CODE_DENIED,
+            ]));
+        }
+
         if (!$user instanceof IUser || $code === '' || $verifier === '') {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_EXCHANGE,

@@ -315,7 +315,8 @@
 		"New versions of this file become searchable by AI in your knowledge folder “{folder}”.": "Neue Versionen dieser Datei werden in Ihrem Wissensordner „{folder}“ KI-durchsuchbar.",
 		"“{task}” will run for a new copy of this file.": "„{task}“ wird für eine neue Kopie dieser Datei ausgeführt.",
 		"Keep it searchable": "Es durchsuchbar halten",
-		"Registration code from Synaplan (optional)": "Registrierungscode von Synaplan (optional)"
+		"Registration code from Synaplan (optional)": "Registrierungscode von Synaplan (optional)",
+		"You did not allow the connection. Nothing was connected.": "Sie haben die Verbindung nicht erlaubt. Es wurde nichts verbunden."
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

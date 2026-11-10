@@ -316,6 +316,7 @@ OC.L10N.register(
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Les nouvelles versions de ce fichier deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
     "“{task}” will run for a new copy of this file." : "« {task} » s’exécutera pour une nouvelle copie de ce fichier.",
     "Keep it searchable" : "Le garder recherchable",
-    "Registration code from Synaplan (optional)" : "Code d’enregistrement de Synaplan (facultatif)"
+    "Registration code from Synaplan (optional)" : "Code d’enregistrement de Synaplan (facultatif)",
+    "You did not allow the connection. Nothing was connected." : "Vous n’avez pas autorisé la connexion. Rien n’a été connecté."
 },
 "nplurals=2; plural=(n > 1);");
