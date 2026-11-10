@@ -159,18 +159,27 @@ class OAuthClient
     public function authorizeUrl(string $uid, string $state, string $redirectUri, bool $withMemories): array
     {
         $verifier = self::b64(random_bytes(32));
-        $scope = self::SCOPE . ($withMemories ? ' memories' : '');
+        // Pushed from this server, signed as the client (RFC 9126): Synaplan
+        // takes the person (external_id) from here only, never from the
+        // browser, which carries just the one-time reference.
+        $pushed = $this->form('/oauth/par', [
+            'response_type' => 'code',
+            'redirect_uri' => $redirectUri,
+            'scope' => self::SCOPE . ($withMemories ? ' memories' : ''),
+            'state' => $state,
+            'code_challenge' => self::b64(hash('sha256', $verifier, true)),
+            'code_challenge_method' => 'S256',
+            'external_id' => $uid,
+        ] + $this->assertionFields());
+        $requestUri = $pushed['request_uri'] ?? null;
+        if (!is_string($requestUri) || $requestUri === '') {
+            throw new PlatformLinkException('Synaplan did not take the authorization request.', PlatformLinkException::CODE_EXCHANGE);
+        }
 
         return [
             'url' => $this->issuer() . '/oauth/authorize?' . http_build_query([
-                'response_type' => 'code',
                 'client_id' => $this->clientId(),
-                'redirect_uri' => $redirectUri,
-                'scope' => $scope,
-                'state' => $state,
-                'code_challenge' => self::b64(hash('sha256', $verifier, true)),
-                'code_challenge_method' => 'S256',
-                'external_id' => $uid,
+                'request_uri' => $requestUri,
             ]),
             'verifier' => $verifier,
         ];

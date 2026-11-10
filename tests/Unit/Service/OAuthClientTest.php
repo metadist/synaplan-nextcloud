@@ -370,37 +370,51 @@ class OAuthClientTest extends TestCase
         }
     }
 
-    public function testAuthorizeUrlCarriesPkceTheScopeAndThePerson(): void
+    public function testTheAuthorizationRequestIsPushedAndTheBrowserCarriesOnlyItsReference(): void
     {
         $this->registered();
+        $this->respond = static fn (): array => [201, ['request_uri' => 'urn:ietf:params:oauth:request_uri:abc', 'expires_in' => 60]];
 
         $authorize = $this->client()->authorizeUrl('ada', 'state-1', 'https://files.example.org/callback', false);
 
+        $this->assertSame('https://synaplan.example/oauth/par', $this->requests[0]['url']);
+        $pushed = $this->form(0);
+        $this->assertSame('code', $pushed['response_type']);
+        $this->assertSame('https://files.example.org/callback', $pushed['redirect_uri']);
+        $this->assertSame(OAuthClient::SCOPE, $pushed['scope']);
+        $this->assertSame('state-1', $pushed['state']);
+        $this->assertSame('ada', $pushed['external_id']);
+        $this->assertSame('S256', $pushed['code_challenge_method']);
+        $this->assertSame(self::b64(hash('sha256', $authorize['verifier'], true)), $pushed['code_challenge']);
+        $this->assertArrayHasKey('client_assertion', $pushed);
+        $this->assertGreaterThanOrEqual(43, strlen($authorize['verifier']));
+
         $this->assertStringStartsWith('https://issuer.example/oauth/authorize?', $authorize['url']);
         parse_str((string) parse_url($authorize['url'], PHP_URL_QUERY), $query);
-        $this->assertSame('code', $query['response_type']);
-        $this->assertSame('client-1', $query['client_id']);
-        $this->assertSame('https://files.example.org/callback', $query['redirect_uri']);
-        $this->assertSame(OAuthClient::SCOPE, $query['scope']);
-        $this->assertSame('state-1', $query['state']);
-        $this->assertSame('ada', $query['external_id']);
-        $this->assertSame('S256', $query['code_challenge_method']);
-        $this->assertSame(self::b64(hash('sha256', $authorize['verifier'], true)), $query['code_challenge']);
-        $this->assertGreaterThanOrEqual(43, strlen($authorize['verifier']));
-        $this->assertSame([], $this->requests);
+        $this->assertSame(['client_id' => 'client-1', 'request_uri' => 'urn:ietf:params:oauth:request_uri:abc'], $query);
     }
 
-    public function testAuthorizeUrlAsksForMemoriesWhenTheyAreOn(): void
+    public function testTheAuthorizationRequestAsksForMemoriesWhenTheyAreOn(): void
     {
         $this->registered();
+        $this->respond = static fn (): array => [201, ['request_uri' => 'urn:ietf:params:oauth:request_uri:abc']];
         $client = $this->client();
 
         $first = $client->authorizeUrl('ada', 's', 'https://cb', true);
         $second = $client->authorizeUrl('ada', 's', 'https://cb', true);
 
-        parse_str((string) parse_url($first['url'], PHP_URL_QUERY), $query);
-        $this->assertSame(OAuthClient::SCOPE . ' memories', $query['scope']);
+        $this->assertSame(OAuthClient::SCOPE . ' memories', $this->form(0)['scope']);
         $this->assertNotSame($first['verifier'], $second['verifier']);
+    }
+
+    public function testARefusedAuthorizationRequestIsReported(): void
+    {
+        $this->registered();
+        $this->respond = static fn (): array => [400, ['error' => 'invalid_request']];
+
+        $this->expectException(PlatformLinkException::class);
+
+        $this->client()->authorizeUrl('ada', 's', 'https://cb', false);
     }
 
     public function testConnectExchangesTheCodeAndKeepsTheGrant(): void

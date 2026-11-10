@@ -287,6 +287,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->register('registration-token'),
             fn () => $links->registrationStatus(),
             fn () => $links->announceDelivery('https://files.example.org/apps/synaplan_integration/api/v1/inbound'),
+            fn () => $oauth->authorizeUrl('ada', 'state-1', 'https://files.example.org/apps/synaplan_integration/link/callback', false),
             fn () => $oauth->connect('ada', 'code-1', 'verifier-1', 'https://files.example.org/apps/synaplan_integration/link/callback'),
             function () use ($oauth): void {
                 $this->expireAccessToken('ada');
@@ -398,6 +399,7 @@ final class SynaplanContractTest extends TestCase
         $response->method('getStatusCode')->willReturn(200);
         $response->method('getBody')->willReturn((string) json_encode(match ($path) {
             '/api/v1/config/capabilities' => self::CAPABILITIES,
+            '/oauth/par' => ['request_uri' => 'urn:ietf:params:oauth:request_uri:abc', 'expires_in' => 60],
             '/oauth/token' => ['access_token' => 'access-1', 'refresh_token' => 'refresh-2', 'expires_in' => 900, 'token_type' => 'Bearer'],
             default => self::RESPONSE,
         }));
