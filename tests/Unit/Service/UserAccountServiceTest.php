@@ -537,6 +537,103 @@ class UserAccountServiceTest extends TestCase
         $this->assertNull($this->service()->resolveKeyForUser($user));
     }
 
+    public function testAPaidPlanRefusalNamesTheReason(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $body = '{"success":false,"error":"API keys are part of a paid plan.","code":"API_PLAN_REQUIRED","message":"API keys are part of a paid plan."}';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(403, $body));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('api_plan_required', $failure->code);
+    }
+
+    public function testAConflictNamesTheEmailAndAServerCrashDoesNot(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(409, '{"error":"Email already used"}'));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $taken = $service->provisioningFailure();
+        $this->assertNotNull($taken);
+        $this->assertSame('email_already_used', $taken->code);
+
+        $crash = '{"title":"An error occurred","detail":"SQLSTATE[23000]: Duplicate entry \'alice@example.com\' for key \'UNIQ_BUSER_BMAIL\'"}';
+        $this->httpClient = $this->createMock(IClient::class);
+        $this->clientService = $this->createMock(IClientService::class);
+        $this->clientService->method('newClient')->willReturn($this->httpClient);
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(500, $crash));
+        $crashed = $this->service();
+        $this->assertNull($crashed->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $crashed->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('Synaplan answered HTTP 500.', $failure->message);
+    }
+
+    public function testThePaidPlanWordingWithoutTheCodeIsJustASentence(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(
+            403,
+            '{"error":"API keys are part of a paid plan."}',
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('API keys are part of a paid plan.', $failure->message);
+    }
+
+    public function testATruncatedPlanErrorInTheExceptionTextIsStillRecognized(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new \RuntimeException(
+            'Client error: `POST http://localhost:5173/api/v1/admin/users/2752/api-keys` resulted in a `403 Forbidden` response:' . "\n"
+            . '{"success":false,"error":"API keys are part of a paid plan.","code":"API_PLAN_REQUIRED","message":"API keys are part of  (truncated...)'
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('api_plan_required', $failure->code);
+    }
+
+    public function testAMissingAdminKeyNamesTheReason(): void
+    {
+        $this->appConfig['api_key_local'] = '';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('admin_key_missing', $failure->code);
+    }
+
+    public function testASynaplanSentenceIsShownAndAUrlIsNot(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(
+            422,
+            '{"error":"This Nextcloud is not allowed to create accounts."}',
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('This Nextcloud is not allowed to create accounts.', $failure->message);
+    }
+
     public function testProvisionModeEmailConflictStillThrows(): void
     {
         $this->appConfig['mode'] = 'provision';
@@ -637,5 +734,39 @@ class UserAccountServiceTest extends TestCase
         $this->httpClient->expects($this->never())->method('post');
 
         $this->assertNull($this->service()->renewProvisionedKey());
+    }
+}
+
+/**
+ * An HTTP client failure that still carries the response, as Guzzle does.
+ */
+final class HttpFailure extends \RuntimeException
+{
+    public function __construct(
+        private int $status,
+        private string $body,
+    ) {
+        parent::__construct('HTTP ' . $status);
+    }
+
+    public function getResponse(): object
+    {
+        return new class ($this->status, $this->body) {
+            public function __construct(
+                private int $status,
+                private string $body,
+            ) {
+            }
+
+            public function getStatusCode(): int
+            {
+                return $this->status;
+            }
+
+            public function getBody(): string
+            {
+                return $this->body;
+            }
+        };
     }
 }

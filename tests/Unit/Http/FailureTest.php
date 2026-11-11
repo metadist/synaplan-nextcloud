@@ -78,16 +78,20 @@ final class FailureTest extends TestCase
 
     public function testServerErrorsAndProxyStatusesBecomeABadGateway(): void
     {
-        foreach ([500, 503, 407, 412, 302] as $status) {
+        foreach ([500, 503, 407, 412] as $status) {
             $failure = Failure::fromSynaplanResponse($status, '<html>Bad Gateway</html>');
-            self::assertSame([502, 'synaplan_error', null], [$failure->status, $failure->code, $failure->message], (string) $status);
+            self::assertSame([502, 'synaplan_error', 'Synaplan answered HTTP ' . $status . '.'], [$failure->status, $failure->code, $failure->message], (string) $status);
+            self::assertStringNotContainsString('html', (string) $failure->message);
         }
+        $redirect = Failure::fromSynaplanResponse(302, '<html>Found</html>');
+        self::assertSame([502, 'synaplan_error', null], [$redirect->status, $redirect->code, $redirect->message]);
     }
 
     public function testAProxyErrorPageIsNotTakenForASynaplanRejection(): void
     {
         $forbidden = Failure::fromSynaplanResponse(403, '<html><body>403 Forbidden</body></html>');
-        self::assertSame([502, 'synaplan_error'], [$forbidden->status, $forbidden->code]);
+        self::assertSame([502, 'synaplan_error', 'Synaplan answered HTTP 403.'], [$forbidden->status, $forbidden->code, $forbidden->message]);
+        self::assertStringNotContainsString('Forbidden', (string) $forbidden->message);
 
         $busy = Failure::fromSynaplanResponse(429, '<html><body>Too Many Requests</body></html>');
         self::assertSame([429, 'rate_limited', null], [$busy->status, $busy->code, $busy->message]);
@@ -96,6 +100,14 @@ final class FailureTest extends TestCase
     public function testAnUnusualClientStatusIsAnswered422(): void
     {
         self::assertSame(422, Failure::fromSynaplanResponse(405, '{"error":"Method Not Allowed"}')->status);
+    }
+
+    public function testASafeSentenceDropsUrlsSqlAndPages(): void
+    {
+        self::assertSame('API keys are part of a paid plan.', Failure::safeSentence('API keys are part of a paid plan.'));
+        self::assertNull(Failure::safeSentence('See https://synaplan.example/admin'));
+        self::assertNull(Failure::safeSentence('SQLSTATE[23000]: Integrity constraint violation'));
+        self::assertNull(Failure::safeSentence('An error occurred'));
     }
 
     public function testALongBodyIsNotPassedOn(): void

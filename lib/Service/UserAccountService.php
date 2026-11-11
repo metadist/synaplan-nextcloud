@@ -6,6 +6,8 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IUser;
@@ -55,6 +57,12 @@ class UserAccountService
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
     private const USER_KEY_SCOPES = ['chat', 'files', 'rag', 'cloud:watch'];
 
+    /**
+     * Why the last provision in this request failed, for the person who asked.
+     * Null when provisioning was not attempted or it succeeded.
+     */
+    private ?Failure $provisioningFailure = null;
+
     public function __construct(
         private IClientService $clientService,
         private IConfig $config,
@@ -90,8 +98,14 @@ class UserAccountService
      * provision → stored key, or provision+mint after consent.
      * link → stored key or null — never provisions implicitly.
      */
+    public function provisioningFailure(): ?Failure
+    {
+        return $this->provisioningFailure;
+    }
+
     public function resolveKeyForUser(IUser $user): ?string
     {
+        $this->provisioningFailure = null;
         if ($this->synaplanConfig->getMode() === SynaplanConfig::MODE_SHARED) {
             return null;
         }
@@ -116,10 +130,12 @@ class UserAccountService
         try {
             return $this->provisionAndMint($user);
         } catch (\Throwable $e) {
+            $this->provisioningFailure = $this->explainProvisioningFailure($e);
             $this->logger->error('Per-user Synaplan provisioning failed for {uid}: {message}', [
                 'app' => Application::APP_ID,
                 'uid' => $user->getUID(),
                 'message' => $e->getMessage(),
+                'reason' => $this->provisioningFailure->code,
             ]);
 
             return null;
@@ -449,6 +465,7 @@ class UserAccountService
     {
         $adminKey = $this->synaplanConfig->getAdminApiKey();
         if ($adminKey === '') {
+            $this->provisioningFailure = new Failure(Http::STATUS_BAD_GATEWAY, Failure::ADMIN_KEY_MISSING);
             $this->logger->warning('Per-user mode enabled but no admin API key configured', [
                 'app' => Application::APP_ID,
             ]);
@@ -659,5 +676,72 @@ class UserAccountService
         }
 
         return (bool) preg_match('/\b409\b/', $e->getMessage());
+    }
+
+    /**
+     * The failure the person can be shown. A 409 and Synaplan's API_PLAN_REQUIRED
+     * code are named directly. Any other safe sentence Synaplan sent is passed
+     * on. A server crash is only the HTTP status: its SQL and page stay in the log.
+     */
+    private function explainProvisioningFailure(\Throwable $e): Failure
+    {
+        $text = $this->httpText($e);
+        if ($e instanceof EmailConflictException) {
+            return new Failure(Http::STATUS_CONFLICT, Failure::EMAIL_ALREADY_USED);
+        }
+        if (str_contains($text, 'API_PLAN_REQUIRED')) {
+            return new Failure(Http::STATUS_FORBIDDEN, Failure::API_PLAN_REQUIRED);
+        }
+        if (str_contains($e->getMessage(), 'cURL error') || str_ends_with($e::class, 'ConnectException')) {
+            return new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE);
+        }
+
+        $parts = $this->httpParts($e);
+        if ($parts !== null) {
+            $parsed = Failure::fromSynaplanResponse($parts[0], $parts[1]);
+            $reason = $parsed->message !== null ? Failure::safeSentence($parsed->message) : null;
+            if ($reason !== null) {
+                return new Failure(Http::STATUS_BAD_GATEWAY, Failure::ACCOUNT_UNAVAILABLE, $reason);
+            }
+            if ($parsed->code === Failure::SYNAPLAN_KEY_REJECTED) {
+                return $parsed;
+            }
+        }
+
+        return new Failure(Http::STATUS_BAD_GATEWAY, Failure::ACCOUNT_UNAVAILABLE);
+    }
+
+    /**
+     * Response body when the HTTP client kept it, otherwise the exception text.
+     */
+    private function httpText(\Throwable $e): string
+    {
+        $parts = $this->httpParts($e);
+
+        return $parts !== null ? $parts[1] . "\n" . $e->getMessage() : $e->getMessage();
+    }
+
+    /**
+     * @return array{0: int, 1: string}|null status and body
+     */
+    private function httpParts(\Throwable $e): ?array
+    {
+        $current = $e;
+        while ($current !== null) {
+            if (method_exists($current, 'getResponse')) {
+                $response = $current->getResponse();
+                if (is_object($response) && method_exists($response, 'getBody') && method_exists($response, 'getStatusCode')) {
+                    $body = $response->getBody();
+                    if (is_object($body) && method_exists($body, 'isSeekable') && $body->isSeekable() && method_exists($body, 'rewind')) {
+                        $body->rewind();
+                    }
+
+                    return [(int) $response->getStatusCode(), (string) $body];
+                }
+            }
+            $current = $current->getPrevious();
+        }
+
+        return null;
     }
 }

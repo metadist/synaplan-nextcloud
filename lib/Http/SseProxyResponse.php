@@ -124,9 +124,10 @@ class SseProxyResponse extends Response implements ICallbackResponse
                 ]);
                 $this->send(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE));
             } elseif ($this->upstreamStatus >= 400) {
-                $this->logger->error('SSE chat proxy: Synaplan answered HTTP {status}', [
+                $this->logger->error('SSE chat proxy: Synaplan answered HTTP {status} for {url}', [
                     'app' => 'synaplan_integration',
                     'status' => $this->upstreamStatus,
+                    'url' => $this->url,
                 ]);
                 $this->send($this->upstreamStatus === Http::STATUS_UNAUTHORIZED && $this->keyRefused !== null
                     ? ($this->keyRefused)()

@@ -663,9 +663,15 @@ class SynaplanClient
             throw FailureException::notConnected();
         }
 
-        throw $this->userAccounts->hasConsentForCurrentUser()
-            ? FailureException::accountUnavailable()
-            : FailureException::consentRequired();
+        if (!$this->userAccounts->hasConsentForCurrentUser()) {
+            throw FailureException::consentRequired();
+        }
+        $problem = $this->userAccounts->provisioningFailure();
+        if ($problem !== null) {
+            throw new FailureException($problem, 'No Synaplan key for a user who activated AI: ' . $problem->code);
+        }
+
+        throw FailureException::accountUnavailable();
     }
 
     /**

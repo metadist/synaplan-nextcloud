@@ -21,6 +21,12 @@ final class Failure
     public const NOT_CONNECTED = 'not_connected';
     public const CONSENT_REQUIRED = 'consent_required';
     public const ACCOUNT_UNAVAILABLE = 'account_unavailable';
+    /** Synaplan refused to mint a key because this install sells a paid plan. */
+    public const API_PLAN_REQUIRED = 'api_plan_required';
+    /** The person's email is already a Synaplan account. */
+    public const EMAIL_ALREADY_USED = 'email_already_used';
+    /** Provision mode has no administrator key that can create accounts. */
+    public const ADMIN_KEY_MISSING = 'admin_key_missing';
     public const FILE_TOO_LARGE = 'file_too_large';
     public const UNSUPPORTED_TYPE = 'unsupported_type';
     public const FILE_EMPTY = 'file_empty';
@@ -83,7 +89,7 @@ final class Failure
             return new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_KEY_REJECTED);
         }
         if ($status >= 500 || $status < 400 || in_array($status, [Http::STATUS_PROXY_AUTHENTICATION_REQUIRED, Http::STATUS_PRECONDITION_FAILED], true)) {
-            return new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR);
+            return new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR, self::statusReason($status));
         }
 
         $kept = match ($status) {
@@ -102,7 +108,7 @@ final class Failure
             return match ($kept) {
                 Http::STATUS_TOO_MANY_REQUESTS => new self($kept, self::RATE_LIMITED),
                 Http::STATUS_REQUEST_ENTITY_TOO_LARGE => new self($kept, self::FILE_TOO_LARGE),
-                default => new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR),
+                default => new self(Http::STATUS_BAD_GATEWAY, self::SYNAPLAN_ERROR, self::statusReason($status)),
             };
         }
         [$code, $message] = self::errorOf($decoded);
@@ -143,6 +149,46 @@ final class Failure
         $sentence = self::sentence($text);
 
         return [$code, $sentence];
+    }
+
+    /**
+     * The status, when that is all a non-JSON body can safely say. The page
+     * itself stays out of the message.
+     */
+    private static function statusReason(int $status): ?string
+    {
+        if ($status < 400) {
+            return null;
+        }
+
+        return 'Synaplan answered HTTP ' . $status . '.';
+    }
+
+    /**
+     * A sentence that may be shown to the person. Synaplan's own wording is
+     * kept; a code, a page, a URL, SQL or a stack trace is not.
+     */
+    public static function safeSentence(string $text): ?string
+    {
+        $sentence = self::sentence($text);
+        if ($sentence === null) {
+            return null;
+        }
+        $lower = strtolower($sentence);
+        if (
+            str_contains($lower, 'http://')
+            || str_contains($lower, 'https://')
+            || str_contains($lower, 'sqlstate')
+            || str_contains($lower, '.php')
+            || str_contains($sentence, '/var/')
+            || str_contains($lower, 'stack trace')
+            || str_contains($sentence, '<')
+            || $lower === 'an error occurred'
+        ) {
+            return null;
+        }
+
+        return $sentence;
     }
 
     /**
