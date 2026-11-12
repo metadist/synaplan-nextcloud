@@ -73,7 +73,7 @@ services:
 
   # Private network only: the Synaplan network already has a service called `db`.
   nextcloud-db:
-    image: mariadb:13.0@sha256:f4054da26e3a9dd6c8b5cc97363e544408b15c0fb369d7359c25dc04826eb6e1
+    image: mariadb:13.0@sha256:df4b8eebac39ef3630d7e20f9dae623d0b2d7cb41888ee0ea80db995a4a43e36
     container_name: synaplan-nextcloud-dev-db
     command: --transaction-isolation=READ-COMMITTED
     environment:
