@@ -456,6 +456,24 @@ function applyQueryBanner() {
 			'This Nextcloud is waiting for approval by the Synaplan administrator.',
 		)
 		bannerType.value = 'warning'
+	} else if (error === 'client_refused') {
+		banner.value = t(
+			'synaplan_integration',
+			'Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again.',
+		)
+		bannerType.value = 'error'
+	} else if (error === 'unreachable') {
+		banner.value = t(
+			'synaplan_integration',
+			'Synaplan cannot be reached right now. Please try again later.',
+		)
+		bannerType.value = 'error'
+	} else if (error === 'denied') {
+		banner.value = t(
+			'synaplan_integration',
+			'You did not allow the connection. Nothing was connected.',
+		)
+		bannerType.value = 'warning'
 	} else if (error) {
 		banner.value = t(
 			'synaplan_integration',

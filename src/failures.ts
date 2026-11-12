@@ -17,6 +17,20 @@ const synaplanSettings = (): string =>
 	generateUrl('/settings/user/synaplan_integration')
 
 /**
+ * The app's sentence, followed by Synaplan's own wording when it sent a reason.
+ *
+ * @param summary The sentence for this failure code
+ * @param message Synaplan's sentence, when it sent one
+ */
+function explained(summary: string, message?: string): string {
+	const reason = message?.trim()
+	if (!reason || reason === summary) {
+		return summary
+	}
+	return t('synaplan_integration', '{summary} {reason}', { summary, reason })
+}
+
+/**
  * The sentence for a failure code. A code the app does not know shows
  * Synaplan's own sentence when there is one.
  *
@@ -50,30 +64,63 @@ export function describeFailure(code?: string, message?: string): Failure {
 			}
 		case 'account_unavailable':
 			return {
+				text: explained(
+					t(
+						'synaplan_integration',
+						'Synaplan could not set up your account. Ask your administrator.',
+					),
+					message,
+				),
+			}
+		case 'api_plan_required':
+			return {
 				text: t(
 					'synaplan_integration',
-					'Synaplan could not set up your account. Ask your administrator.',
+					'Synaplan could not set up your account: API keys are part of a paid plan.',
+				),
+			}
+		case 'email_already_used':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Synaplan could not set up your account: this email address already has a Synaplan account.',
+				),
+			}
+		case 'admin_key_missing':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Synaplan could not set up your account: this Nextcloud has no key that can create accounts.',
 				),
 			}
 		case 'synaplan_unreachable':
 			return {
-				text: t(
-					'synaplan_integration',
-					'Synaplan cannot be reached. Try again in a minute, or ask your administrator.',
+				text: explained(
+					t(
+						'synaplan_integration',
+						'Synaplan cannot be reached. Try again in a minute, or ask your administrator.',
+					),
+					message,
 				),
 			}
 		case 'synaplan_error':
 			return {
-				text: t(
-					'synaplan_integration',
-					'Synaplan could not finish this. Try again in a minute, or ask your administrator.',
+				text: explained(
+					t(
+						'synaplan_integration',
+						'Synaplan could not finish this. Try again in a minute, or ask your administrator.',
+					),
+					message,
 				),
 			}
 		case 'synaplan_key_rejected':
 			return {
-				text: t(
-					'synaplan_integration',
-					'Synaplan does not accept the key of this Nextcloud. Ask your administrator to check the Synaplan settings.',
+				text: explained(
+					t(
+						'synaplan_integration',
+						'Synaplan does not accept the key of this Nextcloud. Ask your administrator to check the Synaplan settings.',
+					),
+					message,
 				),
 			}
 		case 'rate_limited':

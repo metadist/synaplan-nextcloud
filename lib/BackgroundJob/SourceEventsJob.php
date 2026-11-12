@@ -33,7 +33,8 @@ class SourceEventsJob extends QueuedJob
         $version = is_string($argument['version'] ?? null) ? $argument['version'] : '';
         $path = is_string($argument['path'] ?? null) ? $argument['path'] : '';
         $attempts = is_int($argument['attempts'] ?? null) ? $argument['attempts'] : 0;
-        if ($id === '' || $event === '') {
+        $uid = is_string($argument['uid'] ?? null) ? $argument['uid'] : '';
+        if ($id === '' || $event === '' || $uid === '') {
             return;
         }
 
@@ -42,9 +43,10 @@ class SourceEventsJob extends QueuedJob
             'event' => $event,
             'version' => $version,
             'path' => $path,
-        ]]);
+        ]], $uid);
         if (($answer['retry'] ?? false) === true && $attempts < 3) {
             $this->jobs->add(self::class, [
+                'uid' => $uid,
                 'id' => $id,
                 'event' => $event,
                 'version' => $version,

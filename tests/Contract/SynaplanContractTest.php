@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Http\SseProxyResponse;
 use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -17,12 +18,15 @@ use OCP\Files\IRootFolder;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
+use OCP\App\IAppManager;
+use OCP\Config\IUserConfig;
+use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
-use OCP\Security\ICrypto;
+use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
@@ -69,7 +73,8 @@ final class SynaplanContractTest extends TestCase
         'api_key' => 'sk_admin',
         'per_user_accounts' => '1',
         'link_instance_id' => 'instance-1',
-        'link_instance_secret' => 'enc:secret-1',
+        'oauth_kid' => 'kid-1',
+        'notify_issuer' => self::BASE_URL,
     ];
 
     /** Ada activated AI, so her calls go out with her own key. */
@@ -202,14 +207,16 @@ final class SynaplanContractTest extends TestCase
         $synaplanConfig = new SynaplanConfig($config, $keys);
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($this->ada());
-        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto());
+        $oauth = $this->oauthClient($config, $synaplanConfig);
+        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $oauth);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
         $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,
             $this->urlGenerator(),
-            $this->crypto(),
+            $oauth,
+            $this->createStub(IAppManager::class),
             $synaplanConfig,
             $accounts,
             new NullLogger(),
@@ -243,21 +250,21 @@ final class SynaplanContractTest extends TestCase
             fn () => $cloudState->status([['id' => '7', 'version' => 'etag-1']]),
             fn () => $cloudState->detail(42),
             fn () => $cloudState->glyphOverrides(),
-            fn () => $links->reportSourceEvents([['id' => '7', 'event' => 'changed', 'version' => 'etag-2', 'path' => 'Projects/report.pdf']]),
+            fn () => $links->reportSourceEvents([['id' => '7', 'event' => 'changed', 'version' => 'etag-2', 'path' => 'Projects/report.pdf']], 'ada'),
             fn () => $client->generateMedia('A cat', 'image', 3),
             fn () => $client->downloadFile('/api/v1/files/uploads/7/cat.png'),
             fn () => $client->listRecentFiles(),
             fn () => $client->downloadStoredFile(42),
-            fn () => $links->claimDelivery('9'),
-            fn () => $links->downloadDelivery('/api/v1/platform-links/deliveries/9/file?ticket=abc'),
-            fn () => $links->reportDelivery('9', [
+            fn () => $links->claimDelivery('9', 'ada'),
+            fn () => $links->downloadDelivery('/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),
+            fn () => $links->reportDelivery('9', 'ada', [
                 'status' => 'delivered',
                 'remote_path' => '/Synaplan/Documents/plan.docx',
                 'remote_id' => '42',
                 'open_url' => 'http://nextcloud.test/index.php/f/42',
             ]),
-            fn () => $links->claimPickup('15'),
-            fn () => $links->submitPickupListing('15', [[
+            fn () => $links->claimPickup('15', 'ada'),
+            fn () => $links->submitPickupListing('15', 'ada', [[
                 'id' => '7',
                 'version' => 'etag-1',
                 'name' => 'notes.txt',
@@ -265,23 +272,37 @@ final class SynaplanContractTest extends TestCase
                 'size' => 12,
                 'mime' => 'text/plain',
             ]]),
-            fn () => $links->uploadPickupFile('15', '7', 'etag-1', 'hello', 'notes.txt', 'text/plain'),
-            fn () => $links->reportPickupResult('15', [
+            fn () => $links->uploadPickupFile('15', 'ada', '7', 'etag-1', 'hello', 'notes.txt', 'text/plain'),
+            fn () => $links->reportPickupResult('15', 'ada', [
                 'status' => 'done',
                 'listed' => 1,
                 'sent' => 1,
                 'skipped' => [],
             ]),
             fn () => $links->reportReadScope('ada', 'allowed', [['id' => '3', 'path' => 'Invoices']]),
-            fn () => $links->notifyKeys(),
+            fn () => $links->notificationTrust(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
-            fn () => $links->adoptIdentity('ada', 'sk_ada'),
-            fn () => $links->reportLifecycle('ada', 'deleted'),
-            fn () => $links->registerInstance('sk_admin'),
-            fn () => $links->instanceStatus(),
-            fn () => $links->exchange('code-1'),
+            fn () => $links->reportLifecycle('ada', 'disabled'),
+            fn () => $links->register('registration-token'),
+            fn () => $links->registrationStatus(),
+            fn () => $links->announceDelivery('https://files.example.org/apps/synaplan_integration/api/v1/inbound'),
+            fn () => $oauth->authorizeUrl('ada', 'state-1', 'https://files.example.org/apps/synaplan_integration/link/callback', false),
+            fn () => $oauth->connect('ada', 'code-1', 'verifier-1', 'https://files.example.org/apps/synaplan_integration/link/callback'),
+            function () use ($oauth): void {
+                $this->expireAccessToken('ada');
+                $oauth->accessToken('ada');
+            },
+            function () use ($links): void {
+                $this->expireAccessToken('ada');
+                $links->whoAmI('ada');
+            },
+            function () use ($oauth): void {
+                $this->expireAccessToken('ada');
+                $oauth->revoke('ada');
+            },
             fn () => $links->disconnectUid('ada'),
+            fn () => $links->forgetRegistration(),
             fn () => $this->recordChatStream($client, $session),
         ];
         foreach ($scenarios as $scenario) {
@@ -376,9 +397,12 @@ final class SynaplanContractTest extends TestCase
 
         $response = $this->createStub(IResponse::class);
         $response->method('getStatusCode')->willReturn(200);
-        $response->method('getBody')->willReturn((string) json_encode(
-            $path === '/api/v1/config/capabilities' ? self::CAPABILITIES : self::RESPONSE,
-        ));
+        $response->method('getBody')->willReturn((string) json_encode(match ($path) {
+            '/api/v1/config/capabilities' => self::CAPABILITIES,
+            '/oauth/par' => ['request_uri' => 'urn:ietf:params:oauth:request_uri:abc', 'expires_in' => 60],
+            '/oauth/token' => ['access_token' => 'access-1', 'refresh_token' => 'refresh-2', 'expires_in' => 900, 'token_type' => 'Bearer'],
+            default => self::RESPONSE,
+        }));
 
         return $response;
     }
@@ -426,13 +450,53 @@ final class SynaplanContractTest extends TestCase
         return $urls;
     }
 
-    private function crypto(): ICrypto
+    /**
+     * The OAuth2 client over the same in-memory config, with a real key so
+     * assertions can be signed.
+     */
+    private function oauthClient(IConfig $config, SynaplanConfig $synaplanConfig): OAuthClient
     {
-        $crypto = $this->createStub(ICrypto::class);
-        $crypto->method('encrypt')->willReturnCallback(fn (string $plain): string => 'enc:' . $plain);
-        $crypto->method('decrypt')->willReturnCallback(fn (string $cipher): string => substr($cipher, 4));
+        if (!isset($this->appConfig['oauth_private_key'])) {
+            $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+            self::assertNotFalse($key);
+            openssl_pkey_export($key, $private);
+            $this->appConfig['oauth_private_key'] = (string) $private;
+        }
+        $user = $this->createStub(IUserConfig::class);
+        $user->method('getValueString')->willReturnCallback(
+            fn (string $uid, string $app, string $key, string $default = ''): string => $this->userConfig[$uid . '|' . $key] ?? $default,
+        );
+        $user->method('setValueString')->willReturnCallback(
+            function (string $uid, string $app, string $key, string $value): bool {
+                $this->userConfig[$uid . '|' . $key] = $value;
 
-        return $crypto;
+                return true;
+            },
+        );
+        $user->method('deleteUserConfig')->willReturnCallback(
+            function (string $uid, string $app, string $key): void {
+                unset($this->userConfig[$uid . '|' . $key]);
+            },
+        );
+        $app = $this->createStub(IAppConfig::class);
+        $app->method('getValueString')->willReturnCallback(
+            fn (string $appId, string $key, string $default = ''): string => $this->appConfig[$key] ?? $default,
+        );
+        $app->method('setValueString')->willReturnCallback(
+            function (string $appId, string $key, string $value): bool {
+                $this->appConfig[$key] = $value;
+
+                return true;
+            },
+        );
+
+        return new OAuthClient($this->recordingClients(), $app, $config, $user, $this->createStub(ILockingProvider::class), $synaplanConfig, new NullLogger());
+    }
+
+    private function expireAccessToken(string $uid): void
+    {
+        $this->userConfig[$uid . '|synaplan_oauth_expires'] = '0';
+        $this->userConfig[$uid . '|synaplan_oauth_refresh'] = 'refresh-1';
     }
 
     /**

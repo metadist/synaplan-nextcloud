@@ -4,8 +4,11 @@
 #   docker compose -f docker-compose.test.yml -f docker-compose.test.ci.yml \
 #     -f <this repo>/tests/e2e/synaplan-test-stack.yml up -d --wait
 #
-# Synaplan keeps the one-time codes of "Connect your Synaplan account" in
-# Redis, which the test stack does not start. Production always has Redis.
+# Synaplan keeps rate limits and one-time state in Redis, which the test
+# stack does not start. Production always has Redis.
+#
+# This Nextcloud registers as Synaplan's OAuth2 client with the initial
+# access token below, so it is active without an administrator's approval.
 #
 # Synaplan's backend/.env.test carries placeholder Stripe keys, which switch
 # billing on and keep API keys from accounts below a paid plan. Provisioning
@@ -28,6 +31,7 @@ services:
             REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
             CLOUD_FILES_ENABLED: 'true'
+            PLATFORM_LINKS_REGISTRATION_TOKEN: nextcloud-e2e-initial-access-token-0001
         depends_on:
             redis_test:
                 condition: service_healthy

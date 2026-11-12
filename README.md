@@ -163,8 +163,9 @@ make e2e-down     # stop both stacks and delete their data
   stacks.
 - `tests/e2e/synaplan-test-stack.yml` is a Compose overlay for the **Synaplan**
   test container (`app_test`), not for the Nextcloud plugin:
-  - It adds `redis_test` (`REDIS_DSN`) for the one-time link codes of "Connect
-    your Synaplan account".
+  - It adds `redis_test` (`REDIS_DSN`) for Synaplan's rate limits and one-time
+    state, and sets `PLATFORM_LINKS_REGISTRATION_TOKEN`, which the setup sends
+    when it registers this Nextcloud so it is active at once.
   - It sets `STRIPE_SECRET_KEY: ''` on `app_test` because Synaplan's
     `backend/.env.test` ships a fake Stripe test key (`sk_test_fakeKey...`) for
     billing unit tests, which makes Synaplan's `PremiumFeatureGate` require a

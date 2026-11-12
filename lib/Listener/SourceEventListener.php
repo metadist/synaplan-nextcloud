@@ -18,6 +18,7 @@ use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\FileInfo;
 use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\IConfig;
 
@@ -33,13 +34,14 @@ class SourceEventListener implements IEventListener
 {
     public const DEV_MUTE = 'dev_mute_events';
 
-    /** @var array<int, list<array{id: string, event: string, version: string, path: string}>> */
+    /** @var array<int, list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>> */
     private array $pendingDeletedDescendants = [];
 
     public function __construct(
         private SynaplanConfig $synaplanConfig,
         private IConfig $config,
         private IJobList $jobs,
+        private IRootFolder $rootFolder,
     ) {
     }
 
@@ -48,8 +50,7 @@ class SourceEventListener implements IEventListener
         if ($this->config->getAppValue(Application::APP_ID, self::DEV_MUTE, '0') === '1') {
             return;
         }
-        if ($this->synaplanConfig->getLinkInstanceId() === ''
-            || $this->synaplanConfig->getLinkInstanceSecretCipher() === '') {
+        if (!$this->synaplanConfig->isRegistered()) {
             return;
         }
 
@@ -63,12 +64,51 @@ class SourceEventListener implements IEventListener
         }
 
         foreach ($this->mapEvents($event) as $mapped) {
-            $this->jobs->add(SourceEventsJob::class, $mapped);
+            foreach ($this->perPerson($mapped) as $job) {
+                $this->jobs->add(SourceEventsJob::class, $job);
+            }
         }
     }
 
     /**
-     * @return list<array{id: string, event: string, version: string, path: string}>
+     * Synaplan applies a source event to the copies of the person whose key
+     * reports it, and a move renames the copy to the path it reports. A file
+     * is reported for the person in whose files it changed, with their path,
+     * and, for a shared file, for its owner too, with the owner's path.
+     *
+     * @param array{id: string, event: string, version: string, path: string, uid: string, owner: string} $mapped
+     * @return list<array{uid: string, id: string, event: string, version: string, path: string}>
+     */
+    private function perPerson(array $mapped): array
+    {
+        $event = ['id' => $mapped['id'], 'event' => $mapped['event'], 'version' => $mapped['version']];
+        $jobs = [];
+        if ($mapped['uid'] !== '') {
+            $jobs[] = ['uid' => $mapped['uid']] + $event + ['path' => $mapped['path']];
+        }
+        if ($mapped['owner'] !== '' && $mapped['owner'] !== $mapped['uid']) {
+            $jobs[] = ['uid' => $mapped['owner']] + $event + ['path' => $this->ownerPath($mapped['owner'], (int) $mapped['id'])];
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Where the owner sees a shared node, '' when it is gone (deleted).
+     */
+    private function ownerPath(string $owner, int $id): string
+    {
+        try {
+            $node = $this->rootFolder->getUserFolder($owner)->getFirstNodeById($id);
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $node instanceof Node ? substr($this->userRelativePath($node->getPath()) ?? '', 0, 255) : '';
+    }
+
+    /**
+     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
      */
     private function mapEvents(Event $event): array
     {
@@ -119,7 +159,7 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * @return list<array{id: string, event: string, version: string, path: string}>
+     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
      */
     private function descendantPayloads(Folder $folder, string $kind): array
     {
@@ -147,7 +187,7 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * @return array{id: string, event: string, version: string, path: string}|null
+     * @return array{id: string, event: string, version: string, path: string, uid: string, owner: string}|null
      */
     private function payload(Node $node, string $kind, bool $allowFolder): ?array
     {
@@ -164,6 +204,12 @@ class SourceEventListener implements IEventListener
             if ($relative === null) {
                 return null;
             }
+            $owner = '';
+            try {
+                $owner = (string) $node->getOwner()?->getUID();
+            } catch (\Throwable) {
+                $owner = '';
+            }
             $etag = '';
             try {
                 $etag = (string) $node->getEtag();
@@ -176,10 +222,17 @@ class SourceEventListener implements IEventListener
                 'event' => $kind,
                 'version' => substr($etag, 0, 255),
                 'path' => substr($relative, 0, 255),
+                'uid' => $this->pathUser($node->getPath()),
+                'owner' => $owner,
             ];
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function pathUser(string $fullPath): string
+    {
+        return preg_match('#^/([^/]+)/files/#', $fullPath, $match) === 1 ? $match[1] : '';
     }
 
     /**

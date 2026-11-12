@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
@@ -14,7 +15,6 @@ use OCP\Http\Client\IResponse;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserSession;
-use OCP\Security\ICrypto;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -28,6 +28,7 @@ class UserAccountServiceTest extends TestCase
     private IConfig&MockObject $config;
     private IUserSession&MockObject $userSession;
     private LoggerInterface&MockObject $logger;
+    private OAuthClient&MockObject $oauth;
 
     /** @var array<string, string> */
     private array $appConfig = [];
@@ -43,6 +44,7 @@ class UserAccountServiceTest extends TestCase
         $this->config = $this->createMock(IConfig::class);
         $this->userSession = $this->createMock(IUserSession::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->oauth = $this->createMock(OAuthClient::class);
 
         $this->clientService->method('newClient')->willReturn($this->httpClient);
 
@@ -76,11 +78,6 @@ class UserAccountServiceTest extends TestCase
     {
         $keys = $this->keyStorageOver($this->userConfig, $this->appConfig, $this->sensitive);
 
-        $crypto = $this->createStub(ICrypto::class);
-        $crypto->method('decrypt')->willReturnCallback(
-            fn (string $value): string => str_starts_with($value, 'enc:') ? substr($value, 4) : $value
-        );
-
         return new UserAccountService(
             $this->clientService,
             $this->config,
@@ -88,7 +85,7 @@ class UserAccountServiceTest extends TestCase
             new SynaplanConfig($this->config, $keys),
             $this->logger,
             $keys,
-            $crypto,
+            $this->oauth,
         );
     }
 
@@ -207,6 +204,7 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('nextcloud', $captured[0][1]['source']);
         $this->assertSame('inst42:alice', $captured[0][1]['external_id']);
         $this->assertSame('alice@example.com', $captured[0][1]['email']);
+        $this->assertNull($captured[0][1]['instance_id']);
         $this->assertSame('sk_admin_key', $captured[0][2]);
 
         // Mint call targeted the provisioned user id
@@ -322,20 +320,122 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('linked', $this->userConfig['frank|synaplan_link_origin']);
     }
 
+    public function testDeactivateUserForgetsTheGrant(): void
+    {
+        $this->oauth->expects($this->once())->method('forget')->with('frank');
+
+        $this->service()->deactivateUser('frank');
+    }
+
     public function testStoreLinkedAccountSetsOriginAndConsent(): void
     {
         $user = $this->mockUser('alice', 'a@b.test', 'Alice');
+        $this->userConfig['alice|synaplan_user_key_id'] = '4';
 
-        $this->service()->storeLinkedAccount($user, [
-            'api_key' => ['id' => 1, 'key' => 'sk_l'],
-            'user' => ['id' => 9, 'email' => 'a@b.test'],
-            'link_id' => 3,
-        ]);
+        $this->service()->storeLinkedAccount($user, ['id' => 9, 'email' => 'a@b.test']);
 
         $this->assertSame('linked', $this->userConfig['alice|synaplan_link_kind']);
         $this->assertSame('linked', $this->userConfig['alice|synaplan_link_origin']);
         $this->assertSame('1', $this->userConfig['alice|ai_consent']);
+        $this->assertSame('9', $this->userConfig['alice|synaplan_user_id']);
+        $this->assertSame('a@b.test', $this->userConfig['alice|synaplan_link_email']);
+        $this->assertArrayNotHasKey('alice|synaplan_user_key_id', $this->userConfig);
+        $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
         $this->assertTrue($this->service()->wasLinked('alice'));
+    }
+
+    public function testStoreLinkedAccountWithoutAnAccountIdKeepsNoId(): void
+    {
+        $this->service()->storeLinkedAccount($this->mockUser('alice', 'a@b.test', 'Alice'), []);
+
+        $this->assertArrayNotHasKey('alice|synaplan_user_id', $this->userConfig);
+        $this->assertSame('', $this->userConfig['alice|synaplan_link_email']);
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_kind']);
+    }
+
+    public function testAConnectedPersonUsesTheirAccessToken(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->oauth->method('isConnected')->with('alice')->willReturn(true);
+        $this->oauth->method('accessToken')->with('alice')->willReturn('at_alice');
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertSame('at_alice', $this->service()->getCurrentUserApiKey());
+        $this->assertSame('linked', $this->service()->getLinkKind('alice'));
+    }
+
+    public function testAConnectedPersonWhoseGrantEndedSeesConnectAgain(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|synaplan_link_email'] = 'demo@synaplan.com';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_link_origin'] = 'linked';
+        $connected = true;
+        $this->oauth->method('isConnected')->willReturnCallback(static function () use (&$connected): bool {
+            return $connected;
+        });
+        $this->oauth->method('accessToken')->willReturnCallback(static function () use (&$connected): string {
+            $connected = false;
+
+            return '';
+        });
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $this->assertNull($this->service()->getCurrentUserApiKey());
+        $this->assertArrayNotHasKey('alice|synaplan_link_kind', $this->userConfig);
+        $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_origin']);
+    }
+
+    public function testAConnectedPersonStaysConnectedWhileSynaplanCannotBeReached(): void
+    {
+        $this->appConfig['mode'] = 'link';
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->oauth->method('isConnected')->willReturn(true);
+        $this->oauth->method('accessToken')->willReturn('');
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+
+        $service = $this->service();
+        $this->assertNull($service->getCurrentUserApiKey());
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_kind']);
+        $this->assertSame('1', $this->userConfig['alice|ai_consent']);
+        $this->assertSame(UserAccountService::KIND_LINKED, $service->getLinkKind('alice'));
+    }
+
+    public function testLinkEndedForgetsTheGrantAndTheLink(): void
+    {
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['bob|synaplan_link_kind'] = 'linked';
+        $this->oauth->expects($this->atLeastOnce())->method('forget')->with('alice');
+
+        $this->service()->linkEnded('alice');
+
+        $this->assertArrayNotHasKey('alice|synaplan_link_kind', $this->userConfig);
+        $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
+        $this->assertSame('linked', $this->userConfig['bob|synaplan_link_kind']);
+    }
+
+    public function testLinkEndedWithoutAPersonDoesNothing(): void
+    {
+        $this->userConfig['alice|synaplan_link_kind'] = 'linked';
+        $this->oauth->expects($this->never())->method('forget');
+
+        $this->service()->linkEnded('');
+
+        $this->assertSame('linked', $this->userConfig['alice|synaplan_link_kind']);
+    }
+
+    public function testClearLinkPrefsForgetsTheGrant(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'a@b.test', 'Alice'));
+        $this->oauth->expects($this->once())->method('forget')->with('alice');
+
+        $this->service()->clearLinkPrefs();
     }
 
     public function testGetLinkStatusOnlyReportsActiveLinkedKind(): void
@@ -368,10 +468,9 @@ class UserAccountServiceTest extends TestCase
         $this->assertTrue($this->service()->wasLinked('alice'));
     }
 
-    public function testProvisioningSendsTheInstanceCredentialAndBareUserId(): void
+    public function testProvisioningSendsTheInstanceIdInTheBodyAndBareUserId(): void
     {
         $this->appConfig['link_instance_id'] = 'pi_nc';
-        $this->appConfig['link_instance_secret'] = 'enc:s3cret';
         $this->userConfig['alice|ai_consent'] = '1';
         $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'alice@example.com', 'Alice'));
 
@@ -392,11 +491,13 @@ class UserAccountServiceTest extends TestCase
         $this->service()->getCurrentUserApiKey();
 
         $this->assertSame('alice', $captured[0][0]['external_id']);
-        $this->assertSame('pi_nc', $captured[0][1]['X-Instance-Id']);
-        $this->assertSame('s3cret', $captured[0][1]['X-Instance-Secret']);
+        $this->assertSame('pi_nc', $captured[0][0]['instance_id']);
+        $this->assertSame('pi_nc', $captured[1][0]['instance_id']);
         $this->assertSame('sk_admin_key', $captured[0][1]['X-API-Key']);
-        $this->assertSame('pi_nc', $captured[1][1]['X-Instance-Id']);
-        $this->assertSame('s3cret', $captured[1][1]['X-Instance-Secret']);
+        foreach ($captured as [, $headers]) {
+            $this->assertArrayNotHasKey('X-Instance-Id', $headers);
+            $this->assertArrayNotHasKey('X-Instance-Secret', $headers);
+        }
     }
 
     public function testSharedModeResolvesNull(): void
@@ -434,6 +535,103 @@ class UserAccountServiceTest extends TestCase
         $this->httpClient->expects($this->never())->method('post');
 
         $this->assertNull($this->service()->resolveKeyForUser($user));
+    }
+
+    public function testAPaidPlanRefusalNamesTheReason(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $body = '{"success":false,"error":"API keys are part of a paid plan.","code":"API_PLAN_REQUIRED","message":"API keys are part of a paid plan."}';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(403, $body));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('api_plan_required', $failure->code);
+    }
+
+    public function testAConflictNamesTheEmailAndAServerCrashDoesNot(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(409, '{"error":"Email already used"}'));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $taken = $service->provisioningFailure();
+        $this->assertNotNull($taken);
+        $this->assertSame('email_already_used', $taken->code);
+
+        $crash = '{"title":"An error occurred","detail":"SQLSTATE[23000]: Duplicate entry \'alice@example.com\' for key \'UNIQ_BUSER_BMAIL\'"}';
+        $this->httpClient = $this->createMock(IClient::class);
+        $this->clientService = $this->createMock(IClientService::class);
+        $this->clientService->method('newClient')->willReturn($this->httpClient);
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(500, $crash));
+        $crashed = $this->service();
+        $this->assertNull($crashed->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $crashed->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('Synaplan answered HTTP 500.', $failure->message);
+    }
+
+    public function testThePaidPlanWordingWithoutTheCodeIsJustASentence(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(
+            403,
+            '{"error":"API keys are part of a paid plan."}',
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('API keys are part of a paid plan.', $failure->message);
+    }
+
+    public function testATruncatedPlanErrorInTheExceptionTextIsStillRecognized(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new \RuntimeException(
+            'Client error: `POST http://localhost:5173/api/v1/admin/users/2752/api-keys` resulted in a `403 Forbidden` response:' . "\n"
+            . '{"success":false,"error":"API keys are part of a paid plan.","code":"API_PLAN_REQUIRED","message":"API keys are part of  (truncated...)'
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('api_plan_required', $failure->code);
+    }
+
+    public function testAMissingAdminKeyNamesTheReason(): void
+    {
+        $this->appConfig['api_key_local'] = '';
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('admin_key_missing', $failure->code);
+    }
+
+    public function testASynaplanSentenceIsShownAndAUrlIsNot(): void
+    {
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->httpClient->method('post')->willThrowException(new HttpFailure(
+            422,
+            '{"error":"This Nextcloud is not allowed to create accounts."}',
+        ));
+
+        $service = $this->service();
+        $this->assertNull($service->resolveKeyForUser($this->mockUser('alice', 'alice@example.com', 'Alice')));
+        $failure = $service->provisioningFailure();
+        $this->assertNotNull($failure);
+        $this->assertSame('account_unavailable', $failure->code);
+        $this->assertSame('This Nextcloud is not allowed to create accounts.', $failure->message);
     }
 
     public function testProvisionModeEmailConflictStillThrows(): void
@@ -536,5 +734,39 @@ class UserAccountServiceTest extends TestCase
         $this->httpClient->expects($this->never())->method('post');
 
         $this->assertNull($this->service()->renewProvisionedKey());
+    }
+}
+
+/**
+ * An HTTP client failure that still carries the response, as Guzzle does.
+ */
+final class HttpFailure extends \RuntimeException
+{
+    public function __construct(
+        private int $status,
+        private string $body,
+    ) {
+        parent::__construct('HTTP ' . $status);
+    }
+
+    public function getResponse(): object
+    {
+        return new class ($this->status, $this->body) {
+            public function __construct(
+                private int $status,
+                private string $body,
+            ) {
+            }
+
+            public function getStatusCode(): int
+            {
+                return $this->status;
+            }
+
+            public function getBody(): string
+            {
+                return $this->body;
+            }
+        };
     }
 }

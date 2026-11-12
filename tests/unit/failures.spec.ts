@@ -35,6 +35,9 @@ describe('describeFailure', () => {
 	it.each([
 		'consent_required',
 		'account_unavailable',
+		'api_plan_required',
+		'email_already_used',
+		'admin_key_missing',
 		'insufficient_scope',
 		'synaplan_error',
 		'synaplan_key_rejected',
@@ -51,6 +54,19 @@ describe('describeFailure', () => {
 		expect(text).toMatch(/\.$/)
 		expect(text).not.toContain(code)
 		expect(text).not.toBe(describeFailure().text)
+	})
+
+	it("adds Synaplan's reason after the sentence for a known failure", () => {
+		expect(
+			describeFailure(
+				'account_unavailable',
+				'The account is waiting for an administrator.',
+			).text,
+		).toBe(
+			'Synaplan could not set up your account. Ask your administrator. The account is waiting for an administrator.',
+		)
+		expect(describeFailure('api_plan_required').text).toContain('paid plan')
+		expect(describeFailure('email_already_used').text).toContain('email address')
 	})
 
 	it("shows Synaplan's own sentence for a code the app does not know", () => {

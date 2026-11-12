@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\LinkController;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -24,6 +25,7 @@ class LinkControllerTest extends TestCase
     private SynaplanConfig&MockObject $synaplanConfig;
     private UserAccountService&MockObject $userAccounts;
     private PlatformLinkService&MockObject $platformLinks;
+    private OAuthClient&MockObject $oauth;
     /** @var array<string, mixed> */
     private array $sessionStore = [];
 
@@ -35,6 +37,7 @@ class LinkControllerTest extends TestCase
         $this->synaplanConfig = $this->createMock(SynaplanConfig::class);
         $this->userAccounts = $this->createMock(UserAccountService::class);
         $this->platformLinks = $this->createMock(PlatformLinkService::class);
+        $this->oauth = $this->createMock(OAuthClient::class);
 
         $this->session->method('get')->willReturnCallback(
             fn (string $key) => $this->sessionStore[$key] ?? null
@@ -54,8 +57,8 @@ class LinkControllerTest extends TestCase
             fn (array $query = []) => 'https://files.example.org/settings/user/synaplan_integration'
                 . ($query !== [] ? '?' . http_build_query($query) : '')
         );
-        $this->platformLinks->method('connectUrl')->willReturn(
-            'https://synaplan.example/connect/platform?client=nextcloud'
+        $this->platformLinks->method('callbackUrl')->willReturn(
+            'https://files.example.org/apps/synaplan_integration/link/callback'
         );
     }
 
@@ -68,6 +71,7 @@ class LinkControllerTest extends TestCase
             $this->synaplanConfig,
             $this->userAccounts,
             $this->platformLinks,
+            $this->oauth,
         );
     }
 
@@ -84,33 +88,82 @@ class LinkControllerTest extends TestCase
         $this->sessionStore['synaplan_link_state'] = $state;
         $this->sessionStore['synaplan_link_state_at'] = time() - $ageSeconds;
         $this->sessionStore['synaplan_link_uid'] = $uid;
+        $this->sessionStore['synaplan_link_verifier'] = 'the-verifier';
     }
 
-    public function testCallbackNeverCallsAdminUsersApi(): void
+    public function testCallbackConnectsWithTheVerifierAndStoresWhoThePersonIs(): void
     {
         $user = $this->user();
         $this->userSession->method('getUser')->willReturn($user);
         $this->primeState('abc123');
         $this->request->method('getParam')->willReturnMap([
-            ['code', '', 'link-code-1'],
+            ['code', '', 'auth-code-1'],
             ['state', '', 'abc123'],
         ]);
 
-        $this->platformLinks->expects($this->once())
-            ->method('exchange')
-            ->with('link-code-1')
-            ->willReturn([
-                'api_key' => ['id' => 9, 'key' => 'sk_linked'],
-                'user' => ['id' => 3, 'email' => 'jdoe@example.com'],
-                'link_id' => 11,
-            ]);
-        $this->userAccounts->expects($this->once())->method('storeLinkedAccount');
+        $this->oauth->expects($this->once())
+            ->method('connect')
+            ->with('jdoe', 'auth-code-1', 'the-verifier', 'https://files.example.org/apps/synaplan_integration/link/callback');
+        $this->platformLinks->method('whoAmI')->with('jdoe')->willReturn(['id' => 3, 'email' => 'jdoe@example.com']);
+        $this->userAccounts->expects($this->once())->method('storeLinkedAccount')
+            ->with($user, ['id' => 3, 'email' => 'jdoe@example.com']);
         $this->userAccounts->expects($this->never())->method('provisionAccount');
         $this->userAccounts->expects($this->never())->method('provisionForLinkMode');
 
         $response = $this->controller()->callback();
 
         $this->assertStringContainsString('linked=1', $response->getRedirectURL());
+        $this->assertArrayNotHasKey('synaplan_link_verifier', $this->sessionStore);
+    }
+
+    public function testCallbackWithoutAVerifierDoesNotConnect(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->primeState('abc123');
+        unset($this->sessionStore['synaplan_link_verifier']);
+        $this->request->method('getParam')->willReturnMap([
+            ['code', '', 'c'],
+            ['state', '', 'abc123'],
+        ]);
+        $this->oauth->expects($this->never())->method('connect');
+
+        $response = $this->controller()->callback();
+
+        $this->assertStringContainsString('link_error=exchange', $response->getRedirectURL());
+    }
+
+    public function testCallbackAfterTheConsentWasDeniedConnectsNothing(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->primeState('abc123');
+        $this->request->method('getParam')->willReturnMap([
+            ['code', '', ''],
+            ['state', '', 'abc123'],
+            ['error', null, 'access_denied'],
+        ]);
+        $this->oauth->expects($this->never())->method('connect');
+
+        $response = $this->controller()->callback();
+
+        $this->assertStringContainsString('link_error=' . PlatformLinkException::CODE_DENIED, $response->getRedirectURL());
+    }
+
+    public function testCallbackReportsWhySynaplanRefused(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->primeState('abc123');
+        $this->request->method('getParam')->willReturnMap([
+            ['code', '', 'c'],
+            ['state', '', 'abc123'],
+        ]);
+        $this->oauth->method('connect')->willThrowException(
+            new PlatformLinkException('unreachable', PlatformLinkException::CODE_UNREACHABLE)
+        );
+        $this->userAccounts->expects($this->never())->method('storeLinkedAccount');
+
+        $response = $this->controller()->callback();
+
+        $this->assertStringContainsString('link_error=' . PlatformLinkException::CODE_UNREACHABLE, $response->getRedirectURL());
     }
 
     public function testCallbackRejectsMissingState(): void
@@ -120,7 +173,7 @@ class LinkControllerTest extends TestCase
             ['code', '', 'c'],
             ['state', '', ''],
         ]);
-        $this->platformLinks->expects($this->never())->method('exchange');
+        $this->oauth->expects($this->never())->method('connect');
 
         $response = $this->controller()->callback();
 
@@ -135,7 +188,7 @@ class LinkControllerTest extends TestCase
             ['code', '', 'c'],
             ['state', '', 'other'],
         ]);
-        $this->platformLinks->expects($this->never())->method('exchange');
+        $this->oauth->expects($this->never())->method('connect');
 
         $response = $this->controller()->callback();
 
@@ -151,7 +204,7 @@ class LinkControllerTest extends TestCase
             ['code', '', 'c'],
             ['state', '', 'abc123'],
         ]);
-        $this->platformLinks->expects($this->never())->method('exchange');
+        $this->oauth->expects($this->never())->method('connect');
         $this->userAccounts->expects($this->never())->method('storeLinkedAccount');
 
         $response = $this->controller()->callback();
@@ -169,7 +222,7 @@ class LinkControllerTest extends TestCase
             ['code', '', 'c'],
             ['state', '', 'abc123'],
         ]);
-        $this->platformLinks->expects($this->never())->method('exchange');
+        $this->oauth->expects($this->never())->method('connect');
 
         $response = $this->controller()->callback();
 
@@ -184,7 +237,7 @@ class LinkControllerTest extends TestCase
             ['code', '', 'c'],
             ['state', '', 'once'],
         ]);
-        $this->platformLinks->method('exchange')->willThrowException(
+        $this->oauth->method('connect')->willThrowException(
             new PlatformLinkException('fail', PlatformLinkException::CODE_EXCHANGE)
         );
 
@@ -227,5 +280,54 @@ class LinkControllerTest extends TestCase
         $response = $this->controller()->start();
 
         $this->assertStringContainsString('link_error=instance_pending', $response->getRedirectURL());
+    }
+
+    public function testStartWhileSynaplanHoldsTheRegistrationForApprovalSaysSo(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(true);
+        $this->platformLinks->method('isWaitingForApproval')->willReturn(true);
+        $this->oauth->expects($this->never())->method('authorizeUrl');
+
+        $response = $this->controller()->start();
+
+        $this->assertStringContainsString('link_error=instance_pending', $response->getRedirectURL());
+    }
+
+    public function testStartSendsThePersonToAuthorizeAndKeepsTheVerifier(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(true);
+        $this->synaplanConfig->method('isMemoriesEnabled')->willReturn(true);
+        $this->oauth->expects($this->once())
+            ->method('authorizeUrl')
+            ->with(
+                'jdoe',
+                $this->callback(fn (string $state): bool => strlen($state) === 32),
+                'https://files.example.org/apps/synaplan_integration/link/callback',
+                true,
+            )
+            ->willReturn(['url' => 'https://synaplan.example/oauth/authorize?x=1', 'verifier' => 'v-123']);
+
+        $response = $this->controller()->start();
+
+        $this->assertSame('https://synaplan.example/oauth/authorize?x=1', $response->getRedirectURL());
+        $this->assertSame('v-123', $this->sessionStore['synaplan_link_verifier']);
+        $this->assertSame('jdoe', $this->sessionStore['synaplan_link_uid']);
+        $this->assertSame(32, strlen((string) $this->sessionStore['synaplan_link_state']));
+    }
+
+    public function testStartReportsWhenSynaplanCannotBeAsked(): void
+    {
+        $this->userSession->method('getUser')->willReturn($this->user());
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(true);
+        $this->oauth->method('authorizeUrl')->willThrowException(
+            new PlatformLinkException('unreachable', PlatformLinkException::CODE_UNREACHABLE)
+        );
+
+        $response = $this->controller()->start();
+
+        $this->assertStringContainsString('link_error=' . PlatformLinkException::CODE_UNREACHABLE, $response->getRedirectURL());
+        $this->assertArrayNotHasKey('synaplan_link_verifier', $this->sessionStore);
     }
 }

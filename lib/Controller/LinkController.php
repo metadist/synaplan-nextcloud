@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -20,15 +21,18 @@ use OCP\IUser;
 use OCP\IUserSession;
 
 /**
- * Authorization-code handshake: start → Synaplan confirm → callback → key.
+ * Connecting a person through Synaplan's OAuth2 server: start → Synaplan
+ * consent → callback → the person's grant (code flow with PKCE).
  *
- * The browser never sees the API key. `state` is the CSRF check.
+ * The browser never sees a token. `state` is the CSRF check; the PKCE
+ * verifier stays in the session.
  */
 class LinkController extends Controller
 {
     private const SESSION_STATE = 'synaplan_link_state';
     private const SESSION_STATE_AT = 'synaplan_link_state_at';
     private const SESSION_UID = 'synaplan_link_uid';
+    private const SESSION_VERIFIER = 'synaplan_link_verifier';
     private const STATE_TTL_SECONDS = 600;
 
     public function __construct(
@@ -38,6 +42,7 @@ class LinkController extends Controller
         private SynaplanConfig $synaplanConfig,
         private UserAccountService $userAccounts,
         private PlatformLinkService $platformLinks,
+        private OAuthClient $oauth,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -56,22 +61,31 @@ class LinkController extends Controller
             ]));
         }
 
-        if (!$this->synaplanConfig->isLinkAvailable()) {
+        if (!$this->synaplanConfig->isLinkAvailable() || $this->platformLinks->isWaitingForApproval()) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_INSTANCE_PENDING,
             ]));
         }
 
         $state = bin2hex(random_bytes(16));
+        try {
+            $authorize = $this->oauth->authorizeUrl(
+                $user->getUID(),
+                $state,
+                $this->platformLinks->callbackUrl(),
+                $this->synaplanConfig->isMemoriesEnabled(),
+            );
+        } catch (PlatformLinkException $e) {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => $e->getErrorCode(),
+            ]));
+        }
         $this->session->set(self::SESSION_STATE, $state);
         $this->session->set(self::SESSION_STATE_AT, time());
         $this->session->set(self::SESSION_UID, $user->getUID());
+        $this->session->set(self::SESSION_VERIFIER, $authorize['verifier']);
 
-        return new RedirectResponse($this->platformLinks->connectUrl(
-            $this->synaplanConfig->getLinkInstanceId(),
-            $user->getUID(),
-            $state,
-        ));
+        return new RedirectResponse($authorize['url']);
     }
 
     /**
@@ -85,6 +99,8 @@ class LinkController extends Controller
         $state = trim((string) $this->request->getParam('state', ''));
         $user = $this->userSession->getUser();
         $uid = $user instanceof IUser ? $user->getUID() : '';
+        $verifier = (string) $this->session->get(self::SESSION_VERIFIER);
+        $this->session->remove(self::SESSION_VERIFIER);
 
         $error = $this->consumeState($state, $uid);
         if ($error !== null) {
@@ -93,15 +109,21 @@ class LinkController extends Controller
             ]));
         }
 
-        if (!$user instanceof IUser || $code === '') {
+        if ($this->request->getParam('error') === 'access_denied') {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => PlatformLinkException::CODE_DENIED,
+            ]));
+        }
+
+        if (!$user instanceof IUser || $code === '' || $verifier === '') {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_EXCHANGE,
             ]));
         }
 
         try {
-            $exchange = $this->platformLinks->exchange($code);
-            $this->userAccounts->storeLinkedAccount($user, $exchange);
+            $this->oauth->connect($user->getUID(), $code, $verifier, $this->platformLinks->callbackUrl());
+            $this->userAccounts->storeLinkedAccount($user, $this->whoIs($user->getUID()));
         } catch (PlatformLinkException $e) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => $e->getErrorCode(),
@@ -118,7 +140,8 @@ class LinkController extends Controller
     }
 
     /**
-     * Revoke the linked key and forget local prefs.
+     * Revoke the person's grant (which ends their link in Synaplan) and
+     * forget local prefs.
      */
     #[NoAdminRequired]
     public function disconnect(): JSONResponse
@@ -141,6 +164,21 @@ class LinkController extends Controller
     public function status(): JSONResponse
     {
         return new JSONResponse($this->userAccounts->getLinkStatus());
+    }
+
+    /**
+     * Who the person is in Synaplan, for the settings page. The connection
+     * stands without it; the name shows once Synaplan answers.
+     *
+     * @return array{id?: int|string, email?: string}
+     */
+    private function whoIs(string $uid): array
+    {
+        try {
+            return $this->platformLinks->whoAmI($uid);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

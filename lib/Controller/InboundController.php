@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\NotificationSignature;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -37,6 +38,7 @@ class InboundController extends Controller
         private SeenNotificationStore $seen,
         private CopyDelivery $copies,
         private FolderRead $reads,
+        private PlatformLinkService $links,
         private UserAccountService $accounts,
         private ICacheFactory $cacheFactory,
         private ITimeFactory $time,
@@ -46,41 +48,45 @@ class InboundController extends Controller
     }
 
     /**
-     * @param string|null $body the raw notification, read from the request when omitted
+     * @param string|null $body the notification token, read from the request when omitted
      */
     #[PublicPage]
     #[NoCSRFRequired]
     #[AnonRateLimit(limit: 120, period: 60)]
     public function receive(?string $body = null): JSONResponse
     {
-        $raw = $body ?? (string) file_get_contents('php://input');
-        $decoded = json_decode($raw, true);
-        $notification = is_array($decoded) ? $decoded : [];
-        $reason = $this->rejectReason($notification);
+        $token = $body ?? (string) file_get_contents('php://input');
+        $reason = $this->rejectReason($token);
         if ($reason !== null) {
             $this->noteReject();
 
             return new JSONResponse(['error' => $reason], Http::STATUS_UNAUTHORIZED);
         }
 
+        $notification = NotificationSignature::claims($token);
         $type = (string) $notification['type'];
         $id = (string) $notification['id'];
+        // A copy or a folder read is done for the person the signed notice
+        // names, with that person's own key. Without one nobody here may act,
+        // and Synaplan is told so before anything is claimed.
+        $person = is_string($notification['sub'] ?? null) ? $notification['sub'] : '';
+        if (in_array($type, ['delivery', 'pickup'], true) && !$this->links->canActFor($person)) {
+            return new JSONResponse(['error' => 'not_linked'], Http::STATUS_CONFLICT);
+        }
 
         return match ($type) {
-            'delivery' => $this->delivered($this->copies->handle($id)),
-            'identity_revoked' => $this->revoked($id),
-            'pickup' => $this->read($id),
+            'delivery' => $this->delivered($this->copies->handle($id, $person)),
+            'identity_revoked' => $this->revoked($person),
+            'pickup' => $this->read($id, $person),
             default => new JSONResponse([], Http::STATUS_NO_CONTENT),
         };
     }
 
-    /**
-     * @param array<string, mixed> $notification
-     */
-    private function rejectReason(array $notification): ?string
+    private function rejectReason(string $token): ?string
     {
         $reason = NotificationSignature::verify(
-            $notification,
+            $token,
+            $this->keys->issuer(),
             $this->synaplanConfig->getLinkInstanceId(),
             $this->keys->keys(),
             $this->time->getTime(),
@@ -88,6 +94,7 @@ class InboundController extends Controller
         if ($reason !== NotificationSignature::OK) {
             return $reason;
         }
+        $notification = NotificationSignature::claims($token);
         $type = $notification['type'] ?? null;
         $id = $notification['id'] ?? null;
         if (!is_string($type) || $type === '' || !is_scalar($id)) {
@@ -112,16 +119,16 @@ class InboundController extends Controller
         return new JSONResponse($result['body'], $status);
     }
 
-    private function read(string $id): JSONResponse
+    private function read(string $id, string $person): JSONResponse
     {
-        $this->reads->handle($id);
+        $this->reads->handle($id, $person);
 
         return new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED);
     }
 
-    private function revoked(string $linkId): JSONResponse
+    private function revoked(string $person): JSONResponse
     {
-        $this->accounts->revokeLinkedKey($linkId);
+        $this->accounts->linkEnded($person);
 
         return new JSONResponse([], Http::STATUS_NO_CONTENT);
     }

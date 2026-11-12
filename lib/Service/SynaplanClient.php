@@ -15,7 +15,8 @@ use Psr\Log\LoggerInterface;
 /**
  * HTTP client for the Synaplan API.
  *
- * Uses X-API-Key authentication for all requests.
+ * Sends the person's or the install's credential with every request: an API
+ * key in X-API-Key, a connected person's access token as a bearer.
  * No Nextcloud-specific business logic — only HTTP transport.
  */
 class SynaplanClient
@@ -421,8 +422,7 @@ class SynaplanClient
         }
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey(),
+            'headers' => SynaplanCredential::header($apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey()) + [
                 'Accept' => 'application/json',
             ],
             'multipart' => $multipart,
@@ -475,8 +475,7 @@ class SynaplanClient
         $url = $this->getBaseUrl() . '/api/v1/media/generate';
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $this->requireApiKey(),
+            'headers' => SynaplanCredential::header($this->requireApiKey()) + [
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ],
@@ -538,9 +537,7 @@ class SynaplanClient
         $url = $this->getBaseUrl() . $relativePath;
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $this->requireApiKey(),
-            ],
+            'headers' => SynaplanCredential::header($this->requireApiKey()),
             'timeout' => self::MEDIA_TIMEOUT,
         ];
 
@@ -666,9 +663,15 @@ class SynaplanClient
             throw FailureException::notConnected();
         }
 
-        throw $this->userAccounts->hasConsentForCurrentUser()
-            ? FailureException::accountUnavailable()
-            : FailureException::consentRequired();
+        if (!$this->userAccounts->hasConsentForCurrentUser()) {
+            throw FailureException::consentRequired();
+        }
+        $problem = $this->userAccounts->provisioningFailure();
+        if ($problem !== null) {
+            throw new FailureException($problem, 'No Synaplan key for a user who activated AI: ' . $problem->code);
+        }
+
+        throw FailureException::accountUnavailable();
     }
 
     /**
@@ -717,9 +720,9 @@ class SynaplanClient
             $url .= '?' . http_build_query($query);
         }
 
+        $credential = $requiresKey ? $this->requireApiKey() : (string) $this->getApiKey();
         $options = [
-            'headers' => [
-                'X-API-Key' => $requiresKey ? $this->requireApiKey() : $this->getApiKey(),
+            'headers' => ($credential !== '' ? SynaplanCredential::header($credential) : []) + [
                 'Accept' => 'application/json',
             ],
             'timeout' => self::TIMEOUT,
@@ -761,7 +764,7 @@ class SynaplanClient
                     throw FailureException::notConnected();
                 }
                 try {
-                    $options['headers']['X-API-Key'] = $this->requireApiKey();
+                    $options['headers'] = SynaplanCredential::header($this->requireApiKey()) + array_diff_key($options['headers'], ['X-API-Key' => 1, 'Authorization' => 1]);
                     $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                     $decoded = json_decode($response->getBody(), true);
                     if (is_array($decoded)) {
@@ -779,7 +782,7 @@ class SynaplanClient
                 $renewed = $this->userAccounts->renewProvisionedKey();
                 if (is_string($renewed) && $renewed !== '') {
                     try {
-                        $options['headers']['X-API-Key'] = $renewed;
+                        $options['headers'] = SynaplanCredential::header($renewed) + array_diff_key($options['headers'], ['X-API-Key' => 1, 'Authorization' => 1]);
                         $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                         $decoded = json_decode($response->getBody(), true);
                         if (is_array($decoded)) {

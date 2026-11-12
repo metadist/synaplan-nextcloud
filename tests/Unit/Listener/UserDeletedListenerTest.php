@@ -36,45 +36,51 @@ class UserDeletedListenerTest extends TestCase
         return new BeforeUserDeletedEvent($user);
     }
 
-    public function testLinkedUserIsDisconnectedAndReported(): void
+    public function testAConnectedPersonIsReportedThenDisconnected(): void
     {
-        $this->userAccounts->method('wasLinked')->with('jdoe')->willReturn(true);
-        $this->platformLinks->expects($this->once())->method('disconnectUid')->with('jdoe');
-        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted');
+        $order = [];
+        $this->userAccounts->method('getLinkKind')->with('jdoe')->willReturn(UserAccountService::KIND_LINKED);
+        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted')
+            ->willReturnCallback(static function () use (&$order): void {
+                $order[] = 'report';
+            });
+        $this->platformLinks->expects($this->once())->method('disconnectUid')->with('jdoe')
+            ->willReturnCallback(static function () use (&$order): void {
+                $order[] = 'disconnect';
+            });
 
         $this->listener()->handle($this->event());
+
+        $this->assertSame(['report', 'disconnect'], $order);
     }
 
-    public function testOnceLinkedUserIsReportedAfterDisconnect(): void
+    public function testAProvisionedPersonIsReportedSoSynaplanCanDeleteTheAccount(): void
     {
-        $this->userAccounts->method('wasLinked')->with('jdoe')->willReturn(true);
-        $this->userAccounts->method('getLinkKind')->with('jdoe')->willReturn(null);
-        $this->platformLinks->expects($this->once())->method('disconnectUid')->with('jdoe');
-        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted');
-
-        $this->listener()->handle($this->event());
-    }
-
-    public function testProvisionedUserIsReportedAndNotDeletedByTheAdminApi(): void
-    {
-        $this->userAccounts->method('wasLinked')->with('jdoe')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->with('jdoe')->willReturn(UserAccountService::KIND_PROVISIONED);
         $this->userAccounts->method('getStoredApiKey')->with('jdoe')->willReturn('sk_jdoe');
-        $this->platformLinks->expects($this->once())->method('adoptBeforeDelete')->with('jdoe', 'sk_jdoe');
         $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted');
         $this->platformLinks->expects($this->once())->method('disconnectUid')->with('jdoe');
+
+        $this->listener()->handle($this->event());
+    }
+
+    public function testAOnceLinkedPersonIsStillReported(): void
+    {
+        $this->userAccounts->method('wasLinked')->willReturn(true);
+        $this->userAccounts->method('getLinkKind')->willReturn(null);
+        $this->userAccounts->method('getStoredApiKey')->willReturn('');
+        $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted');
 
         $this->listener()->handle($this->event());
     }
 
     public function testAPersonWithNoSynaplanIdentityIsIgnored(): void
     {
-        $this->userAccounts->method('wasLinked')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->willReturn(null);
         $this->userAccounts->method('getStoredApiKey')->willReturn('');
         $this->userAccounts->method('getSynaplanUserId')->willReturn(null);
-        $this->platformLinks->expects($this->never())->method('disconnectUid');
         $this->platformLinks->expects($this->never())->method('reportLifecycle');
+        $this->platformLinks->expects($this->never())->method('disconnectUid');
 
         $this->listener()->handle($this->event());
     }

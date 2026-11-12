@@ -136,7 +136,7 @@ class CloudStateService
         $url = $this->synaplanConfig->getBaseUrl() . $path;
         $headers = ['Accept' => 'application/json'];
         if ($apiKey !== null && $apiKey !== '') {
-            $headers['X-API-Key'] = $apiKey;
+            $headers += SynaplanCredential::header($apiKey);
         }
         $options = [
             'headers' => $headers,

@@ -31,27 +31,17 @@ class UserDeletedListener implements IEventListener
     public function handle(Event $event): void
     {
         $uid = $event->getUser()->getUID();
-        $linked = $this->userAccounts->wasLinked($uid)
-            || $this->userAccounts->getLinkKind($uid) === UserAccountService::KIND_LINKED;
+        $kind = $this->userAccounts->getLinkKind($uid);
+        $linked = $kind === UserAccountService::KIND_LINKED || $this->userAccounts->wasLinked($uid);
         $key = $this->userAccounts->getStoredApiKey($uid);
-        // Decide before disconnect clears the stored key.
-        $report = $linked || $key !== '' || $this->hasIdentity($uid);
-        if (!$linked && $key !== '') {
-            $this->platformLinks?->adoptBeforeDelete($uid, $key);
-        }
-        if ($report) {
+        // Decide before disconnect clears the stored credential.
+        if ($linked || $key !== '' || $kind !== null || $this->userAccounts->getSynaplanUserId($uid) !== null) {
+            // Synaplan ends the link, and deletes an account it only kept for
+            // this person here.
             $this->platformLinks?->reportLifecycle($uid, 'deleted');
         }
         if ($linked || $key !== '') {
-            // Revokes the key directly when this Nextcloud is not registered
-            // yet, and clears the local preferences.
             $this->platformLinks?->disconnectUid($uid);
         }
-    }
-
-    private function hasIdentity(string $uid): bool
-    {
-        return $this->userAccounts->getLinkKind($uid) !== null
-            || $this->userAccounts->getSynaplanUserId($uid) !== null;
     }
 }

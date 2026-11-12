@@ -6,6 +6,8 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -543,6 +545,22 @@ class SynaplanClientTest extends TestCase
             self::fail('A missing key after consent must fail.');
         } catch (FailureException $e) {
             self::assertSame([502, 'account_unavailable'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testAnActivatedPersonHearsWhyTheAccountWasNotCreated(): void
+    {
+        $failure = new Failure(Http::STATUS_FORBIDDEN, Failure::API_PLAN_REQUIRED);
+        $this->userAccounts = $this->createMock(UserAccountService::class);
+        $this->userAccounts->method('getCurrentUserApiKey')->willReturn(null);
+        $this->userAccounts->method('hasConsentForCurrentUser')->willReturn(true);
+        $this->userAccounts->method('provisioningFailure')->willReturn($failure);
+
+        try {
+            $this->makeClient($this->modeConfig('provision'))->requireApiKey();
+            self::fail('A missing key after consent must fail.');
+        } catch (FailureException $e) {
+            self::assertSame($failure, $e->failure);
         }
     }
 

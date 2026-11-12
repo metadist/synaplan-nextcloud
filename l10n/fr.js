@@ -239,6 +239,10 @@ OC.L10N.register(
     "Synaplan copied {name} to {folder}." : "Synaplan a copié {name} dans {folder}.",
     "Synaplan could not finish this. Try again in a minute, or ask your administrator." : "Synaplan n’a pas pu terminer. Réessayez dans une minute ou contactez votre administrateur.",
     "Synaplan could not set up your account. Ask your administrator." : "Synaplan n’a pas pu configurer votre compte. Contactez votre administrateur.",
+    "Synaplan could not set up your account: API keys are part of a paid plan." : "Synaplan n’a pas pu configurer votre compte : les clés d’API font partie d’une offre payante.",
+    "Synaplan could not set up your account: this email address already has a Synaplan account." : "Synaplan n’a pas pu configurer votre compte : cette adresse e-mail a déjà un compte Synaplan.",
+    "Synaplan could not set up your account: this Nextcloud has no key that can create accounts." : "Synaplan n’a pas pu configurer votre compte : ce Nextcloud n’a pas de clé permettant de créer des comptes.",
+    "{summary} {reason}" : "{summary} {reason}",
     "Synaplan does not accept the key of this Nextcloud. Ask your administrator to check the Synaplan settings." : "Synaplan n’accepte pas la clé de ce Nextcloud. Demandez à votre administrateur de vérifier les paramètres de Synaplan.",
     "Synaplan found no text in this file. It may be a scan or protected by a password." : "Synaplan n’a trouvé aucun texte dans ce fichier. Il s’agit peut-être d’un scan ou d’un fichier protégé par mot de passe.",
     "Synaplan found no text it could make searchable. The file may be empty or a scan. Check the file and try again." : "Synaplan n’a trouvé aucun texte à rendre recherchable. Le fichier est peut-être vide ou numérisé. Vérifiez le fichier et réessayez.",
@@ -315,6 +319,11 @@ OC.L10N.register(
     "New and changed files become searchable by AI in your knowledge folder “{folder}”." : "Les fichiers nouveaux et modifiés deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
     "New versions of this file become searchable by AI in your knowledge folder “{folder}”." : "Les nouvelles versions de ce fichier deviennent recherchables par l’IA dans votre dossier de connaissances « {folder} ».",
     "“{task}” will run for a new copy of this file." : "« {task} » s’exécutera pour une nouvelle copie de ce fichier.",
-    "Keep it searchable" : "Le garder recherchable"
+    "Keep it searchable" : "Le garder recherchable",
+    "Registration code from Synaplan (optional)" : "Code d’enregistrement de Synaplan (facultatif)",
+    "You did not allow the connection. Nothing was connected." : "Vous n’avez pas autorisé la connexion. Rien n’a été connecté.",
+    "Synaplan cannot be reached right now. Please try again later." : "Synaplan est injoignable pour le moment. Veuillez réessayer plus tard.",
+    "Synaplan no longer accepts this registration. Forget it and register again." : "Synaplan n’accepte plus cet enregistrement. Oubliez-le et enregistrez à nouveau.",
+    "Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again." : "Synaplan n’accepte plus ce Nextcloud. Demandez à votre administrateur de l’enregistrer à nouveau."
 },
 "nplurals=2; plural=(n > 1);");

@@ -48,6 +48,9 @@ async function waitUntilReady(url: string): Promise<void> {
 	await context.dispose()
 }
 
+/** The initial access token the Synaplan test stack accepts (synaplan-test-stack.yml). */
+const REGISTRATION_TOKEN = 'nextcloud-e2e-initial-access-token-0001'
+
 /**
  * Connects the app to the Synaplan test stack the way an administrator
  * does: a Synaplan API key in the admin settings, "Connect your Synaplan
@@ -69,15 +72,22 @@ export default async function globalSetup(): Promise<void> {
 	}
 	await synaplan.dispose()
 
+	// Synaplan's container reaches this Nextcloud on the Docker host, under
+	// a name Synaplan's test environment accepts for plain-http delivery.
+	const inbound = new URL(`${APP}/api/v1/inbound`, NC_URL)
+	inbound.hostname = 'host.docker.internal'
 	await saveSettings({
 		api_key_local: apiKey.key,
 		active_env: 'local',
 		mode: 'link',
 		link_auto_provision: false,
+		delivery_url: inbound.toString(),
 	})
 
 	const admin = await nextcloudAs('admin')
-	const registered = await admin.post(`${APP}/api/v1/settings/register-instance`)
+	const registered = await admin.post(`${APP}/api/v1/settings/register-instance`, {
+		data: { registration_token: REGISTRATION_TOKEN },
+	})
 	const registration = (await registered.json()) as {
 		error?: string
 		status?: string
