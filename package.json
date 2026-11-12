@@ -35,9 +35,11 @@
     "@nextcloud/prettier-config": "1.2.0",
     "@nextcloud/vite-config": "2.5.4",
     "@playwright/test": "1.65.0",
+    "@types/node": "26.6.5",
+    "eslint": "8.57.1",
     "happy-dom": "21.0.4",
     "prettier": "3.9.10",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "vite": "7.3.7",
     "vitest": "5.1.0",
     "vue-tsc": "3.3.14"
