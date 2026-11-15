@@ -40,7 +40,9 @@ test('a disconnect in Nextcloud ends the link in Synaplan', async ({ page }) => 
 	await logIn(page, 'ada')
 	await connectFromSettings(page)
 	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
-	expect((await linksOf(synaplan, 'ada')).length, 'ada is linked').toBeGreaterThan(0)
+	expect((await linksOf(synaplan, 'ada')).length, 'ada is linked').toBeGreaterThan(
+		0,
+	)
 
 	await page.getByRole('button', { name: 'Disconnect' }).click()
 
