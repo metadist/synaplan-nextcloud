@@ -5,10 +5,10 @@
 		@update:open="onClose">
 		<div class="synaplan-watch-modal">
 			<AiConsentGate
-				@blocked-change="blocked = $event"
+				@blockedChange="blocked = $event"
 				@granted="loadOptions" />
 			<p v-if="loading">
-				{{ t('synaplan_integration', 'Loading...') }}
+				{{ t('synaplan_integration', 'Loading…') }}
 			</p>
 			<FailureNote v-else-if="failure" :failure="failure" />
 			<template v-else-if="!started">
@@ -112,19 +112,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
-import { describeFailure, failureFromError, type Failure } from '../failures'
-
-const FOLDER_NAME_LIMIT = 64
+import { describeFailure, failureFromError } from '../failures'
 
 const props = defineProps<{
 	fileId: string
@@ -135,6 +135,8 @@ const props = defineProps<{
 const emit = defineEmits<{
 	close: [value: boolean | null]
 }>()
+
+const FOLDER_NAME_LIMIT = 64
 
 const opened = ref(true)
 const loading = ref(true)
@@ -189,12 +191,19 @@ const consequence = computed(() => {
 			)
 })
 
-const onClose = () => {
+/**
+ *
+ */
+function onClose() {
 	opened.value = false
 	emit('close', started.value ? true : null)
 }
 
-const onNewFolder = (tag: string) => {
+/**
+ *
+ * @param tag
+ */
+function onNewFolder(tag: string) {
 	const name = clip(tag)
 	if (name !== '' && !folderOptions.value.includes(name)) {
 		folderOptions.value.push(name)
@@ -204,7 +213,10 @@ const onNewFolder = (tag: string) => {
 
 let optionsRequest = 0
 
-const loadOptions = async () => {
+/**
+ *
+ */
+async function loadOptions() {
 	const mine = ++optionsRequest
 	loading.value = true
 	failure.value = null
@@ -215,7 +227,9 @@ const loadOptions = async () => {
 		const { data } = await axios.get(
 			generateUrl('/apps/synaplan_integration/api/v1/watches/options'),
 		)
-		if (mine !== optionsRequest) return
+		if (mine !== optionsRequest) {
+			return
+		}
 		if (!data.success) {
 			failure.value = describeFailure(data.error, data.message)
 			return
@@ -237,7 +251,9 @@ const loadOptions = async () => {
 			groupKey.value = names[0]
 		}
 	} catch (error: unknown) {
-		if (mine !== optionsRequest) return
+		if (mine !== optionsRequest) {
+			return
+		}
 		failure.value = failureFromError(error)
 	} finally {
 		if (mine === optionsRequest) {
@@ -250,8 +266,13 @@ onMounted(() => {
 	loadOptions()
 })
 
-const start = async () => {
-	if (!canStart.value || saving.value) return
+/**
+ *
+ */
+async function start() {
+	if (!canStart.value || saving.value) {
+		return
+	}
 	saving.value = true
 	failure.value = null
 	try {

@@ -18,8 +18,8 @@ export const BIRD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24
 /**
  * Badge type for a file state or watch state (plan 04 §A.1).
  *
- * @param {CloudFileStateCode} state File state code
- * @param {string | null} watchState Optional covering watch state
+ * @param state File state code
+ * @param watchState Optional covering watch state
  */
 export function badgeForState(
 	state: CloudFileStateCode,
@@ -48,10 +48,10 @@ export function badgeForState(
 /**
  * Tooltip and aria-label sentence for a file row glyph (plan 04 §A.1, 05 §3).
  *
- * @param {CloudFileStateCode} state File state code
- * @param {string | null} folder Knowledge folder name
- * @param {string | null} watchSentence Covering watch sentence
- * @param {string | null} watchState Covering watch state
+ * @param state File state code
+ * @param folder Knowledge folder name
+ * @param watchSentence Covering watch sentence
+ * @param watchState Covering watch state
  */
 export function labelForState(
 	state: CloudFileStateCode,
@@ -59,7 +59,7 @@ export function labelForState(
 	watchSentence: string | null = null,
 	watchState: string | null = null,
 ): string {
-	let filePart = ''
+	let filePart: string
 	switch (state) {
 		case 'searchable':
 			filePart = folder
@@ -108,11 +108,11 @@ export function labelForState(
 /**
  * Build the SVG markup for a bird or bird-with-eyes plus an optional badge.
  *
- * @param {object} options Rendering options
- * @param {boolean} options.eyes Whether to include the eyes
- * @param {CloudBadge} options.badge Optional corner badge
- * @param {16 | 20} options.size Pixel size (16 or 20)
- * @param {GlyphOverrides} options.overrides Optional runtime-config URLs
+ * @param options Rendering options
+ * @param options.eyes Whether to include the eyes
+ * @param options.badge Optional corner badge
+ * @param options.size Pixel size (16 or 20)
+ * @param options.overrides Optional runtime-config URLs
  */
 export function glyphMarkup(options: {
 	eyes?: boolean

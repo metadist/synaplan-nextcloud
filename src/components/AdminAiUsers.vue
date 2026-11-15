@@ -10,9 +10,9 @@
 		</p>
 		<div class="sp-aiusers-toolbar">
 			<NcTextField
-				:value="search"
+				:modelValue="search"
 				:label="t('synaplan_integration', 'Search name or email')"
-				:label-visible="false"
+				:labelVisible="false"
 				:placeholder="t('synaplan_integration', 'Search name or email')"
 				class="sp-aiusers-search"
 				@update:value="search = $event" />
@@ -24,7 +24,7 @@
 				@keydown.enter="!loading && load()">
 				{{
 					loading
-						? t('synaplan_integration', 'Loading...')
+						? t('synaplan_integration', 'Loading…')
 						: t('synaplan_integration', 'Refresh')
 				}}
 			</span>
@@ -139,7 +139,7 @@
 					{{ t('synaplan_integration', 'Usage') }}
 				</h4>
 				<span v-if="usageLoading[detail.uid]" class="sp-hint">{{
-					t('synaplan_integration', 'Loading usage...')
+					t('synaplan_integration', 'Loading usage…')
 				}}</span>
 				<ul v-else-if="detailEntries.length" class="sp-usage-list">
 					<li v-for="entry in detailEntries" :key="entry.key">
@@ -155,10 +155,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, ref, watch } from 'vue'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
@@ -266,7 +266,7 @@ async function load() {
 /**
  * Open one person's details and load usage the first time.
  *
- * @param {AiUser} user The row
+ * @param user The row
  */
 async function openDetails(user: AiUser) {
 	detail.value = user
@@ -289,7 +289,7 @@ async function openDetails(user: AiUser) {
 /**
  * Close the details when the dialog is dismissed.
  *
- * @param {boolean} open New open state
+ * @param open New open state
  */
 function onDetailOpen(open: boolean) {
 	if (!open) {
@@ -300,7 +300,7 @@ function onDetailOpen(open: boolean) {
 /**
  * Flatten a person's usage payload into rows.
  *
- * @param {string} uid Nextcloud user id
+ * @param uid Nextcloud user id
  */
 function entries(uid: string): { key: string; value: string }[] {
 	const data = usageData.value[uid] as Record<string, unknown> | undefined
@@ -316,7 +316,7 @@ function entries(uid: string): { key: string; value: string }[] {
 /**
  * Deactivate AI for one person.
  *
- * @param {AiUser} user The row
+ * @param user The row
  */
 async function deactivate(user: AiUser) {
 	try {
@@ -342,7 +342,7 @@ async function deactivate(user: AiUser) {
 /**
  * Human-readable activation date.
  *
- * @param {string} iso ISO timestamp
+ * @param iso ISO timestamp
  */
 function formatConsentDate(iso: string): string {
 	if (!iso) {

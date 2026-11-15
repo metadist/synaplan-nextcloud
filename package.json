@@ -31,12 +31,12 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@nextcloud/eslint-config": "8.4.2",
+    "@nextcloud/eslint-config": "9.0.1",
     "@nextcloud/prettier-config": "1.2.0",
     "@nextcloud/vite-config": "2.5.4",
     "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
-    "eslint": "8.57.1",
+    "eslint": "10.15.0",
     "happy-dom": "21.0.4",
     "prettier": "3.10.1",
     "typescript": "6.0.3",

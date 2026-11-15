@@ -21,22 +21,30 @@ export interface NodeCompat {
 
 /**
  *
- * @param {...any} args
+ * @param args
  */
 export function extractNodesFromEnabled(...args: any[]): NodeCompat[] {
 	const first = args[0]
-	if (first?.nodes) return first.nodes
-	if (Array.isArray(first)) return first
+	if (first?.nodes) {
+		return first.nodes
+	}
+	if (Array.isArray(first)) {
+		return first
+	}
 	return []
 }
 
 /**
  *
- * @param {...any} args
+ * @param args
  */
 export function extractNodeFromExec(...args: any[]): NodeCompat | null {
 	const first = args[0]
-	if (first?.nodes?.[0]) return first.nodes[0]
-	if (first?.fileid !== undefined) return first
+	if (first?.nodes?.[0]) {
+		return first.nodes[0]
+	}
+	if (first?.fileid !== undefined) {
+		return first
+	}
 	return null
 }

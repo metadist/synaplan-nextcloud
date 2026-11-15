@@ -11,9 +11,10 @@
 </template>
 
 <script setup lang="ts">
+import type { Failure } from '../failures'
+
 import { t } from '@nextcloud/l10n'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import type { Failure } from '../failures'
 
 defineProps<{
 	failure: Failure | null

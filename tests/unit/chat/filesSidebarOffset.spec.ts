@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from 'vitest'
-
 import { filesSidebarOffset } from '@/chat/filesSidebarOffset'
 
 const VIEWPORT = 1200

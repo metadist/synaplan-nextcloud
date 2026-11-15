@@ -5,24 +5,25 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-chat-modal">
-			<AiConsentGate @blocked-change="aiBlocked = $event" />
+			<AiConsentGate @blockedChange="aiBlocked = $event" />
 			<!-- Messages -->
 			<div ref="messagesContainer" class="messages">
 				<div
 					v-for="(msg, idx) in messages"
 					:key="idx"
-					:class="['message', msg.role]">
+					class="message"
+					:class="[msg.role]">
 					<NcRichText
 						v-if="msg.role === 'assistant'"
 						class="message-content markdown-body"
 						:text="msg.text"
-						:use-markdown="true"
-						:use-extended-markdown="true" />
+						:useMarkdown="true"
+						:useExtendedMarkdown="true" />
 					<div v-else class="message-content" v-text="msg.text" />
 				</div>
 				<div v-if="loading" class="message assistant">
 					<div class="message-content loading-dots">
-						{{ t('synaplan_integration', 'Thinking...') }}
+						{{ t('synaplan_integration', 'Thinking…') }}
 					</div>
 				</div>
 			</div>
@@ -35,10 +36,7 @@
 				<NcTextField
 					v-model="inputMessage"
 					:placeholder="
-						t(
-							'synaplan_integration',
-							'Ask a question about this file...',
-						)
+						t('synaplan_integration', 'Ask a question about this file…')
 					"
 					:disabled="loading || aiBlocked"
 					@keydown.enter="sendMessage" />
@@ -67,17 +65,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, nextTick, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
-import { describeFailure, failureFromError, type Failure } from '../failures'
+import { describeFailure, failureFromError } from '../failures'
 
 interface ChatMessage {
 	role: 'user' | 'assistant'
@@ -123,7 +123,9 @@ async function scrollToBottom() {
  */
 async function sendMessage() {
 	const text = inputMessage.value.trim()
-	if (!text || loading.value) return
+	if (!text || loading.value) {
+		return
+	}
 
 	messages.value.push({ role: 'user', text })
 	inputMessage.value = ''

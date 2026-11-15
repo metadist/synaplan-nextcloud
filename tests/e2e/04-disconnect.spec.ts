@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
 import {
-	SYNAPLAN_PERSON,
 	connectFromSettings,
 	ensureConnected,
 	linksOf,
 	logIn,
 	openFileAction,
 	resetPerson,
+	SYNAPLAN_PERSON,
 	synaplanAs,
 } from './support'
 
