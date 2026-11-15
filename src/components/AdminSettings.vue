@@ -228,7 +228,7 @@
 						@keydown.space.prevent="!saving && save()">
 						{{
 							saving
-								? t('synaplan_integration', 'Saving...')
+								? t('synaplan_integration', 'Saving…')
 								: t('synaplan_integration', 'Save')
 						}}
 					</span>
@@ -241,7 +241,7 @@
 						@keydown.space.prevent="!testing && testConnection()">
 						{{
 							testing
-								? t('synaplan_integration', 'Testing...')
+								? t('synaplan_integration', 'Testing…')
 								: t('synaplan_integration', 'Test connection')
 						}}
 					</span>
@@ -329,11 +329,11 @@
 
 				<AdminConnection
 					:mode="mode"
-					:link-auto-provision="linkAutoProvision"
-					:has-admin-key="hasAdminKey"
+					:linkAutoProvision="linkAutoProvision"
+					:hasAdminKey="hasAdminKey"
 					:saving="saving"
 					@update:mode="mode = $event"
-					@update:link-auto-provision="linkAutoProvision = $event" />
+					@update:linkAutoProvision="linkAutoProvision = $event" />
 				<div :style="{ height: '20px' }" />
 
 				<div :style="{ display: 'flex', gap: '16px' }">
@@ -346,7 +346,7 @@
 						@keydown.space.prevent="!saving && save()">
 						{{
 							saving
-								? t('synaplan_integration', 'Saving...')
+								? t('synaplan_integration', 'Saving…')
 								: t('synaplan_integration', 'Save')
 						}}
 					</span>
@@ -354,16 +354,16 @@
 			</NcSettingsSection>
 
 			<AdminRegistration
-				:delivery-url="deliveryUrl"
+				:deliveryUrl="deliveryUrl"
 				:mode="mode"
 				:saving="saving"
-				:link-registered="linkRegistered"
-				:link-instance-id="linkInstanceId"
-				:link-instance="linkInstance"
+				:linkRegistered="linkRegistered"
+				:linkInstanceId="linkInstanceId"
+				:linkInstance="linkInstance"
 				:registering="registering"
-				:primary-btn-style="primaryBtnStyle"
-				:secondary-btn-style="secondaryBtnStyle"
-				@update:delivery-url="deliveryUrl = $event"
+				:primaryBtnStyle="primaryBtnStyle"
+				:secondaryBtnStyle="secondaryBtnStyle"
+				@update:deliveryUrl="deliveryUrl = $event"
 				@register="registerInstance"
 				@forget="forgetInstance" />
 
@@ -405,15 +405,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
 import axios from '@nextcloud/axios'
-import { generateUrl, imagePath } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl, imagePath } from '@nextcloud/router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
-import NcSelect from '@nextcloud/vue/components/NcSelect'
-import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AdminAiUsers from './AdminAiUsers.vue'
 import AdminConnection from './AdminConnection.vue'
 import AdminRegistration from './AdminRegistration.vue'
@@ -589,8 +589,9 @@ const secondaryBtnStyle = computed(() => ({
 
 /**
  * Display a temporary status message.
- * @param {string} text Message content
- * @param {'success'|'error'|'warning'} type Message severity
+ *
+ * @param text Message content
+ * @param type Message severity
  */
 function showMessage(
 	text: string,

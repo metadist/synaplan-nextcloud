@@ -5,7 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-knowledge-modal">
-			<AiConsentGate @blocked-change="aiBlocked = $event" />
+			<AiConsentGate @blockedChange="aiBlocked = $event" />
 			<!-- Status: Uploading -->
 			<div v-if="loading" class="loading-state">
 				<div
@@ -27,8 +27,8 @@
 					<li
 						v-for="(stage, i) in stages"
 						:key="i"
+						class="stage-item"
 						:class="[
-							'stage-item',
 							{
 								done: i < currentStageIndex,
 								active: i === currentStageIndex,
@@ -271,11 +271,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
-import { t } from '@nextcloud/l10n'
 import { showError } from '@nextcloud/dialogs'
+import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -285,7 +287,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
 import { invalidateCloudStatusCache } from '../cloud_state/statusBatcher'
-import { describeFailure, failureFromError, type Failure } from '../failures'
+import { describeFailure, failureFromError } from '../failures'
 
 const props = defineProps<{
 	fileId: number
@@ -337,9 +339,15 @@ const stages = computed(() => [
 
 const currentStageIndex = computed(() => {
 	const s = elapsedSeconds.value
-	if (s < 2) return 0
-	if (s < 4) return 1
-	if (s < 6) return 2
+	if (s < 2) {
+		return 0
+	}
+	if (s < 4) {
+		return 1
+	}
+	if (s < 6) {
+		return 2
+	}
 	return 3
 })
 
@@ -414,7 +422,9 @@ async function loadStatus() {
  * Remove this file from the knowledge base (CORE-4).
  */
 async function removeFromKnowledge() {
-	if (removing.value || loading.value) return
+	if (removing.value || loading.value) {
+		return
+	}
 
 	removing.value = true
 	failure.value = null
@@ -442,7 +452,7 @@ async function removeFromKnowledge() {
 /**
  * Handle new tag creation in NcSelect.
  *
- * @param {string} tag The new tag string entered by the user
+ * @param tag The new tag string entered by the user
  */
 function onNewTag(tag: string) {
 	const trimmed = tag.trim().toUpperCase()
@@ -456,7 +466,9 @@ function onNewTag(tag: string) {
  * Upload the file to the Synaplan knowledge base for vectorization.
  */
 async function uploadFile() {
-	if (!selectedGroup.value || loading.value) return
+	if (!selectedGroup.value || loading.value) {
+		return
+	}
 
 	loading.value = true
 	failure.value = null

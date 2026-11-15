@@ -1,10 +1,11 @@
-import { Permission } from '@nextcloud/files'
 import type { IFileAction } from '@nextcloud/files'
+
+import DatabasePlusOutlineSvg from '@mdi/svg/svg/database-plus-outline.svg?raw'
+import { Permission } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
-import DatabasePlusOutlineSvg from '@mdi/svg/svg/database-plus-outline.svg?raw'
-import { extractNodesFromEnabled, extractNodeFromExec } from './compat'
+import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 
 const SUPPORTED_MIMES = [
 	'text/',
@@ -26,16 +27,22 @@ export const chatAction: IFileAction = {
 
 	enabled(...args: unknown[]) {
 		const nodes = extractNodesFromEnabled(...args)
-		if (nodes.length !== 1) return false
+		if (nodes.length !== 1) {
+			return false
+		}
 		const node = nodes[0]
-		if ((node.permissions & Permission.READ) === 0) return false
+		if ((node.permissions & Permission.READ) === 0) {
+			return false
+		}
 		const mime = node.mime ?? ''
 		return SUPPORTED_MIMES.some((prefix) => mime.startsWith(prefix))
 	},
 
 	async exec(...args: unknown[]) {
 		const file = extractNodeFromExec(...args)
-		if (!file) return null
+		if (!file) {
+			return null
+		}
 		await spawnDialog(
 			defineAsyncComponent(() => import('../components/KnowledgeModal.vue')),
 			{ fileId: file.fileid, fileName: file.basename },

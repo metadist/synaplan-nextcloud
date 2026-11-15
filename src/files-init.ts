@@ -1,17 +1,18 @@
-import { registerFileAction } from '@nextcloud/files'
 import type { IFileAction } from '@nextcloud/files'
-import { summarizeAction } from './files_actions/summarizeAction'
-import { translateAction } from './files_actions/translateAction'
-import { chatAction } from './files_actions/chatAction'
-import { chatFileAction } from './files_actions/chatFileAction'
-import { registerFromSynaplanMenu } from './files_actions/fromSynaplanMenu'
-import { readFolderAction } from './files_actions/readFolderAction'
-import { watchAction } from './files_actions/watchAction'
+
+import { registerFileAction } from '@nextcloud/files'
 import {
 	birdRowAction,
 	registerWatchedFolderHeader,
 } from './files_actions/birdRowAction'
+import { chatAction } from './files_actions/chatAction'
+import { chatFileAction } from './files_actions/chatFileAction'
+import { registerFromSynaplanMenu } from './files_actions/fromSynaplanMenu'
+import { readFolderAction } from './files_actions/readFolderAction'
 import { registerSynaplanSidebarTab } from './files_actions/sidebarTab'
+import { summarizeAction } from './files_actions/summarizeAction'
+import { translateAction } from './files_actions/translateAction'
+import { watchAction } from './files_actions/watchAction'
 import { injectModalStyles } from './styles/modal-fix'
 
 /**
@@ -19,6 +20,7 @@ import { injectModalStyles } from './styles/modal-fix'
  * _nc_fileactions array. NC34 dev builds ship @nextcloud/files RC which
  * stores actions in window._nc_fileactions, while stable v4.0.0 uses
  * window._nc_files_scope.v4_0. Dual registration ensures compatibility.
+ *
  * @param action
  */
 function registerAction(action: IFileAction): void {

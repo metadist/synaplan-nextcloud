@@ -1,7 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-
 import { L10N_DIR, toJs } from '../../../scripts/l10n-js.mjs'
 
 /** The locales the app ships, as in the plan: Nextcloud's informal de, a formal de_DE, es, fr, tr. */
@@ -71,10 +70,12 @@ type Locale = { translations: Record<string, string>; pluralForm: string }
 
 const read = (file: string): string => readFileSync(join(L10N_DIR, file), 'utf8')
 const locale = (code: string): Locale => JSON.parse(read(`${code}.json`))
-const placeholders = (text: string): string[] =>
-	(text.match(/\{[a-zA-Z]+\}/g) ?? []).sort()
-const withoutPlaceholders = (text: string): string =>
-	text.replace(/\{[a-zA-Z]+\}/g, '')
+function placeholders(text: string): string[] {
+	return (text.match(/\{[a-zA-Z]+\}/g) ?? []).sort()
+}
+function withoutPlaceholders(text: string): string {
+	return text.replace(/\{[a-zA-Z]+\}/g, '')
+}
 
 /**
  * Every string the app passes to t() or n(), with JavaScript escapes resolved
