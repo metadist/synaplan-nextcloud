@@ -15,7 +15,7 @@
 				:labelVisible="false"
 				:placeholder="t('synaplan_integration', 'Search name or email')"
 				class="sp-aiusers-search"
-				@update:modelValue="search = $event" />
+				@update:modelValue="search = String($event)" />
 			<span
 				role="button"
 				tabindex="0"
