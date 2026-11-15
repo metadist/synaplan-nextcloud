@@ -15,7 +15,7 @@ use Psr\Log\LoggerInterface;
 /**
  * HTTP client for the Synaplan API.
  *
- * Uses X-API-Key authentication for all requests.
+ * Sends the person's Synaplan credential: an API key, or an OAuth bearer.
  * No Nextcloud-specific business logic — only HTTP transport.
  */
 class SynaplanClient
@@ -421,10 +421,9 @@ class SynaplanClient
         }
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey(),
-                'Accept' => 'application/json',
-            ],
+            'headers' => SynaplanCredential::headers(
+                $apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey(),
+            ),
             'multipart' => $multipart,
             'timeout' => 180,
             'nextcloud' => [
@@ -476,8 +475,7 @@ class SynaplanClient
 
         $options = [
             'headers' => [
-                'X-API-Key' => $this->requireApiKey(),
-                'Accept' => 'application/json',
+                ...SynaplanCredential::headers($this->requireApiKey()),
                 'Content-Type' => 'application/json',
             ],
             'body' => json_encode($body),
@@ -538,9 +536,7 @@ class SynaplanClient
         $url = $this->getBaseUrl() . $relativePath;
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $this->requireApiKey(),
-            ],
+            'headers' => SynaplanCredential::headers($this->requireApiKey()),
             'timeout' => self::MEDIA_TIMEOUT,
         ];
 
@@ -718,10 +714,7 @@ class SynaplanClient
         }
 
         $options = [
-            'headers' => [
-                'X-API-Key' => $requiresKey ? $this->requireApiKey() : $this->getApiKey(),
-                'Accept' => 'application/json',
-            ],
+            'headers' => SynaplanCredential::headers($requiresKey ? $this->requireApiKey() : $this->getApiKey()),
             'timeout' => self::TIMEOUT,
             'nextcloud' => [
                 'allow_local_address' => true,
@@ -747,6 +740,24 @@ class SynaplanClient
             // it and retry once so the next getApiKey() re-provisions. In
             // link mode a 401 means the user disconnected — clear prefs and
             // do not remint (the UI shows Connect again).
+            if ($this->isUnauthorized($e) && $this->synaplanConfig->isLinkMode()) {
+                $refreshed = $this->userAccounts->refreshCurrentUserToken();
+                if (is_string($refreshed) && $refreshed !== '') {
+                    try {
+                        $options['headers'] = [
+                            ...SynaplanCredential::headers($refreshed),
+                            'Content-Type' => 'application/json',
+                        ];
+                        $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
+                        $decoded = json_decode($response->getBody(), true);
+                        if (is_array($decoded)) {
+                            return $decoded;
+                        }
+                    } catch (\Exception) {
+                        // The refresh was accepted and the repeat was not: the link is over.
+                    }
+                }
+            }
             if ($this->isUnauthorized($e) && $this->synaplanConfig->isPerUserAccountsEnabled()) {
                 $this->userAccounts->clearCurrentUserApiKey();
                 if ($this->synaplanConfig->isLinkMode()) {
@@ -761,7 +772,10 @@ class SynaplanClient
                     throw FailureException::notConnected();
                 }
                 try {
-                    $options['headers']['X-API-Key'] = $this->requireApiKey();
+                    $options['headers'] = [
+                        ...SynaplanCredential::headers($this->requireApiKey()),
+                        'Content-Type' => 'application/json',
+                    ];
                     $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                     $decoded = json_decode($response->getBody(), true);
                     if (is_array($decoded)) {
@@ -779,7 +793,10 @@ class SynaplanClient
                 $renewed = $this->userAccounts->renewProvisionedKey();
                 if (is_string($renewed) && $renewed !== '') {
                     try {
-                        $options['headers']['X-API-Key'] = $renewed;
+                        $options['headers'] = [
+                            ...SynaplanCredential::headers($renewed),
+                            'Content-Type' => 'application/json',
+                        ];
                         $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                         $decoded = json_decode($response->getBody(), true);
                         if (is_array($decoded)) {

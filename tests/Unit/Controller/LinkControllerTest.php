@@ -54,9 +54,10 @@ class LinkControllerTest extends TestCase
             fn (array $query = []) => 'https://files.example.org/settings/user/synaplan_integration'
                 . ($query !== [] ? '?' . http_build_query($query) : '')
         );
-        $this->platformLinks->method('connectUrl')->willReturn(
-            'https://synaplan.example/connect/platform?client=nextcloud'
-        );
+        $this->platformLinks->method('beginConnect')->willReturn([
+            'url' => 'https://synaplan.example/oauth/authorize?client_id=pi_abc',
+            'code_verifier' => 'verifier',
+        ]);
     }
 
     private function controller(): LinkController
@@ -84,6 +85,7 @@ class LinkControllerTest extends TestCase
         $this->sessionStore['synaplan_link_state'] = $state;
         $this->sessionStore['synaplan_link_state_at'] = time() - $ageSeconds;
         $this->sessionStore['synaplan_link_uid'] = $uid;
+        $this->sessionStore['synaplan_link_verifier'] = 'verifier';
     }
 
     public function testCallbackNeverCallsAdminUsersApi(): void
@@ -98,7 +100,7 @@ class LinkControllerTest extends TestCase
 
         $this->platformLinks->expects($this->once())
             ->method('exchange')
-            ->with('link-code-1')
+            ->with('link-code-1', 'verifier')
             ->willReturn([
                 'api_key' => ['id' => 9, 'key' => 'sk_linked'],
                 'user' => ['id' => 3, 'email' => 'jdoe@example.com'],

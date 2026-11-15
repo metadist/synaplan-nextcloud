@@ -146,6 +146,7 @@ export async function allowOnSynaplan(page: Page): Promise<void> {
 		await page.getByTestId('input-password').fill(SYNAPLAN_PERSON.password)
 		await page.getByTestId('btn-login').click()
 	}
+	await expect(connect).toBeVisible()
 	await connect.click()
 	await page.waitForURL(`${NC_URL}/**`)
 }

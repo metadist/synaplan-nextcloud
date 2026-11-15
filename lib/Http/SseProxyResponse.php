@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Http;
 
+use OCA\SynaplanIntegration\Service\SynaplanCredential;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\ICallbackResponse;
 use OCP\AppFramework\Http\IOutput;
@@ -80,8 +81,7 @@ class SseProxyResponse extends Response implements ICallbackResponse
             \CURLOPT_POST => true,
             \CURLOPT_POSTFIELDS => $this->payload,
             \CURLOPT_HTTPHEADER => [
-                'X-API-Key: ' . $this->apiKey,
-                'Accept: text/event-stream',
+                ...SynaplanCredential::curlHeaders($this->apiKey, 'text/event-stream'),
                 'Content-Type: application/json',
                 // Force plain-text SSE — a gzipped body cannot be relayed raw.
                 'Accept-Encoding: identity',

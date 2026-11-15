@@ -20,15 +20,17 @@ use OCP\IUser;
 use OCP\IUserSession;
 
 /**
- * Authorization-code handshake: start → Synaplan confirm → callback → key.
+ * Authorization-code handshake: push the request, the person allows it on
+ * Synaplan, the callback exchanges the code for tokens.
  *
- * The browser never sees the API key. `state` is the CSRF check.
+ * The browser never sees the tokens. `state` is the CSRF check.
  */
 class LinkController extends Controller
 {
     private const SESSION_STATE = 'synaplan_link_state';
     private const SESSION_STATE_AT = 'synaplan_link_state_at';
     private const SESSION_UID = 'synaplan_link_uid';
+    private const SESSION_VERIFIER = 'synaplan_link_verifier';
     private const STATE_TTL_SECONDS = 600;
 
     public function __construct(
@@ -67,11 +69,20 @@ class LinkController extends Controller
         $this->session->set(self::SESSION_STATE_AT, time());
         $this->session->set(self::SESSION_UID, $user->getUID());
 
-        return new RedirectResponse($this->platformLinks->connectUrl(
-            $this->synaplanConfig->getLinkInstanceId(),
-            $user->getUID(),
-            $state,
-        ));
+        try {
+            $begun = $this->platformLinks->beginConnect($user->getUID(), $state);
+        } catch (PlatformLinkException $e) {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => $e->getErrorCode(),
+            ]));
+        } catch (\Throwable) {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => PlatformLinkException::CODE_EXCHANGE,
+            ]));
+        }
+        $this->session->set(self::SESSION_VERIFIER, $begun['code_verifier']);
+
+        return new RedirectResponse($begun['url']);
     }
 
     /**
@@ -86,6 +97,7 @@ class LinkController extends Controller
         $user = $this->userSession->getUser();
         $uid = $user instanceof IUser ? $user->getUID() : '';
 
+        $verifier = (string) $this->session->get(self::SESSION_VERIFIER);
         $error = $this->consumeState($state, $uid);
         if ($error !== null) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
@@ -100,7 +112,7 @@ class LinkController extends Controller
         }
 
         try {
-            $exchange = $this->platformLinks->exchange($code);
+            $exchange = $this->platformLinks->exchange($code, $verifier);
             $this->userAccounts->storeLinkedAccount($user, $exchange);
         } catch (PlatformLinkException $e) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
@@ -156,6 +168,7 @@ class LinkController extends Controller
         $this->session->remove(self::SESSION_STATE);
         $this->session->remove(self::SESSION_STATE_AT);
         $this->session->remove(self::SESSION_UID);
+        $this->session->remove(self::SESSION_VERIFIER);
 
         if ($state === '' || $expected === '' || $uid === '' || $expectedUid === '') {
             return PlatformLinkException::CODE_STATE;

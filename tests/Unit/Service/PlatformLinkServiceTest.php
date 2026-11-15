@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\CloudClientKey;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -58,42 +59,53 @@ class PlatformLinkServiceTest extends TestCase
             $this->clientService,
             $this->config,
             $this->urlGenerator,
-            $this->crypto,
             $this->synaplanConfig,
             $this->userAccounts,
             $this->logger,
+            new CloudClientKey($this->config, $this->crypto, $this->synaplanConfig),
         );
     }
 
-    public function testExchangePostsInstanceCredentialsAndCode(): void
+    public function testExchangePostsTheCodeAndReadsThePerson(): void
     {
         $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
         $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
+        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
 
-        $resp = $this->createMock(IResponse::class);
-        $resp->method('getBody')->willReturn(json_encode([
+        $token = $this->createMock(IResponse::class);
+        $token->method('getStatusCode')->willReturn(200);
+        $token->method('getBody')->willReturn(json_encode([
+            'access_token' => 'header.payload.signature',
+            'refresh_token' => 'refresh-token',
+            'expires_in' => 900,
+            'token_type' => 'Bearer',
+        ]));
+        $me = $this->createMock(IResponse::class);
+        $me->method('getStatusCode')->willReturn(200);
+        $me->method('getBody')->willReturn(json_encode([
             'success' => true,
-            'api_key' => ['id' => 4, 'key' => 'sk_linked', 'name' => 'Nextcloud'],
-            'user' => ['id' => 2, 'email' => 'a@b.test', 'display_name' => 'Ada'],
-            'link_id' => 7,
+            'user' => ['id' => 2, 'email' => 'a@b.test'],
         ]));
 
         $captured = [];
         $this->httpClient->expects($this->once())
             ->method('post')
-            ->willReturnCallback(function (string $url, array $options) use (&$captured, $resp): IResponse {
-                $captured = [$url, json_decode($options['body'], true)];
+            ->willReturnCallback(function (string $url, array $options) use (&$captured, $token): IResponse {
+                parse_str((string) $options['body'], $parsed);
+                $captured = [$url, $parsed];
 
-                return $resp;
+                return $token;
             });
+        $this->httpClient->expects($this->once())->method('get')->willReturn($me);
 
-        $result = $this->service()->exchange('the-code');
+        $result = $this->service()->exchange('the-code', 'verifier-1');
 
-        $this->assertSame('https://synaplan.example/api/v1/platform-links/exchange', $captured[0]);
-        $this->assertSame('pi_abc', $captured[1]['instance_id']);
-        $this->assertSame('s3cret', $captured[1]['instance_secret']);
+        $this->assertSame('https://synaplan.example/oauth/token', $captured[0]);
+        $this->assertSame('authorization_code', $captured[1]['grant_type']);
         $this->assertSame('the-code', $captured[1]['code']);
-        $this->assertSame('sk_linked', $result['api_key']['key']);
+        $this->assertSame('verifier-1', $captured[1]['code_verifier']);
+        $this->assertSame('header.payload.signature', $result['access_token']);
+        $this->assertSame('a@b.test', $result['user']['email']);
     }
 
     public function testSecretIsNeverLogged(): void
@@ -103,9 +115,9 @@ class PlatformLinkServiceTest extends TestCase
         $this->synaplanConfig->method('getAdminApiKey')->willReturn('');
 
         $resp = $this->createMock(IResponse::class);
+        $resp->method('getStatusCode')->willReturn(201);
         $resp->method('getBody')->willReturn(json_encode([
-            'instance_id' => 'pi_new',
-            'instance_secret' => 'shown-once',
+            'client_id' => 'pi_new',
             'status' => 'pending',
         ]));
         $this->httpClient->method('post')->willReturn($resp);
@@ -117,8 +129,8 @@ class PlatformLinkServiceTest extends TestCase
                 $this->callback(function (array $context): bool {
                     $blob = json_encode($context) ?: '';
 
-                    return !str_contains($blob, 'shown-once')
-                        && !str_contains($blob, 'super-secret-value');
+                    return !str_contains($blob, 'super-secret-value')
+                        && !str_contains($blob, 'BEGIN PRIVATE KEY');
                 })
             );
 
@@ -164,15 +176,16 @@ class PlatformLinkServiceTest extends TestCase
         $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
         $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
         $this->synaplanConfig->method('getInstanceId')->willReturn('oc0abc');
+        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
 
         $resp = $this->createMock(IResponse::class);
         $resp->method('getStatusCode')->willReturn(200);
         $resp->method('getBody')->willReturn('{"success":true}');
         $body = null;
         $this->httpClient->expects($this->once())
-            ->method('patch')
+            ->method('put')
             ->willReturnCallback(function (string $url, array $options) use (&$body, $resp): IResponse {
-                $this->assertStringEndsWith('/api/v1/platform-links/instances/self', $url);
+                $this->assertStringEndsWith('/oauth/register/pi_abc', $url);
                 $body = json_decode($options['body'], true);
 
                 return $resp;
@@ -185,10 +198,11 @@ class PlatformLinkServiceTest extends TestCase
         $this->assertSame('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound', $body['delivery_url']);
     }
 
-    public function testAdoptAndLifecycleUseTheInstanceCredential(): void
+    public function testLifecycleUsesAClientAssertion(): void
     {
         $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
         $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
+        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
 
         $resp = $this->createMock(IResponse::class);
         $resp->method('getStatusCode')->willReturn(200);
@@ -196,22 +210,17 @@ class PlatformLinkServiceTest extends TestCase
         $seen = [];
         $this->httpClient->method('post')->willReturnCallback(
             function (string $url, array $options) use (&$seen, $resp): IResponse {
-                $seen[] = [$url, json_decode($options['body'], true), $options['headers']];
+                $seen = [$url, json_decode($options['body'], true), $options['headers']];
 
                 return $resp;
             }
         );
 
-        $this->assertSame(200, $this->service()->adoptIdentity('ada', 'sk_ada'));
         $this->service()->reportLifecycle('ada', 'disabled');
 
-        $this->assertStringEndsWith('/api/v1/platform-links/identities/adopt', $seen[0][0]);
-        $this->assertSame('ada', $seen[0][1]['external_id']);
-        $this->assertSame('sk_ada', $seen[0][2]['X-API-Key']);
-        $this->assertSame('pi_abc', $seen[0][2]['X-Instance-Id']);
-        $this->assertSame('s3cret', $seen[0][2]['X-Instance-Secret']);
-        $this->assertStringEndsWith('/api/v1/platform-links/lifecycle', $seen[1][0]);
-        $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $seen[1][1]);
+        $this->assertStringEndsWith('/oauth/register/pi_abc/lifecycle', $seen[0]);
+        $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $seen[1]);
+        $this->assertStringStartsWith('Bearer ', (string) ($seen[2]['Authorization'] ?? ''));
     }
 
     public function testDisconnectUidClearsEvenWhenRevokeFails(): void
