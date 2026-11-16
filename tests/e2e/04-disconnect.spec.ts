@@ -1,6 +1,5 @@
 import { expect, test } from '@playwright/test'
 import {
-	SYNAPLAN_PERSON,
 	allowOnSynaplan,
 	connectFromSettings,
 	ensureConnected,
@@ -8,6 +7,7 @@ import {
 	logIn,
 	openFileAction,
 	resetPerson,
+	SYNAPLAN_PERSON,
 	synaplanAs,
 } from './support'
 

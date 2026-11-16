@@ -25,6 +25,7 @@ const PLUGIN_MODAL_BODIES = [
 
 /**
  * Build a selector list scoping `suffix` to our own modals only.
+ *
  * @param suffix e.g. '' for the mask itself, or ' .modal-container'
  */
 function ours(suffix: string): string {
@@ -116,7 +117,9 @@ let injected = false
  * Inject the scoped modal styles once.
  */
 export function injectModalStyles(): void {
-	if (injected) return
+	if (injected) {
+		return
+	}
 	injected = true
 
 	const style = document.createElement('style')

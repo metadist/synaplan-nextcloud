@@ -35,9 +35,9 @@ class UserDeletedListener implements IEventListener
         $linked = $kind === UserAccountService::KIND_LINKED || $this->userAccounts->wasLinked($uid);
         $key = $this->userAccounts->getStoredApiKey($uid);
         // Decide before disconnect clears the stored credential.
+        // Synaplan ends the link, and deletes an account it only kept for
+        // this person here.
         if ($linked || $key !== '' || $kind !== null || $this->userAccounts->getSynaplanUserId($uid) !== null) {
-            // Synaplan ends the link, and deletes an account it only kept for
-            // this person here.
             $this->platformLinks?->reportLifecycle($uid, 'deleted');
         }
         if ($linked || $key !== '') {

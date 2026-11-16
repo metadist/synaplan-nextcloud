@@ -1,18 +1,9 @@
-import {
-	DefaultType,
-	getSidebar,
-	registerFileListHeader,
-	type IFileAction,
-	type IFolder,
-	type INode,
-} from '@nextcloud/files'
+import type { IFileAction, IFolder, INode } from '@nextcloud/files'
+import type { CloudFileStateCode } from '../cloud_state/glyphs'
+
+import { DefaultType, getSidebar, registerFileListHeader } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
-import {
-	badgeForState,
-	glyphMarkup,
-	labelForState,
-	type CloudFileStateCode,
-} from '../cloud_state/glyphs'
+import { badgeForState, glyphMarkup, labelForState } from '../cloud_state/glyphs'
 import {
 	isCloudStatusEnabled,
 	onCloudStatusInvalidated,
@@ -23,11 +14,19 @@ import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 
 export const SIDEBAR_TAB_ID = 'synaplan_integration'
 
+/**
+ *
+ * @param node
+ */
 function extractNodeId(node: Record<string, unknown>): string {
 	const raw = node.fileid ?? node.id
 	return raw !== undefined && raw !== null ? String(raw) : ''
 }
 
+/**
+ *
+ * @param node
+ */
 function extractNodeVersion(node: Record<string, unknown>): string {
 	const attrs = (node.attributes ?? {}) as Record<string, unknown>
 	const data = (node._data ?? {}) as Record<string, unknown>
@@ -42,6 +41,10 @@ function extractNodeVersion(node: Record<string, unknown>): string {
 	return String(raw).replace(/^"|"$/g, '')
 }
 
+/**
+ *
+ * @param node
+ */
 function openSidebarFor(node: INode): void {
 	try {
 		const sidebar = getSidebar()
@@ -174,6 +177,11 @@ export const birdRowAction: IFileAction = {
 	},
 }
 
+/**
+ *
+ * @param state
+ * @param watchState
+ */
 function colorForState(
 	state: CloudFileStateCode,
 	watchState: string | null,

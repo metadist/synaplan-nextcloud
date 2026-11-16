@@ -13,7 +13,7 @@
 			</NcNoteCard>
 
 			<p v-if="loading" class="sp-hint">
-				{{ t('synaplan_integration', 'Loading...') }}
+				{{ t('synaplan_integration', 'Loading…') }}
 			</p>
 
 			<template v-else>
@@ -66,7 +66,7 @@
 				v-model="copyFolder"
 				:disabled="savingFolder"
 				:label="t('synaplan_integration', 'Folder for files from Synaplan')"
-				:label-visible="false" />
+				:labelVisible="false" />
 			<div class="sp-actions">
 				<span
 					role="button"
@@ -77,7 +77,7 @@
 					@keydown.space.prevent="!savingFolder && saveFolder()">
 					{{
 						savingFolder
-							? t('synaplan_integration', 'Saving...')
+							? t('synaplan_integration', 'Saving…')
 							: t('synaplan_integration', 'Save')
 					}}
 				</span>
@@ -155,7 +155,7 @@
 					@keydown.space.prevent="!savingScope && saveScope()">
 					{{
 						savingScope
-							? t('synaplan_integration', 'Saving...')
+							? t('synaplan_integration', 'Saving…')
 							: t('synaplan_integration', 'Save')
 					}}
 				</span>
@@ -165,11 +165,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
-import { t } from '@nextcloud/l10n'
 import { FilePickerType, getFilePickerBuilder } from '@nextcloud/dialogs'
+import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, ref } from 'vue'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
@@ -257,7 +257,8 @@ const connectedLabel = computed(() => {
 
 /**
  * Human-readable date for the connection timestamp.
- * @param {string} iso ISO timestamp
+ *
+ * @param iso ISO timestamp
  */
 function formatDate(iso: string): string {
 	const d = new Date(iso)
@@ -325,6 +326,7 @@ async function saveFolder() {
  */
 /**
  * Drop one named folder from the list. Saving stores the change.
+ *
  * @param path Folder the person named
  */
 function removeFolder(path: string) {
@@ -393,6 +395,9 @@ async function saveScope() {
 	}
 }
 
+/**
+ *
+ */
 async function loadStatus() {
 	loading.value = true
 	try {

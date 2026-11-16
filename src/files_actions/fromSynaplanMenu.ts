@@ -1,10 +1,11 @@
+import type { IFolder } from '@nextcloud/files'
+
 import CloudDownloadOutlineSvg from '@mdi/svg/svg/cloud-download-outline.svg?raw'
 import {
 	addNewFileMenuEntry,
 	NewMenuEntryCategory,
 	Permission,
 } from '@nextcloud/files'
-import type { IFolder } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'

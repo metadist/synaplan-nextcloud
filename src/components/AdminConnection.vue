@@ -7,7 +7,7 @@
 			<div class="sp-env-switch sp-modes">
 				<div class="sp-mode">
 					<NcCheckboxRadioSwitch
-						:model-value="mode"
+						:modelValue="mode"
 						value="sso"
 						name="sp-mode"
 						class="sp-mode-choice"
@@ -32,13 +32,13 @@
 				</div>
 				<div class="sp-mode">
 					<NcCheckboxRadioSwitch
-						:model-value="mode"
+						:modelValue="mode"
 						value="link"
 						name="sp-mode"
 						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
-						@update:model-value="emit('update:mode', 'link')">
+						@update:modelValue="emit('update:mode', 'link')">
 						{{
 							t(
 								'synaplan_integration',
@@ -57,13 +57,13 @@
 				</div>
 				<div class="sp-mode">
 					<NcCheckboxRadioSwitch
-						:model-value="mode"
+						:modelValue="mode"
 						value="provision"
 						name="sp-mode"
 						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
-						@update:model-value="emit('update:mode', 'provision')">
+						@update:modelValue="emit('update:mode', 'provision')">
 						{{
 							t(
 								'synaplan_integration',
@@ -82,13 +82,13 @@
 				</div>
 				<div class="sp-mode">
 					<NcCheckboxRadioSwitch
-						:model-value="mode"
+						:modelValue="mode"
 						value="shared"
 						name="sp-mode"
 						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
-						@update:model-value="emit('update:mode', 'shared')">
+						@update:modelValue="emit('update:mode', 'shared')">
 						{{ t('synaplan_integration', 'One shared account') }}
 					</NcCheckboxRadioSwitch>
 					<p class="sp-hint sp-mode-hint">
@@ -112,10 +112,10 @@
 		<template v-if="mode === 'link'">
 			<div :style="{ height: '12px' }" />
 			<NcCheckboxRadioSwitch
-				:model-value="linkAutoProvision"
+				:modelValue="linkAutoProvision"
 				type="switch"
 				:disabled="saving || !hasAdminKey"
-				@update:model-value="emit('update:linkAutoProvision', $event)">
+				@update:modelValue="emit('update:linkAutoProvision', $event)">
 				{{
 					t(
 						'synaplan_integration',

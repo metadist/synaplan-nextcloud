@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-
 import { readEvents, streamChat } from '@/chat/stream'
 
 /**
@@ -42,8 +41,9 @@ function answer(
 	}
 }
 
-const delta = (content: string, model = 'gpt-oss-120b') =>
-	`data: ${JSON.stringify({ model, choices: [{ delta: { content } }] })}\n\n`
+function delta(content: string, model = 'gpt-oss-120b') {
+	return `data: ${JSON.stringify({ model, choices: [{ delta: { content } }] })}\n\n`
+}
 
 afterEach(() => {
 	vi.unstubAllGlobals()

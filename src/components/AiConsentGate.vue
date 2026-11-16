@@ -40,16 +40,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 
 const emit = defineEmits<{
 	// Fired whenever the "AI is blocked until the user activates it" state changes.
-	'blocked-change': [value: boolean]
+	blockedChange: [value: boolean]
 	// Fired once the user has activated AI.
 	granted: []
 }>()
@@ -107,7 +107,7 @@ const bodyText = computed(() => {
  */
 function refreshBlocked() {
 	blocked.value = required.value && !granted.value
-	emit('blocked-change', blocked.value)
+	emit('blockedChange', blocked.value)
 }
 
 /**

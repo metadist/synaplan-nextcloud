@@ -1,6 +1,7 @@
+import type { CloudFileStateCode, GlyphOverrides } from './glyphs'
+
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
-import type { CloudFileStateCode, GlyphOverrides } from './glyphs'
 
 export interface CloudStatusItem {
 	id: string
@@ -63,7 +64,7 @@ function cacheKey(id: string, version: string): string {
 /**
  * Subscribe to status cache invalidations (after Make searchable or Remove).
  *
- * @param {() => void} fn Listener callback
+ * @param fn Listener callback
  */
 export function onCloudStatusInvalidated(fn: () => void): () => void {
 	listeners.add(fn)
@@ -90,7 +91,7 @@ export function isCloudStatusEnabled(): boolean | null {
 /**
  * Return any cached watch summary for a folder or file id.
  *
- * @param {string} targetId Nextcloud fileid as string
+ * @param targetId Nextcloud fileid as string
  */
 export function watchForTarget(targetId: string): CloudWatchSummary | null {
 	return folderWatches.get(targetId) ?? null
@@ -100,8 +101,8 @@ export function watchForTarget(targetId: string): CloudWatchSummary | null {
  * Request the searchable state for one row in the current folder view.
  * Collects all visible rows rendered within 50 ms into one batched POST.
  *
- * @param {string} id Nextcloud fileid as string
- * @param {string} version Nextcloud etag
+ * @param id Nextcloud fileid as string
+ * @param version Nextcloud etag
  */
 export function requestRowStatus(
 	id: string,

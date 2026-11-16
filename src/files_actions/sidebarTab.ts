@@ -1,10 +1,12 @@
-/* eslint-disable padded-blocks */
-import { createApp, ref, type App } from 'vue'
-import { getSidebar, registerSidebarTab, type INode } from '@nextcloud/files'
+import type { INode } from '@nextcloud/files'
+import type { App } from 'vue'
+
+import { getSidebar, registerSidebarTab } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
+import { createApp, ref } from 'vue'
+import FilesSidebarTab from '../components/FilesSidebarTab.vue'
 import { BIRD_SVG } from '../cloud_state/glyphs'
 import { isCloudStatusEnabled } from '../cloud_state/statusBatcher'
-import FilesSidebarTab from '../components/FilesSidebarTab.vue'
 import { SIDEBAR_TAB_ID } from './birdRowAction'
 
 const TAG_NAME = 'synaplan_integration-files-sidebar-tab'

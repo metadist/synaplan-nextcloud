@@ -1,10 +1,6 @@
-import {
-	expect,
-	request,
-	type APIRequestContext,
-	type Locator,
-	type Page,
-} from '@playwright/test'
+import type { APIRequestContext, Locator, Page } from '@playwright/test'
+
+import { expect, request } from '@playwright/test'
 
 export const NC_URL = process.env.NC_URL ?? 'http://localhost:8081'
 export const SYNAPLAN_URL = process.env.SYNAPLAN_URL ?? 'http://localhost:8001'
@@ -146,6 +142,7 @@ export async function allowOnSynaplan(page: Page): Promise<void> {
 		await page.getByTestId('input-password').fill(SYNAPLAN_PERSON.password)
 		await page.getByTestId('btn-login').click()
 	}
+	await expect(connect).toBeVisible()
 	await connect.click()
 	await page.waitForURL(`${NC_URL}/**`)
 }

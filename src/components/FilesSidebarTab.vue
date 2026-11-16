@@ -113,7 +113,9 @@
 
 			<div v-if="watches.length > 0" class="sp-sidebar-watches">
 				<div v-for="item in watches" :key="item.id" class="sp-watch-box">
-					<div class="sp-watch-sentence">{{ item.sentence }}</div>
+					<div class="sp-watch-sentence">
+						{{ item.sentence }}
+					</div>
 					<div class="sp-watch-hint">
 						{{
 							t(
@@ -174,26 +176,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, createApp, ref, watch, type Ref } from 'vue'
+import type { Ref } from 'vue'
+import type { CloudFileStateCode, GlyphOverrides } from '../cloud_state/glyphs'
+import type { CloudWatchSummary } from '../cloud_state/statusBatcher'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
-import { t } from '@nextcloud/l10n'
 import { showError, showSuccess } from '@nextcloud/dialogs'
+import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, createApp, ref, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import {
-	badgeForState,
-	glyphMarkup,
-	type CloudFileStateCode,
-	type GlyphOverrides,
-} from '../cloud_state/glyphs'
+import ChatModal from './ChatModal.vue'
+import KnowledgeModal from './KnowledgeModal.vue'
+import { badgeForState, glyphMarkup } from '../cloud_state/glyphs'
 import {
 	invalidateCloudStatusCache,
 	onCloudStatusInvalidated,
-	type CloudWatchSummary,
 } from '../cloud_state/statusBatcher'
-import ChatModal from './ChatModal.vue'
-import KnowledgeModal from './KnowledgeModal.vue'
 
 const props = defineProps<{
 	fileIdRef: Ref<number>
@@ -242,10 +242,18 @@ const stateHeading = computed(() => {
 })
 
 const stateClass = computed(() => {
-	if (state.value === 'failed') return 'is-error'
-	if (state.value === 'changed' || state.value === 'updating') return 'is-warn'
-	if (state.value === 'adding') return 'is-info'
-	if (state.value === 'searchable') return 'is-ok'
+	if (state.value === 'failed') {
+		return 'is-error'
+	}
+	if (state.value === 'changed' || state.value === 'updating') {
+		return 'is-warn'
+	}
+	if (state.value === 'adding') {
+		return 'is-info'
+	}
+	if (state.value === 'searchable') {
+		return 'is-ok'
+	}
 	return 'is-muted'
 })
 
@@ -328,7 +336,9 @@ async function removeFromSynaplan(): Promise<void> {
  */
 function openKnowledgeModal(): void {
 	const id = props.fileIdRef.value
-	if (!id) return
+	if (!id) {
+		return
+	}
 	const container = document.createElement('div')
 	document.body.appendChild(container)
 	const app = createApp(KnowledgeModal, {
@@ -349,7 +359,9 @@ function openKnowledgeModal(): void {
  */
 function openChat(): void {
 	const id = props.fileIdRef.value
-	if (!id) return
+	if (!id) {
+		return
+	}
 	const container = document.createElement('div')
 	document.body.appendChild(container)
 	const app = createApp(ChatModal, {

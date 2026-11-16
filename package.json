@@ -22,7 +22,7 @@
   "dependencies": {
     "@mdi/svg": "^7.4.47",
     "@nextcloud/axios": "^2.5.1",
-    "@nextcloud/dialogs": "^7.3.0",
+    "@nextcloud/dialogs": "^8.0.0",
     "@nextcloud/files": "^4.0.0",
     "@nextcloud/initial-state": "^3.0.0",
     "@nextcloud/l10n": "^3.1.0",
@@ -31,15 +31,17 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
-    "@nextcloud/eslint-config": "8.4.2",
+    "@nextcloud/eslint-config": "9.0.1",
     "@nextcloud/prettier-config": "1.2.0",
     "@nextcloud/vite-config": "2.5.4",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "eslint": "10.15.0",
     "happy-dom": "21.0.4",
-    "prettier": "3.9.10",
-    "typescript": "5.9.3",
-    "vite": "7.3.7",
-    "vitest": "5.0.5",
-    "vue-tsc": "3.3.13"
+    "prettier": "3.10.1",
+    "typescript": "6.0.3",
+    "vite": "7.3.8",
+    "vitest": "5.1.0",
+    "vue-tsc": "3.3.14"
   }
 }

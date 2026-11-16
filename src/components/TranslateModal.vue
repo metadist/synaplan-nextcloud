@@ -5,7 +5,7 @@
 		size="normal"
 		@update:open="onClose">
 		<div class="synaplan-translate-modal">
-			<AiConsentGate @blocked-change="aiBlocked = $event" />
+			<AiConsentGate @blockedChange="aiBlocked = $event" />
 			<!-- Language selection (shown before result) -->
 			<div v-if="!loading && !result" class="options">
 				<div class="field">
@@ -14,7 +14,7 @@
 					}}</label>
 					<NcSelect
 						v-model="targetLanguage"
-						input-id="target-lang"
+						inputId="target-lang"
 						:options="languageOptions"
 						:clearable="false" />
 				</div>
@@ -23,7 +23,7 @@
 			<!-- Loading state -->
 			<div v-if="loading" class="loading">
 				<span class="syn-spinner" aria-hidden="true" />
-				<p>{{ t('synaplan_integration', 'Translating...') }}</p>
+				<p>{{ t('synaplan_integration', 'Translating…') }}</p>
 			</div>
 
 			<!-- Result -->
@@ -31,8 +31,8 @@
 				<NcRichText
 					class="result-md markdown-body"
 					:text="result"
-					:use-markdown="true"
-					:use-extended-markdown="true" />
+					:useMarkdown="true"
+					:useExtendedMarkdown="true" />
 			</div>
 
 			<!-- Error -->
@@ -61,18 +61,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
-import { t } from '@nextcloud/l10n'
 import { showError } from '@nextcloud/dialogs'
+import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
-import { describeFailure, failureFromError, type Failure } from '../failures'
+import { describeFailure, failureFromError } from '../failures'
 
 const props = defineProps<{
 	fileId: number

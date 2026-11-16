@@ -3,11 +3,11 @@ import {
 	APP,
 	FILE,
 	NC_URL,
-	SYNAPLAN_ADMIN,
-	SYNAPLAN_URL,
 	nextcloudAs,
 	resetPerson,
 	saveSettings,
+	SYNAPLAN_ADMIN,
+	SYNAPLAN_URL,
 	synaplanAs,
 } from './support'
 

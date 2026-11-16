@@ -31,6 +31,10 @@ services:
             REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
             CLOUD_FILES_ENABLED: 'true'
+            # The suite registers this Nextcloud itself and expects the client
+            # to be active. People still consent one by one. The token is what
+            # the setup sends, and it approves that one registration at once.
+            PLATFORM_LINKS_REGISTRATION: open
             PLATFORM_LINKS_REGISTRATION_TOKEN: nextcloud-e2e-initial-access-token-0001
         depends_on:
             redis_test:

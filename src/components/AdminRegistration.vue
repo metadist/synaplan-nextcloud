@@ -40,17 +40,17 @@
 			<div class="sp-input">
 				<NcTextField
 					id="synaplan-delivery-url"
-					:model-value="deliveryUrl"
+					:modelValue="deliveryUrl"
 					:label="
 						t(
 							'synaplan_integration',
 							'Address Synaplan uses to reach this Nextcloud',
 						)
 					"
-					:label-visible="false"
+					:labelVisible="false"
 					:disabled="saving"
 					:style="{ width: '100%' }"
-					@update:model-value="
+					@update:modelValue="
 						emit('update:deliveryUrl', String($event))
 					" />
 			</div>
@@ -103,8 +103,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { t } from '@nextcloud/l10n'
+import { computed } from 'vue'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 

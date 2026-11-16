@@ -31,7 +31,7 @@ test('Translate writes a translation', async ({ page }) => {
 test('Chat about this file answers a question', async ({ page }) => {
 	const dialog = await openFileAction(page, 'Chat about this file')
 	await dialog
-		.getByPlaceholder('Ask a question about this file...')
+		.getByPlaceholder('Ask a question about this file…')
 		.fill('What does the review recommend?')
 	await dialog.getByRole('button', { name: 'Send' }).click()
 

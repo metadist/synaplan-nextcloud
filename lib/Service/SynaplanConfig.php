@@ -57,7 +57,7 @@ class SynaplanConfig
     }
 
     /**
-     * Origin the user's browser opens for /connect/platform.
+     * Origin the user's browser opens for the OAuth consent page.
      *
      * Falls back to getBaseUrl() when unset. Needed when Nextcloud talks to
      * Synaplan on an internal hostname (Docker `http://backend`) that the

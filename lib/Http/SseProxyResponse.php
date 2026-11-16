@@ -81,8 +81,7 @@ class SseProxyResponse extends Response implements ICallbackResponse
             \CURLOPT_POST => true,
             \CURLOPT_POSTFIELDS => $this->payload,
             \CURLOPT_HTTPHEADER => [
-                ...array_map(static fn (string $name, string $value): string => $name . ': ' . $value, array_keys(SynaplanCredential::header($this->apiKey)), SynaplanCredential::header($this->apiKey)),
-                'Accept: text/event-stream',
+                ...SynaplanCredential::curlHeaders($this->apiKey, 'text/event-stream'),
                 'Content-Type: application/json',
                 // Force plain-text SSE — a gzipped body cannot be relayed raw.
                 'Accept-Encoding: identity',
