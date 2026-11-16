@@ -37,10 +37,10 @@ class FolderRead
     ) {
     }
 
-    public function handle(string $id, int $budgetSeconds = self::BUDGET_SECONDS): void
+    public function handle(string $id, string $externalId, int $budgetSeconds = self::BUDGET_SECONDS): void
     {
         try {
-            $this->start($id, microtime(true) + max(1, $budgetSeconds));
+            $this->start($id, $externalId, microtime(true) + max(1, $budgetSeconds));
         } catch (\Throwable $e) {
             $this->logger->warning('A folder read could not be answered: {message}', [
                 'app' => Application::APP_ID,
@@ -65,7 +65,7 @@ class FolderRead
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
         } catch (\Throwable $e) {
-            $this->report($id, 'failed', $listed, $sent, $skipped, 'unreachable');
+            $this->report($id, $uid, 'failed', $listed, $sent, $skipped, 'unreachable');
 
             return;
         }
@@ -80,18 +80,25 @@ class FolderRead
                 $skipped[] = $outcome;
             }
         }
-        $this->close($id, $listed, $sent, $skipped);
+        $this->close($id, $uid, $listed, $sent, $skipped);
     }
 
-    private function start(string $id, float $deadline): void
+    /**
+     * The read is claimed and answered with the key of the person the signed
+     * notification names; the claim must name the same person.
+     */
+    private function start(string $id, string $externalId, float $deadline): void
     {
-        $claim = $this->links->claimPickup($id);
+        $uid = $this->uid($externalId);
+        if ($uid === null || !$this->links->canActFor($uid)) {
+            return;
+        }
+        $claim = $this->links->claimPickup($id, $uid);
         if (isset($claim['status_code']) && (int) $claim['status_code'] !== 200) {
             return;
         }
-        $uid = $this->uid((string) ($claim['external_id'] ?? ''));
-        if ($uid === null) {
-            $this->report($id, 'failed', 0, 0, [], 'not_found');
+        if ($this->uid((string) ($claim['external_id'] ?? '')) !== $uid) {
+            $this->report($id, $uid, 'failed', 0, 0, [], 'not_found');
 
             return;
         }
@@ -99,13 +106,13 @@ class FolderRead
         $userFolder = $this->rootFolder->getUserFolder($uid);
         $folder = $this->folder($userFolder, $selector);
         if (!$folder instanceof Folder) {
-            $this->report($id, 'failed', 0, 0, [], 'not_found');
+            $this->report($id, $uid, 'failed', 0, 0, [], 'not_found');
 
             return;
         }
         $relative = $this->relativeFolder($userFolder, $folder);
         if (!$this->scope->mayRead($uid, $relative)) {
-            $this->report($id, 'failed', 0, 0, [], 'outside_scope');
+            $this->report($id, $uid, 'failed', 0, 0, [], 'outside_scope');
 
             return;
         }
@@ -124,9 +131,9 @@ class FolderRead
                 'mime' => $file['mime'],
             ];
         }
-        $listing = $this->links->submitPickupListing($id, $items);
+        $listing = $this->links->submitPickupListing($id, $uid, $items);
         if (isset($listing['status_code']) && (int) $listing['status_code'] !== 200) {
-            $this->report($id, 'failed', count($items), 0, [], 'unreachable');
+            $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
 
             return;
         }
@@ -184,7 +191,7 @@ class FolderRead
 
             return;
         }
-        $this->close($id, count($items), $sent, $skipped);
+        $this->close($id, $uid, count($items), $sent, $skipped);
     }
 
     /**
@@ -216,6 +223,7 @@ class FolderRead
         try {
             $stored = $this->links->uploadPickupFile(
                 $pickupId,
+                $uid,
                 $item['id'],
                 $item['version'],
                 $bytes,
@@ -249,19 +257,19 @@ class FolderRead
     /**
      * @param list<array{id: string, name: string, reason: string}> $skipped
      */
-    private function close(string $id, int $listed, int $sent, array $skipped): void
+    private function close(string $id, string $uid, int $listed, int $sent, array $skipped): void
     {
         $missing = array_filter(
             $skipped,
             static fn (array $row): bool => $row['reason'] !== 'type_not_read',
         );
-        $this->report($id, $missing === [] ? 'done' : 'partial', $listed, $sent, $skipped, null);
+        $this->report($id, $uid, $missing === [] ? 'done' : 'partial', $listed, $sent, $skipped, null);
     }
 
     /**
      * @param list<array{id: string, name: string, reason: string}> $skipped
      */
-    private function report(string $id, string $status, int $listed, int $sent, array $skipped, ?string $error): void
+    private function report(string $id, string $uid, string $status, int $listed, int $sent, array $skipped, ?string $error): void
     {
         $body = [
             'status' => $status,
@@ -273,7 +281,7 @@ class FolderRead
             $body['error_code'] = $error;
         }
         try {
-            $this->links->reportPickupResult($id, $body);
+            $this->links->reportPickupResult($id, $uid, $body);
         } catch (\Throwable $e) {
             $this->logger->warning('Could not report a folder read: {message}', [
                 'app' => Application::APP_ID,
