@@ -81,6 +81,9 @@ class UserAccountServiceTest extends TestCase
         $crypto->method('decrypt')->willReturnCallback(
             fn (string $value): string => str_starts_with($value, 'enc:') ? substr($value, 4) : $value
         );
+        $crypto->method('encrypt')->willReturnCallback(
+            fn (string $value): string => 'enc:' . $value
+        );
 
         $synaplanConfig = new SynaplanConfig($this->config, $keys);
 
@@ -104,6 +107,33 @@ class UserAccountServiceTest extends TestCase
         $user->method('getDisplayName')->willReturn($displayName);
 
         return $user;
+    }
+
+    public function testCredentialForKeepsAnApiKey(): void
+    {
+        $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertSame('sk_ada', $this->service()->credentialFor('ada'));
+    }
+
+    public function testCredentialForRenewsAnExpiredAccessToken(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['ada|synaplan_user_api_key'] = 'old.access.token';
+        $this->userConfig['ada|synaplan_refresh_token'] = 'enc:refresh-1';
+        $this->userConfig['ada|synaplan_token_expires'] = '1';
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getStatusCode')->willReturn(200);
+        $resp->method('getBody')->willReturn((string) json_encode([
+            'access_token' => 'new.access.token',
+            'refresh_token' => 'refresh-2',
+            'expires_in' => 900,
+        ]));
+        $this->httpClient->expects($this->once())->method('post')->willReturn($resp);
+
+        $this->assertSame('new.access.token', $this->service()->credentialFor('ada'));
+        $this->assertSame('new.access.token', $this->userConfig['ada|synaplan_user_api_key']);
     }
 
     public function testReturnsNullWhenPerUserDisabled(): void

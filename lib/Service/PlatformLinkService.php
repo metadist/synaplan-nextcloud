@@ -641,7 +641,7 @@ class PlatformLinkService
      */
     private function personHeaders(string $uid): array
     {
-        $key = $uid !== '' ? $this->userAccounts->getStoredApiKey($uid) : '';
+        $key = $uid !== '' ? $this->userAccounts->credentialFor($uid) : '';
         if ($key === '') {
             throw new \RuntimeException('No Synaplan key is held for this person.');
         }

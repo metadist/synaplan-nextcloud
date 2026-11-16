@@ -231,7 +231,7 @@ class PlatformLinkServiceTest extends TestCase
         ];
         foreach ($cases as $stored => $expected) {
             $this->userAccounts = $this->createMock(UserAccountService::class);
-            $this->userAccounts->method('getStoredApiKey')->with('ada')->willReturn($stored);
+            $this->userAccounts->method('credentialFor')->with('ada')->willReturn($stored);
             $resp = $this->createMock(IResponse::class);
             $resp->method('getStatusCode')->willReturn(200);
             $resp->method('getBody')->willReturn('{"success":true}');
