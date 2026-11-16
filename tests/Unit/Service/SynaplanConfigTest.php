@@ -63,10 +63,24 @@ class SynaplanConfigTest extends TestCase
         $this->assertFalse($this->cfg()->isLinkAvailable());
 
         $this->appConfig['link_instance_secret'] = 'enc-secret';
+        $this->assertFalse($this->cfg()->isLinkAvailable());
+
+        $this->appConfig['oauth_kid'] = 'kid-1';
         $this->assertTrue($this->cfg()->isLinkAvailable());
+        $this->assertTrue($this->cfg()->isRegistered());
 
         $this->appConfig['mode'] = SynaplanConfig::MODE_PROVISION;
         $this->assertFalse($this->cfg()->isLinkAvailable());
+        $this->assertTrue($this->cfg()->isRegistered());
+    }
+
+    public function testRegistrationNeedsTheClientIdAndItsKey(): void
+    {
+        $this->appConfig['oauth_kid'] = 'kid-1';
+        $this->assertFalse($this->cfg()->isRegistered());
+
+        $this->appConfig['link_instance_id'] = 'client-1';
+        $this->assertTrue($this->cfg()->isRegistered());
     }
 
     public function testAutoProvisionNeedsLinkModeFlagAndAdminKey(): void

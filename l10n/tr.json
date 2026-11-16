@@ -238,6 +238,10 @@
 		"Synaplan copied {name} to {folder}.": "Synaplan, {name} dosyasını {folder} klasörüne kopyaladı.",
 		"Synaplan could not finish this. Try again in a minute, or ask your administrator.": "Synaplan bunu tamamlayamadı. Bir dakika sonra tekrar deneyin veya yöneticinize danışın.",
 		"Synaplan could not set up your account. Ask your administrator.": "Synaplan hesabınızı oluşturamadı. Yöneticinize danışın.",
+		"Synaplan could not set up your account: API keys are part of a paid plan.": "Synaplan hesabınızı oluşturamadı: API anahtarları ücretli bir planın parçası.",
+		"Synaplan could not set up your account: this email address already has a Synaplan account.": "Synaplan hesabınızı oluşturamadı: bu e-posta adresinin Synaplan hesabı zaten var.",
+		"Synaplan could not set up your account: this Nextcloud has no key that can create accounts.": "Synaplan hesabınızı oluşturamadı: bu Nextcloud hesap oluşturabilecek bir anahtara sahip değil.",
+		"{summary} {reason}": "{summary} {reason}",
 		"Synaplan does not accept the key of this Nextcloud. Ask your administrator to check the Synaplan settings.": "Synaplan bu Nextcloud'un anahtarını kabul etmiyor. Yöneticinizden Synaplan ayarlarını denetlemesini isteyin.",
 		"Synaplan found no text in this file. It may be a scan or protected by a password.": "Synaplan bu dosyada metin bulamadı. Taranmış bir belge veya parola korumalı olabilir.",
 		"Synaplan found no text it could make searchable. The file may be empty or a scan. Check the file and try again.": "Synaplan aranabilir yapabileceği bir metin bulamadı. Dosya boş ya da taranmış olabilir. Dosyayı kontrol edip tekrar deneyin.",
@@ -314,7 +318,12 @@
 		"New and changed files become searchable by AI in your knowledge folder “{folder}”.": "Yeni ve değişen dosyalar “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
 		"New versions of this file become searchable by AI in your knowledge folder “{folder}”.": "Bu dosyanın yeni sürümleri “{folder}” bilgi klasöründe yapay zekâ ile aranabilir olur.",
 		"“{task}” will run for a new copy of this file.": "“{task}”, bu dosyanın yeni bir kopyası için çalışır.",
-		"Keep it searchable": "Aranabilir tut"
+		"Keep it searchable": "Aranabilir tut",
+		"Registration code from Synaplan (optional)": "Synaplan kayıt kodu (isteğe bağlı)",
+		"You did not allow the connection. Nothing was connected.": "Bağlantıya izin vermediniz. Hiçbir şey bağlanmadı.",
+		"Synaplan cannot be reached right now. Please try again later.": "Synaplan şu anda erişilemiyor. Lütfen daha sonra tekrar deneyin.",
+		"Synaplan no longer accepts this registration. Forget it and register again.": "Synaplan bu kaydı artık kabul etmiyor. Kaydı unutun ve yeniden kaydedin.",
+		"Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again.": "Synaplan bu Nextcloud'u artık kabul etmiyor. Yöneticinizden yeniden kaydetmesini isteyin."
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

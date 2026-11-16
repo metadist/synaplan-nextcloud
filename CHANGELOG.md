@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Connecting goes through Synaplan's OAuth2 server.** This Nextcloud registers with a key pair it makes itself, and a person allows the connection on Synaplan's consent page. No secret from Synaplan is kept here any more. An optional registration code from Synaplan makes the registration active at once; without it a Synaplan administrator approves it.
+- When Synaplan no longer accepts this Nextcloud's registration (revoked or removed there), the admin settings say so, a person who connects is told to ask the administrator, and a connected person can still disconnect.
+- Copies, folder reads, read settings and file changes are sent with the person's own credential, and Synaplan's notifications are checked as signed tokens.
+- When Synaplan's answer to a token refresh gets lost, this Nextcloud asks once more right away and the person stays connected.
+
+### Fixed
+- In the admin settings, a click beside a mode's label no longer looks like a choice that did nothing; only the label and its button take the click.
+
+### Upgrading
+- Needs a Synaplan with the OAuth2 server for clouds. After the update an administrator registers this Nextcloud again in the admin settings, and people connect again. Until then file changes are not reported to Synaplan.
+
 ## 1.8.1 – 2026-10-29
 
 ### Added

@@ -10,6 +10,7 @@
 						:modelValue="mode"
 						value="sso"
 						name="sp-mode"
+						class="sp-mode-choice"
 						type="radio"
 						disabled>
 						{{ t('synaplan_integration', 'Organisation login') }}
@@ -34,6 +35,7 @@
 						:modelValue="mode"
 						value="link"
 						name="sp-mode"
+						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
 						@update:modelValue="emit('update:mode', 'link')">
@@ -58,6 +60,7 @@
 						:modelValue="mode"
 						value="provision"
 						name="sp-mode"
+						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
 						@update:modelValue="emit('update:mode', 'provision')">
@@ -82,6 +85,7 @@
 						:modelValue="mode"
 						value="shared"
 						name="sp-mode"
+						class="sp-mode-choice"
 						type="radio"
 						:disabled="saving"
 						@update:modelValue="emit('update:mode', 'shared')">
@@ -163,6 +167,11 @@ const emit = defineEmits<{
 	flex-direction: column;
 	gap: 12px;
 	margin-top: 8px;
+}
+
+/* The switch spans the row, but only its icon and label take a click. */
+.sp-mode-choice {
+	width: fit-content;
 }
 
 .sp-mode-hint {
