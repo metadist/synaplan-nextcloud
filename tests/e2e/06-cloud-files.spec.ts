@@ -1,13 +1,13 @@
-import { execFileSync } from 'node:child_process'
 import { expect, test } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import {
+	APP,
 	ensureConnected,
 	linksOf,
 	logIn,
 	nextcloudAs,
 	SYNAPLAN_PERSON,
 	synaplanAs,
-	APP,
 } from './support'
 
 /**

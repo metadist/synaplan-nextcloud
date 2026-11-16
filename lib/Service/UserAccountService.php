@@ -302,6 +302,17 @@ class UserAccountService
         return $this->storedKey($uid);
     }
 
+    /**
+     * The credential to act for this person when they are not signed in.
+     * An API key is returned as stored. An OAuth access token is renewed
+     * first when it is inside its expiry window, the same way a signed-in
+     * request is.
+     */
+    public function credentialFor(string $uid): string
+    {
+        return $this->storedKey($uid);
+    }
+
     public function getStoredApiKeyId(string $uid): string
     {
         return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, '');

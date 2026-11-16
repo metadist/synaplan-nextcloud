@@ -135,13 +135,25 @@ class PlatformLinkService
      */
     public function notificationTrust(): array
     {
-        $configuration = $this->request('GET', '/.well-known/synaplan-configuration', null, []);
-        $jwks = $this->request('GET', '/.well-known/jwks.json', null, []);
+        $configuration = $this->request('GET', '/.well-known/synaplan-configuration', null, [
+            'Accept' => 'application/json',
+        ]);
+        $jwks = $this->request('GET', '/.well-known/jwks.json', null, [
+            'Accept' => 'application/json',
+        ]);
         $keys = [];
         foreach (is_array($jwks['keys'] ?? null) ? $jwks['keys'] : [] as $jwk) {
-            if (is_array($jwk) && ($jwk['kty'] ?? null) === 'OKP' && ($jwk['crv'] ?? null) === 'Ed25519' && is_string($jwk['x'] ?? null)) {
-                $keys[] = ['publicKey' => 'ed25519:' . $jwk['x'], 'kid' => is_string($jwk['kid'] ?? null) ? $jwk['kid'] : ''];
+            if (!is_array($jwk) || ($jwk['kty'] ?? '') !== 'OKP' || ($jwk['crv'] ?? '') !== 'Ed25519') {
+                continue;
             }
+            $x = $jwk['x'] ?? null;
+            if (!is_string($x) || $x === '') {
+                continue;
+            }
+            $keys[] = [
+                'publicKey' => 'ed25519:' . $x,
+                'kid' => is_string($jwk['kid'] ?? null) ? $jwk['kid'] : '',
+            ];
         }
 
         return [
@@ -518,20 +530,20 @@ class PlatformLinkService
 
     /**
      * Calls done for one person carry that person's own credential: their
-     * access token, or a provisioned person's key. Synaplan takes the cloud
-     * from it and checks that the copy, folder read or file belongs to that
-     * person.
+     * access token, renewed when it has expired, or a provisioned person's
+     * key. Synaplan takes the cloud from it and checks that the copy, folder
+     * read or file belongs to that person.
      *
      * @return array<string, string>
      */
     private function personHeaders(string $uid): array
     {
-        $key = $uid !== '' ? $this->userAccounts->getStoredApiKey($uid) : '';
+        $key = $uid !== '' ? $this->userAccounts->credentialFor($uid) : '';
         if ($key === '') {
             throw new \RuntimeException('No Synaplan credential is held for this person.');
         }
 
-        return ['Accept' => 'application/json'] + SynaplanCredential::header($key);
+        return SynaplanCredential::headers($key);
     }
 
     public function publicHostFromUrl(string $url): string

@@ -57,7 +57,7 @@
 			<div v-if="!linkRegistered" class="sp-input">
 				<NcTextField
 					id="synaplan-registration-token"
-					:model-value="registrationToken"
+					:modelValue="registrationToken"
 					:label="
 						t(
 							'synaplan_integration',
@@ -68,7 +68,7 @@
 					:disabled="saving"
 					:style="{ width: '100%' }"
 					data-testid="synaplan-registration-token"
-					@update:model-value="
+					@update:modelValue="
 						emit('update:registrationToken', String($event))
 					" />
 			</div>

@@ -99,6 +99,23 @@ class UserAccountServiceTest extends TestCase
         return $user;
     }
 
+    public function testCredentialForKeepsAnApiKey(): void
+    {
+        $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertSame('sk_ada', $this->service()->credentialFor('ada'));
+    }
+
+    public function testCredentialForUsesTheOauthAccessToken(): void
+    {
+        $this->oauth->method('isConnected')->with('ada')->willReturn(true);
+        $this->oauth->method('accessToken')->with('ada')->willReturn('new.access.token');
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertSame('new.access.token', $this->service()->credentialFor('ada'));
+    }
+
     public function testReturnsNullWhenPerUserDisabled(): void
     {
         $this->appConfig['per_user_accounts'] = '0';
