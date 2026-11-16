@@ -20,10 +20,11 @@ use Psr\Log\LoggerInterface;
  *   1. provision a Synaplan account for the NC user, and
  *   2. mint a per-user API key on that account.
  *
- * Once this Nextcloud is registered, both calls also send the instance
- * credential and the bare Nextcloud user id, so Synaplan stores the
- * canonical identity row. Without a registration the external id stays
+ * Once this Nextcloud is registered, provisioning uses the bare Nextcloud
+ * user id. Without a registration the external id stays
  * "<instanceId>:<uid>", as older releases sent it.
+ * A linked person stores an OAuth access token instead of an API key, plus
+ * the refresh token that renews it.
  *
  * The minted key is cached in the NC user's preferences (server-side only,
  * never exposed to the browser). All subsequent Synaplan calls made on behalf
@@ -39,6 +40,8 @@ class UserAccountService
     public const USER_KEY_PREF = KeyStorage::USER_KEY;
     public const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
     public const USER_KEY_ID_PREF = 'synaplan_user_key_id';
+    public const REFRESH_PREF = 'synaplan_refresh_token';
+    public const EXPIRES_PREF = 'synaplan_token_expires';
     /** Scopes of the stored key. Empty means a key minted before watching existed. */
     public const KEY_SCOPES_PREF = 'synaplan_key_scopes';
     public const CONSENT_PREF = 'ai_consent';
@@ -65,6 +68,7 @@ class UserAccountService
         private LoggerInterface $logger,
         private KeyStorage $keys,
         private ICrypto $crypto,
+        private CloudClientKey $cloudKey,
     ) {
     }
 
@@ -100,7 +104,7 @@ class UserAccountService
 
         $stored = $this->storedKey($user->getUID());
         if ($stored !== '') {
-            return $stored;
+            return $this->fresh($user->getUID(), $stored);
         }
 
         if ($this->synaplanConfig->isLinkMode()) {
@@ -159,6 +163,8 @@ class UserAccountService
             self::LINKED_AT_PREF,
             self::LINK_ID_PREF,
             self::USER_KEY_ID_PREF,
+            self::REFRESH_PREF,
+            self::EXPIRES_PREF,
             self::CONSENT_PREF,
             self::CONSENT_AT_PREF,
         ] as $key) {
@@ -169,15 +175,19 @@ class UserAccountService
     /**
      * Persist a successful handshake. A link is consent.
      *
-     * @param array{api_key: array{id?: int|string, key?: string}, user: array{id?: int|string, email?: string}, link_id?: int|string} $exchange
+     * @param array{api_key?: array{id?: int|string, key?: string}, access_token?: string, refresh_token?: string, expires_in?: int, user?: array{id?: int|string, email?: string}, link_id?: int|string} $exchange
      */
     public function storeLinkedAccount(IUser $user, array $exchange): void
     {
         $uid = $user->getUID();
-        $key = (string) ($exchange['api_key']['key'] ?? '');
+        $access = (string) ($exchange['access_token'] ?? '');
+        $key = $access !== '' ? $access : (string) ($exchange['api_key']['key'] ?? '');
         $keyId = (string) ($exchange['api_key']['id'] ?? '');
-        $synaplanUserId = (string) ($exchange['user']['id'] ?? '');
-        $email = (string) ($exchange['user']['email'] ?? '');
+        $refresh = (string) ($exchange['refresh_token'] ?? '');
+        $expiresIn = (int) ($exchange['expires_in'] ?? 0);
+        $userInfo = is_array($exchange['user'] ?? null) ? $exchange['user'] : [];
+        $synaplanUserId = (string) ($userInfo['id'] ?? '');
+        $email = (string) ($userInfo['email'] ?? '');
         $linkId = (string) ($exchange['link_id'] ?? '');
         $now = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
 
@@ -186,6 +196,17 @@ class UserAccountService
         }
         if ($keyId !== '') {
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, $keyId);
+        }
+        if ($refresh !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::REFRESH_PREF, $this->crypto->encrypt($refresh));
+        }
+        if ($expiresIn > 0) {
+            $this->config->setUserValue(
+                $uid,
+                Application::APP_ID,
+                self::EXPIRES_PREF,
+                (string) (time() + max(0, $expiresIn - 60)),
+            );
         }
         if ($synaplanUserId !== '') {
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, $synaplanUserId);
@@ -298,6 +319,34 @@ class UserAccountService
     public function getStoredApiKeyId(string $uid): string
     {
         return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, '');
+    }
+
+    public function getRefreshToken(string $uid): string
+    {
+        $cipher = $this->config->getUserValue($uid, Application::APP_ID, self::REFRESH_PREF, '');
+        if ($cipher === '') {
+            return '';
+        }
+        try {
+            return $this->crypto->decrypt($cipher);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * A new access token for the signed-in person, or null when there is
+     * nothing to refresh. The stored token is replaced only after Synaplan
+     * accepts the refresh token.
+     */
+    public function refreshCurrentUserToken(): ?string
+    {
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser) {
+            return null;
+        }
+
+        return $this->refresh($user->getUID());
     }
 
     /**
@@ -457,10 +506,10 @@ class UserAccountService
             return null;
         }
 
-        $credential = $this->instanceHeaders();
-        $externalId = $credential === []
-            ? $this->synaplanConfig->getInstanceId() . ':' . $user->getUID()
-            : $user->getUID();
+        $registered = $this->synaplanConfig->getLinkInstanceId() !== '';
+        $externalId = $registered
+            ? $user->getUID()
+            : $this->synaplanConfig->getInstanceId() . ':' . $user->getUID();
         $email = $user->getEMailAddress();
         if ($email === null || $email === '') {
             // Synaplan requires an email; synthesize a stable, unique one from
@@ -474,7 +523,7 @@ class UserAccountService
                 'external_id' => $externalId,
                 'email' => $email,
                 'display_name' => $user->getDisplayName(),
-            ], $adminKey, $credential);
+            ], $adminKey);
         } catch (\Throwable $e) {
             if ($this->isConflict($e)) {
                 throw new EmailConflictException();
@@ -490,7 +539,7 @@ class UserAccountService
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
             'name' => 'nextcloud-' . $user->getUID(),
             'scopes' => self::USER_KEY_SCOPES,
-        ], $adminKey, $credential);
+        ], $adminKey);
 
         $userKey = (string) ($minted['api_key']['key'] ?? '');
         if ($userKey === '') {
@@ -592,31 +641,79 @@ class UserAccountService
     }
 
     /**
-     * Instance credential when this Nextcloud is registered, otherwise none.
-     * Provisioning then keeps the legacy external id.
-     *
-     * @return array<string, string>
+     * Renew an OAuth access token that is inside its skew window.
      */
-    private function instanceHeaders(): array
+    private function fresh(string $uid, string $stored): string
     {
-        $id = $this->synaplanConfig->getLinkInstanceId();
-        $cipher = $this->synaplanConfig->getLinkInstanceSecretCipher();
-        if ($id === '' || $cipher === '') {
-            return [];
+        if (!SynaplanCredential::isBearer($stored)) {
+            return $stored;
+        }
+        $expires = (int) $this->config->getUserValue($uid, Application::APP_ID, self::EXPIRES_PREF, '0');
+        if ($expires === 0 || $expires > time()) {
+            return $stored;
+        }
+        $renewed = $this->refresh($uid);
+
+        return $renewed ?? $stored;
+    }
+
+    private function refresh(string $uid): ?string
+    {
+        $refresh = $this->getRefreshToken($uid);
+        if ($refresh === '' || $this->synaplanConfig->getLinkInstanceId() === '') {
+            return null;
         }
         try {
-            $secret = $this->crypto->decrypt($cipher);
-        } catch (\Throwable) {
-            $secret = $cipher;
+            $client = $this->clientService->newClient();
+            $response = $client->post($this->synaplanConfig->getBaseUrl() . '/oauth/token', [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ],
+                'body' => http_build_query([
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $refresh,
+                    'client_assertion_type' => CloudClientKey::ASSERTION_TYPE,
+                    'client_assertion' => $this->cloudKey->assertion('/oauth/token'),
+                ]),
+                'timeout' => 30,
+                'nextcloud' => ['allow_local_address' => true],
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->info('The Synaplan access token could not be refreshed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
         }
-        if ($secret === '') {
-            return [];
+        if ((int) $response->getStatusCode() >= 400) {
+            return null;
+        }
+        $decoded = json_decode($response->getBody(), true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+        $access = (string) ($decoded['access_token'] ?? '');
+        if ($access === '') {
+            return null;
+        }
+        $this->keys->setUserKey($uid, $access);
+        $next = (string) ($decoded['refresh_token'] ?? '');
+        if ($next !== '') {
+            $this->config->setUserValue($uid, Application::APP_ID, self::REFRESH_PREF, $this->crypto->encrypt($next));
+        }
+        $expiresIn = (int) ($decoded['expires_in'] ?? 0);
+        if ($expiresIn > 0) {
+            $this->config->setUserValue(
+                $uid,
+                Application::APP_ID,
+                self::EXPIRES_PREF,
+                (string) (time() + max(0, $expiresIn - 60)),
+            );
         }
 
-        return [
-            'X-Instance-Id' => $id,
-            'X-Instance-Secret' => $secret,
-        ];
+        return $access;
     }
 
     /**

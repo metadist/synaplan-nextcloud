@@ -6,7 +6,7 @@
 		@update:open="onClose">
 		<div class="synaplan-from-modal">
 			<p v-if="loading" class="hint">
-				{{ t('synaplan_integration', 'Loading...') }}
+				{{ t('synaplan_integration', 'Loading…') }}
 			</p>
 			<p v-else-if="files.length === 0 && !failure" class="hint">
 				{{ t('synaplan_integration', 'Nothing to copy yet.') }}
@@ -48,14 +48,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import FailureNote from './FailureNote.vue'
-import { failureFromError, type Failure } from '../failures'
+import { failureFromError } from '../failures'
 
 const props = defineProps<{
 	folder: string
@@ -92,7 +94,7 @@ function onClose() {
 /**
  * Recent files, generated ones first. Further pages append.
  *
- * @param {boolean} more true to fetch the next page
+ * @param more true to fetch the next page
  */
 async function load(more = false) {
 	const requested = more ? page.value + 1 : 1
@@ -120,7 +122,7 @@ async function load(more = false) {
 /**
  * Copy one file into the folder that is open.
  *
- * @param {ListedFile} file The row the person chose
+ * @param file The row the person chose
  */
 async function copy(file: ListedFile) {
 	if (copyingId.value !== null) {

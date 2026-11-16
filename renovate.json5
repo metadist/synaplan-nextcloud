@@ -62,5 +62,11 @@
       automerge: false,
       labels: ['dependencies', 'breaking'],
     },
+    {
+      // PHPUnit 12 requires PHP 8.3. Nextcloud 33 still runs this app on
+      // PHP 8.2, which is the floor in info.xml and the lower CI job.
+      matchPackageNames: ['phpunit/phpunit'],
+      allowedVersions: '<12',
+    },
   ],
 }

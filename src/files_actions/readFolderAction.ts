@@ -1,12 +1,13 @@
+import type { IFileAction } from '@nextcloud/files'
+
+import FolderEyeSvg from '@mdi/svg/svg/folder-eye-outline.svg?raw'
 import axios, { isAxiosError } from '@nextcloud/axios'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { Permission } from '@nextcloud/files'
-import type { IFileAction } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import FolderEyeSvg from '@mdi/svg/svg/folder-eye-outline.svg?raw'
 import { describeFailure, failureFromError } from '../failures'
-import { extractNodesFromEnabled, extractNodeFromExec } from './compat'
+import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 
 /**
  * Right-click a folder to let Synaplan read it.
@@ -18,15 +19,21 @@ export const readFolderAction: IFileAction = {
 
 	enabled(...args: unknown[]) {
 		const nodes = extractNodesFromEnabled(...args)
-		if (nodes.length !== 1) return false
+		if (nodes.length !== 1) {
+			return false
+		}
 		const node = nodes[0]
-		if ((node.permissions & Permission.READ) === 0) return false
+		if ((node.permissions & Permission.READ) === 0) {
+			return false
+		}
 		return node.type === 'folder' || node.mime === 'httpd/unix-directory'
 	},
 
 	async exec(...args: unknown[]) {
 		const folder = extractNodeFromExec(...args)
-		if (!folder) return null
+		if (!folder) {
+			return null
+		}
 		try {
 			const { data } = await axios.post(
 				generateUrl(

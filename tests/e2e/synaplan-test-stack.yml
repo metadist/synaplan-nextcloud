@@ -28,6 +28,9 @@ services:
             REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
             CLOUD_FILES_ENABLED: 'true'
+            # The suite registers this Nextcloud itself and expects the client
+            # to be active. People still consent one by one.
+            PLATFORM_LINKS_REGISTRATION: open
         depends_on:
             redis_test:
                 condition: service_healthy

@@ -46,10 +46,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { onMounted, ref } from 'vue'
 import { BIRD_SVG } from '../cloud_state/glyphs'
 
 interface SearchableRow {
@@ -85,7 +85,7 @@ async function load(): Promise<void> {
 /**
  * Remove one file from Synaplan.
  *
- * @param {number} fileId Nextcloud file id
+ * @param fileId Nextcloud file id
  */
 async function removeFile(fileId: number): Promise<void> {
 	removing.value = fileId

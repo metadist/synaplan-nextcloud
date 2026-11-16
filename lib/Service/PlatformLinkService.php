@@ -10,25 +10,29 @@ use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
-use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
- * Server-to-server handshake with Synaplan's platform-links API.
+ * This Nextcloud as an OAuth2 client of Synaplan. Registration, client
+ * configuration and the authorization-code handshake go through /oauth/*.
+ * A person's API calls use that person's access token, never a secret of
+ * the cloud.
  *
- * Talks via IClientService (never SynaplanClient) so a 401 on a user key
- * cannot re-enter registration or exchange.
+ * Talks via IClientService (never SynaplanClient) so a 401 on a user token
+ * cannot re-enter registration or the token endpoint.
  */
 class PlatformLinkService
 {
+    private const APP_CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events'];
+
     public function __construct(
         private IClientService $clientService,
         private IConfig $config,
         private IURLGenerator $urlGenerator,
-        private ICrypto $crypto,
         private SynaplanConfig $synaplanConfig,
         private UserAccountService $userAccounts,
         private LoggerInterface $logger,
+        private CloudClientKey $cloudKey,
     ) {
     }
 
@@ -49,24 +53,50 @@ class PlatformLinkService
         return $url;
     }
 
-    public function connectUrl(string $instanceId, string $externalId, string $state): string
+    /**
+     * Push the authorization request and return the browser URL plus the
+     * PKCE verifier the callback sends to the token endpoint.
+     *
+     * @return array{url: string, code_verifier: string}
+     */
+    public function beginConnect(string $externalId, string $state): array
     {
-        $params = [
-            'client' => 'nextcloud',
-            'instance_id' => $instanceId,
-            'external_id' => $externalId,
-            'state' => $state,
-            'redirect_uri' => $this->callbackUrl(),
-        ];
+        $verifier = bin2hex(random_bytes(32));
+        $scope = 'chat files rag cloud:watch';
         if ($this->synaplanConfig->isMemoriesEnabled()) {
-            $params['with_memories'] = '1';
+            $scope .= ' memories';
+        }
+        $pushed = $this->form('/oauth/par', [
+            'response_type' => 'code',
+            'redirect_uri' => $this->callbackUrl(),
+            'state' => $state,
+            'code_challenge' => self::base64Url(hash('sha256', $verifier, true)),
+            'code_challenge_method' => 'S256',
+            'external_id' => $externalId,
+            'scope' => $scope,
+        ]);
+        $requestUri = (string) ($pushed['request_uri'] ?? '');
+        if ($requestUri === '') {
+            throw new PlatformLinkException(
+                'Could not start connecting this account.',
+                PlatformLinkException::CODE_EXCHANGE
+            );
         }
 
-        return $this->synaplanConfig->getPublicBaseUrl() . '/connect/platform?' . http_build_query($params);
+        return [
+            'url' => $this->synaplanConfig->getPublicBaseUrl() . '/oauth/authorize?' . http_build_query([
+                'client_id' => $this->synaplanConfig->getLinkInstanceId(),
+                'request_uri' => $requestUri,
+            ]),
+            'code_verifier' => $verifier,
+        ];
     }
 
     /**
-     * Register this Nextcloud instance with Synaplan.
+     * Register this Nextcloud as an OAuth2 client of Synaplan.
+     *
+     * The private key is created here and never leaves this server. Whether
+     * the client is active at once is Synaplan's registration policy.
      *
      * @return array{instance_id: string, status: string, host: string}
      */
@@ -74,24 +104,30 @@ class PlatformLinkService
     {
         $callback = $this->callbackUrl();
         $host = $this->publicHostFromUrl($callback);
-        $key = $adminKey ?? $this->synaplanConfig->getAdminApiKey();
+        $metadata = $this->clientMetadata($callback, $this->defaultDeliveryUrl());
         $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
         ];
-        if ($key !== '') {
-            $headers['X-API-Key'] = $key;
+        // An initial access token approves the client at once. An API key is
+        // not one, and a wrong bearer is rate-limited, so it is not sent.
+        if (is_string($adminKey) && $adminKey !== '' && !str_starts_with($adminKey, 'sk_')) {
+            $headers['Authorization'] = 'Bearer ' . $adminKey;
+        }
+        $decoded = $this->request('POST', '/oauth/register', $metadata, $headers, false, true);
+        if (($decoded['status_code'] ?? 0) >= 400 && isset($metadata['delivery_url'])) {
+            unset($metadata['delivery_url']);
+            $decoded = $this->request('POST', '/oauth/register', $metadata, $headers, false, true);
+        }
+        if (($decoded['status_code'] ?? 0) >= 400) {
+            throw new PlatformLinkException(
+                'Synaplan is not accepting platform connections yet.',
+                PlatformLinkException::CODE_INSTANCE_PENDING
+            );
         }
 
-        $decoded = $this->request('POST', '/api/v1/platform-links/instances', [
-            'client' => 'nextcloud',
-            'host' => $host,
-            'redirect_uris' => [$callback],
-        ], $headers);
-
-        $instanceId = (string) ($decoded['instance_id'] ?? '');
-        $secret = (string) ($decoded['instance_secret'] ?? '');
-        if ($instanceId === '' || $secret === '') {
+        $instanceId = (string) ($decoded['client_id'] ?? '');
+        if ($instanceId === '') {
             throw new PlatformLinkException(
                 'Registration response missing credentials.',
                 PlatformLinkException::CODE_EXCHANGE
@@ -99,29 +135,16 @@ class PlatformLinkService
         }
 
         $this->config->setAppValue(Application::APP_ID, 'link_instance_id', $instanceId);
-        $this->config->setAppValue(
-            Application::APP_ID,
-            'link_instance_secret',
-            $this->crypto->encrypt($secret)
-        );
-        try {
-            $this->announceDelivery($this->defaultDeliveryUrl());
-        } catch (\Throwable $e) {
-            $this->logger->warning('Could not tell Synaplan where to reach this Nextcloud: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-        }
-
+        $status = (string) ($decoded['status'] ?? 'pending');
         $this->logger->info('Registered Nextcloud instance with Synaplan ({status})', [
             'app' => Application::APP_ID,
-            'status' => (string) ($decoded['status'] ?? ''),
+            'status' => $status,
             'instance_id' => $instanceId,
         ]);
 
         return [
             'instance_id' => $instanceId,
-            'status' => (string) ($decoded['status'] ?? 'pending'),
+            'status' => $status,
             'host' => $host,
         ];
     }
@@ -132,22 +155,22 @@ class PlatformLinkService
     public function instanceStatus(): array
     {
         $instanceId = $this->synaplanConfig->getLinkInstanceId();
-        $secret = $this->decryptSecret();
-        if ($instanceId === '' || $secret === '') {
+        if ($instanceId === '') {
             return ['error' => 'not_registered'];
         }
 
         try {
-            $decoded = $this->request('GET', '/api/v1/platform-links/instances/self', null, [
-                'Accept' => 'application/json',
-                'X-Instance-Id' => $instanceId,
-                'X-Instance-Secret' => $secret,
-            ]);
+            $decoded = $this->request(
+                'GET',
+                '/oauth/register/' . rawurlencode($instanceId),
+                null,
+                $this->clientHeaders('/oauth/register/' . rawurlencode($instanceId)),
+            );
 
             return [
                 'status' => (string) ($decoded['status'] ?? ''),
-                'host' => (string) ($decoded['host'] ?? ''),
-                'client' => (string) ($decoded['client'] ?? 'nextcloud'),
+                'host' => (string) ($decoded['client_uri'] ?? ''),
+                'client' => (string) ($decoded['software_id'] ?? 'nextcloud'),
             ];
         } catch (\Throwable $e) {
             $this->logger->warning('Could not read Synaplan instance status: {message}', [
@@ -187,11 +210,13 @@ class PlatformLinkService
      */
     public function announceDelivery(string $deliveryUrl): void
     {
-        $this->request('PATCH', '/api/v1/platform-links/instances/self', [
-            'delivery_url' => $deliveryUrl,
-            'server_id' => $this->synaplanConfig->getInstanceId(),
-            'app_capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
-        ], array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']));
+        $clientId = $this->synaplanConfig->getLinkInstanceId();
+        $this->request(
+            'PUT',
+            '/oauth/register/' . rawurlencode($clientId),
+            $this->clientMetadata($this->callbackUrl(), $deliveryUrl),
+            $this->clientHeaders('/oauth/register/' . rawurlencode($clientId)),
+        );
     }
 
     /**
@@ -241,14 +266,16 @@ class PlatformLinkService
     }
 
     /**
-     * Core capabilities from instances/self. Empty when Synaplan cannot be read.
+     * Core capabilities from the discovery document. Empty when Synaplan cannot be read.
      *
      * @return list<string>
      */
     public function capabilities(): array
     {
         try {
-            $decoded = $this->request('GET', '/api/v1/platform-links/instances/self', null, $this->instanceHeaders());
+            $decoded = $this->request('GET', '/.well-known/synaplan-configuration', null, [
+                'Accept' => 'application/json',
+            ]);
         } catch (\Throwable) {
             return [];
         }
@@ -261,71 +288,24 @@ class PlatformLinkService
     }
 
     /**
-     * Bring one provisioned person's legacy identity row into the canonical shape.
-     * Returns the HTTP status. 200 is success, including a repeated call.
-     */
-    public function adoptIdentity(string $uid, string $userKey): int
-    {
-        $result = $this->request(
-            'POST',
-            '/api/v1/platform-links/identities/adopt',
-            ['external_id' => $uid],
-            array_merge($this->instanceHeaders(), [
-                'Content-Type' => 'application/json',
-                'X-API-Key' => $userKey,
-            ]),
-            false,
-            true,
-        );
-
-        return (int) ($result['status_code'] ?? 200);
-    }
-
-    /**
-     * Bring a provisioned person's legacy row into the canonical shape right
-     * before the Nextcloud user is deleted, so lifecycle(deleted) can find it
-     * even when the background job has not run yet.
-     */
-    public function adoptBeforeDelete(string $uid, string $userKey): void
-    {
-        if ($uid === '' || $userKey === ''
-            || $this->synaplanConfig->getLinkInstanceId() === ''
-            || $this->decryptSecret() === '') {
-            return;
-        }
-        try {
-            $status = $this->adoptIdentity($uid, $userKey);
-            if ($status === 403) {
-                $url = $this->defaultDeliveryUrl();
-                if ($url !== '') {
-                    $this->announceDelivery($url);
-                }
-                $this->adoptIdentity($uid, $userKey);
-            }
-        } catch (\Throwable $e) {
-            $this->logger->warning('Could not adopt {uid} before deletion: {message}', [
-                'app' => Application::APP_ID,
-                'uid' => $uid,
-                'message' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
      * A person was deleted, disabled or enabled here. Best-effort: a Synaplan
      * failure is logged and never thrown, so Nextcloud's own user change proceeds.
      * Does nothing until this Nextcloud is registered.
      */
     public function reportLifecycle(string $externalId, string $event): void
     {
-        if ($externalId === '' || $this->synaplanConfig->getLinkInstanceId() === '') {
+        $clientId = $this->synaplanConfig->getLinkInstanceId();
+        if ($externalId === '' || $clientId === '') {
             return;
         }
         try {
-            $this->request('POST', '/api/v1/platform-links/lifecycle', [
+            $this->request('POST', '/oauth/register/' . rawurlencode($clientId) . '/lifecycle', [
                 'external_id' => $externalId,
                 'event' => $event,
-            ], array_merge($this->instanceHeaders(), ['Content-Type' => 'application/json']));
+            ], array_merge(
+                $this->clientHeaders('/oauth/register/' . rawurlencode($clientId) . '/lifecycle'),
+                ['Content-Type' => 'application/json'],
+            ));
         } catch (\Throwable $e) {
             $this->logger->warning('Could not tell Synaplan that {uid} was {event}: {message}', [
                 'app' => Application::APP_ID,
@@ -346,13 +326,25 @@ class PlatformLinkService
      */
     public function notificationTrust(): array
     {
-        $configuration = $this->request('GET', '/.well-known/synaplan-configuration', null, []);
-        $jwks = $this->request('GET', '/.well-known/jwks.json', null, []);
+        $configuration = $this->request('GET', '/.well-known/synaplan-configuration', null, [
+            'Accept' => 'application/json',
+        ]);
+        $jwks = $this->request('GET', '/.well-known/jwks.json', null, [
+            'Accept' => 'application/json',
+        ]);
         $keys = [];
         foreach (is_array($jwks['keys'] ?? null) ? $jwks['keys'] : [] as $jwk) {
-            if (is_array($jwk) && ($jwk['kty'] ?? null) === 'OKP' && ($jwk['crv'] ?? null) === 'Ed25519' && is_string($jwk['x'] ?? null)) {
-                $keys[] = ['publicKey' => 'ed25519:' . $jwk['x'], 'kid' => is_string($jwk['kid'] ?? null) ? $jwk['kid'] : ''];
+            if (!is_array($jwk) || ($jwk['kty'] ?? '') !== 'OKP' || ($jwk['crv'] ?? '') !== 'Ed25519') {
+                continue;
             }
+            $x = $jwk['x'] ?? null;
+            if (!is_string($x) || $x === '') {
+                continue;
+            }
+            $keys[] = [
+                'publicKey' => 'ed25519:' . $x,
+                'kid' => is_string($jwk['kid'] ?? null) ? $jwk['kid'] : '',
+            ];
         }
 
         return [
@@ -528,15 +520,13 @@ class PlatformLinkService
     }
 
     /**
-     * Exchange a one-time link code for a scoped per-user API key.
+     * Exchange the authorization code for this person's tokens.
      *
-     * @return array{api_key: array<string, mixed>, user: array<string, mixed>, link_id?: int|string}
+     * @return array{access_token: string, refresh_token: string, expires_in: int, user: array{id: int|string, email: string}}
      */
-    public function exchange(string $code): array
+    public function exchange(string $code, string $verifier): array
     {
-        $instanceId = $this->synaplanConfig->getLinkInstanceId();
-        $secret = $this->decryptSecret();
-        if ($instanceId === '' || $secret === '') {
+        if ($this->synaplanConfig->getLinkInstanceId() === '') {
             throw new PlatformLinkException(
                 'This Nextcloud is not registered with Synaplan.',
                 PlatformLinkException::CODE_INSTANCE_PENDING
@@ -544,13 +534,11 @@ class PlatformLinkService
         }
 
         try {
-            $decoded = $this->request('POST', '/api/v1/platform-links/exchange', [
-                'instance_id' => $instanceId,
-                'instance_secret' => $secret,
+            $decoded = $this->form('/oauth/token', [
+                'grant_type' => 'authorization_code',
                 'code' => $code,
-            ], [
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
+                'redirect_uri' => $this->callbackUrl(),
+                'code_verifier' => $verifier,
             ]);
         } catch (PlatformLinkException $e) {
             throw $e;
@@ -561,15 +549,26 @@ class PlatformLinkService
             );
         }
 
-        $key = (string) ($decoded['api_key']['key'] ?? '');
-        if ($key === '') {
+        $access = (string) ($decoded['access_token'] ?? '');
+        $refresh = (string) ($decoded['refresh_token'] ?? '');
+        if ($access === '' || $refresh === '') {
             throw new PlatformLinkException(
                 'Could not finish connecting this account.',
                 PlatformLinkException::CODE_EXCHANGE
             );
         }
+        $me = $this->request('GET', '/api/v1/auth/me', null, SynaplanCredential::headers($access));
+        $user = is_array($me['user'] ?? null) ? $me['user'] : [];
 
-        return $decoded;
+        return [
+            'access_token' => $access,
+            'refresh_token' => $refresh,
+            'expires_in' => (int) ($decoded['expires_in'] ?? 0),
+            'user' => [
+                'id' => is_scalar($user['id'] ?? null) ? $user['id'] : '',
+                'email' => (string) ($user['email'] ?? ''),
+            ],
+        ];
     }
 
     public function disconnect(IUser $user): void
@@ -605,6 +604,13 @@ class PlatformLinkService
      */
     private function revokeRemoteKey(string $uid): void
     {
+        $refresh = $this->userAccounts->getRefreshToken($uid);
+        if ($refresh !== '') {
+            $this->form('/oauth/revoke', ['token' => $refresh]);
+
+            return;
+        }
+
         $keyId = $this->userAccounts->getStoredApiKeyId($uid);
         $key = $this->userAccounts->getStoredApiKey($uid);
         if ($keyId === '' || $key === '') {
@@ -626,8 +632,9 @@ class PlatformLinkService
     }
 
     /**
-     * Calls done for one person carry that person's own key. Synaplan takes
-     * the cloud from the key and checks that the copy, folder read or file
+     * Calls done for one person carry that person's own key. An API key stays
+     * in X-API-Key; an OAuth access token is a bearer. Synaplan takes the
+     * cloud from the credential and checks that the copy, folder read or file
      * belongs to that person; the instance credential plays no part.
      *
      * @return array<string, string>
@@ -639,32 +646,64 @@ class PlatformLinkService
             throw new \RuntimeException('No Synaplan key is held for this person.');
         }
 
-        return ['Accept' => 'application/json', 'X-API-Key' => $key];
+        return SynaplanCredential::headers($key);
     }
 
     /**
+     * Bearer client assertion for one registration endpoint. Reading or
+     * changing the registration does not accept the issuer as audience.
+     *
      * @return array<string, string>
      */
-    private function instanceHeaders(): array
+    private function clientHeaders(string $path): array
     {
         return [
             'Accept' => 'application/json',
-            'X-Instance-Id' => $this->synaplanConfig->getLinkInstanceId(),
-            'X-Instance-Secret' => $this->decryptSecret(),
+            'Authorization' => 'Bearer ' . $this->cloudKey->assertion($path),
         ];
     }
 
-    private function decryptSecret(): string
+    /**
+     * @return array<string, mixed>
+     */
+    private function clientMetadata(string $redirectUri, string $deliveryUrl): array
     {
-        $cipher = $this->synaplanConfig->getLinkInstanceSecretCipher();
-        if ($cipher === '') {
-            return '';
+        $metadata = [
+            'software_id' => 'nextcloud',
+            'client_uri' => $this->publicHostFromUrl($redirectUri),
+            'redirect_uris' => [$redirectUri],
+            'grant_types' => ['authorization_code', 'refresh_token'],
+            'response_types' => ['code'],
+            'token_endpoint_auth_method' => 'private_key_jwt',
+            'jwks' => ['keys' => [$this->cloudKey->publicJwk()]],
+            'app_capabilities' => self::APP_CAPABILITIES,
+            'server_id' => $this->synaplanConfig->getInstanceId(),
+        ];
+        if ($deliveryUrl !== '') {
+            $metadata['delivery_url'] = $deliveryUrl;
         }
-        try {
-            return $this->crypto->decrypt($cipher);
-        } catch (\Throwable) {
-            return $cipher;
-        }
+
+        return $metadata;
+    }
+
+    /**
+     * @param array<string, string> $fields
+     * @return array<string, mixed>
+     */
+    private function form(string $path, array $fields): array
+    {
+        $fields['client_assertion_type'] = CloudClientKey::ASSERTION_TYPE;
+        $fields['client_assertion'] = $this->cloudKey->assertion($path);
+
+        return $this->dispatch('POST', $path, null, [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        ], false, true, $fields);
+    }
+
+    private static function base64Url(string $raw): string
+    {
+        return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
     }
 
     public function publicHostFromUrl(string $url): string
@@ -682,9 +721,21 @@ class PlatformLinkService
      * @param array<string, string> $headers
      * @param bool $keepErrors return the decoded body of a 4xx instead of throwing,
      *                         with `status_code` set, so a refused claim can be told apart
+     * @param array<string, string>|null $form sent as application/x-www-form-urlencoded instead of JSON
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false): array
+    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false, ?array $form = null): array
+    {
+        return $this->dispatch($method, $path, $body, $headers, $notFoundOk, $keepErrors, $form);
+    }
+
+    /**
+     * @param array<string, mixed>|null $body
+     * @param array<string, string> $headers
+     * @param array<string, string>|null $form
+     * @return array<string, mixed>
+     */
+    private function dispatch(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false, ?array $form = null): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
@@ -702,7 +753,10 @@ class PlatformLinkService
             // A refused claim is an answer (409, 410), not a transport failure.
             $options['http_errors'] = false;
         }
-        if ($body !== null) {
+        if ($form !== null) {
+            $options['body'] = http_build_query($form);
+        } elseif ($body !== null) {
+            $options['headers']['Content-Type'] ??= 'application/json';
             $options['body'] = json_encode($body);
         }
 
@@ -751,6 +805,9 @@ class PlatformLinkService
         }
 
         if (!is_array($decoded)) {
+            if ($status >= 200 && $status < 300) {
+                return [];
+            }
             throw new PlatformLinkException(
                 'Invalid JSON response from Synaplan.',
                 PlatformLinkException::CODE_EXCHANGE

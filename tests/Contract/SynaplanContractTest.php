@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Contract;
 
 use OCA\SynaplanIntegration\Controller\ChatController;
 use OCA\SynaplanIntegration\Http\SseProxyResponse;
+use OCA\SynaplanIntegration\Service\CloudClientKey;
 use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
@@ -60,7 +61,7 @@ final class SynaplanContractTest extends TestCase
         'summary' => ['types' => ['abstractive', 'extractive', 'bullet-points', 'translation']],
     ];
 
-    /** @var list<array{method: string, path: string, body: array<string, mixed>, multipart: bool}> */
+    /** @var list<array{method: string, path: string, body: array<string, mixed>, multipart: bool, form: bool}> */
     private array $calls = [];
 
     /** @var array<string, string> */
@@ -83,7 +84,7 @@ final class SynaplanContractTest extends TestCase
 
         $violations = [];
         foreach ($this->calls as $call) {
-            array_push($violations, ...$contract->violations($call['method'], $call['path'], $call['body'], $call['multipart']));
+            array_push($violations, ...$contract->violations($call['method'], $call['path'], $call['body'], $call['multipart'], $call['form']));
         }
 
         self::assertSame([], array_values(array_unique($violations)));
@@ -202,17 +203,18 @@ final class SynaplanContractTest extends TestCase
         $synaplanConfig = new SynaplanConfig($config, $keys);
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($this->ada());
-        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto());
+        $cloudKey = new CloudClientKey($config, $this->crypto(), $synaplanConfig);
+        $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $this->crypto(), $cloudKey);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
         $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,
             $this->urlGenerator(),
-            $this->crypto(),
             $synaplanConfig,
             $accounts,
             new NullLogger(),
+            $cloudKey,
         );
 
         $scenarios = [
@@ -274,13 +276,15 @@ final class SynaplanContractTest extends TestCase
             ]),
             fn () => $links->reportReadScope('ada', 'allowed', [['id' => '3', 'path' => 'Invoices']]),
             fn () => $links->notificationTrust(),
+            fn () => $links->capabilities(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
-            fn () => $links->adoptIdentity('ada', 'sk_ada'),
+            fn () => $links->announceDelivery('http://nextcloud.test/apps/synaplan_integration/api/v1/inbound'),
             fn () => $links->reportLifecycle('ada', 'deleted'),
             fn () => $links->registerInstance('sk_admin'),
             fn () => $links->instanceStatus(),
-            fn () => $links->exchange('code-1'),
+            fn () => $links->beginConnect('ada', 'state-1'),
+            fn () => $links->exchange('code-1', 'verifier-1'),
             fn () => $links->disconnectUid('ada'),
             fn () => $this->recordChatStream($client, $session),
         ];
@@ -356,29 +360,67 @@ final class SynaplanContractTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $options
+     * @return array<string, mixed>
      */
+    private function responseFor(string $path): array
+    {
+        return match ($path) {
+            '/api/v1/config/capabilities' => self::CAPABILITIES,
+            '/oauth/register' => ['client_id' => 'pi_contract', 'status' => 'active'],
+            '/oauth/par' => [
+                'request_uri' => 'urn:ietf:params:oauth:request_uri:contract',
+                'expires_in' => 600,
+            ],
+            '/oauth/token' => [
+                'token_type' => 'Bearer',
+                'expires_in' => 900,
+                'access_token' => 'header.payload.signature',
+                'refresh_token' => 'refresh-token',
+            ],
+            '/api/v1/auth/me' => [
+                'success' => true,
+                'user' => ['id' => 42, 'email' => 'ada@example.org'],
+            ],
+            '/.well-known/synaplan-configuration' => [
+                'issuer' => self::BASE_URL,
+                'jwks_uri' => self::BASE_URL . '/.well-known/jwks.json',
+                'capabilities' => ['deliveries', 'pickups', 'read_scope'],
+            ],
+            '/.well-known/jwks.json' => ['keys' => [[
+                'kty' => 'OKP',
+                'crv' => 'Ed25519',
+                'x' => 'aaaaaaaa',
+                'kid' => 'notify',
+            ]]],
+            default => self::RESPONSE,
+        };
+    }
+
     private function record(string $method, string $url, array $options): IResponse
     {
         $path = (string) parse_url(substr($url, strlen(self::BASE_URL)), PHP_URL_PATH);
         $multipart = isset($options['multipart']);
+        $contentType = strtolower((string) ($options['headers']['Content-Type'] ?? ''));
+        $form = str_contains($contentType, 'application/x-www-form-urlencoded');
         $body = [];
         if ($multipart) {
             foreach ($options['multipart'] as $part) {
                 $body[$part['name']] = is_string($part['contents']) ? $part['contents'] : '';
             }
+        } elseif ($form && isset($options['body']) && is_string($options['body'])) {
+            $parsed = [];
+            parse_str($options['body'], $parsed);
+            $body = $parsed;
         } elseif (isset($options['json']) && is_array($options['json'])) {
             $body = $options['json'];
         } elseif (isset($options['body']) && is_string($options['body'])) {
             $body = json_decode($options['body'], true) ?? [];
         }
-        $this->calls[] = ['method' => $method, 'path' => $path, 'body' => $body, 'multipart' => $multipart];
+        $this->calls[] = ['method' => $method, 'path' => $path, 'body' => $body, 'multipart' => $multipart, 'form' => $form];
 
         $response = $this->createStub(IResponse::class);
-        $response->method('getStatusCode')->willReturn(200);
-        $response->method('getBody')->willReturn((string) json_encode(
-            $path === '/api/v1/config/capabilities' ? self::CAPABILITIES : self::RESPONSE,
-        ));
+        $response->method('getStatusCode')->willReturn($path === '/oauth/par' ? 201 : 200);
+        $response->method('getBody')->willReturn((string) json_encode($this->responseFor($path)));
 
         return $response;
     }

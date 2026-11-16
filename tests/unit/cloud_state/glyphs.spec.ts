@@ -7,7 +7,9 @@ import {
 
 vi.mock('@nextcloud/l10n', () => ({
 	t: (_app: string, text: string, vars?: Record<string, string>) => {
-		if (!vars) return text
+		if (!vars) {
+			return text
+		}
 		return Object.entries(vars).reduce(
 			(acc, [k, v]) => acc.replace(`{${k}}`, v),
 			text,

@@ -134,10 +134,7 @@ class CloudStateService
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
-        $headers = ['Accept' => 'application/json'];
-        if ($apiKey !== null && $apiKey !== '') {
-            $headers['X-API-Key'] = $apiKey;
-        }
+        $headers = SynaplanCredential::headers($apiKey ?? '');
         $options = [
             'headers' => $headers,
             'timeout' => self::TIMEOUT,

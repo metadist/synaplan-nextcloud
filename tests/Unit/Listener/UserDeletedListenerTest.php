@@ -60,7 +60,6 @@ class UserDeletedListenerTest extends TestCase
         $this->userAccounts->method('wasLinked')->with('jdoe')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->with('jdoe')->willReturn(UserAccountService::KIND_PROVISIONED);
         $this->userAccounts->method('getStoredApiKey')->with('jdoe')->willReturn('sk_jdoe');
-        $this->platformLinks->expects($this->once())->method('adoptBeforeDelete')->with('jdoe', 'sk_jdoe');
         $this->platformLinks->expects($this->once())->method('reportLifecycle')->with('jdoe', 'deleted');
         $this->platformLinks->expects($this->once())->method('disconnectUid')->with('jdoe');
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Service\CloudClientKey;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
@@ -81,14 +82,17 @@ class UserAccountServiceTest extends TestCase
             fn (string $value): string => str_starts_with($value, 'enc:') ? substr($value, 4) : $value
         );
 
+        $synaplanConfig = new SynaplanConfig($this->config, $keys);
+
         return new UserAccountService(
             $this->clientService,
             $this->config,
             $this->userSession,
-            new SynaplanConfig($this->config, $keys),
+            $synaplanConfig,
             $this->logger,
             $keys,
             $crypto,
+            new CloudClientKey($this->config, $crypto, $synaplanConfig),
         );
     }
 
@@ -368,7 +372,7 @@ class UserAccountServiceTest extends TestCase
         $this->assertTrue($this->service()->wasLinked('alice'));
     }
 
-    public function testProvisioningSendsTheInstanceCredentialAndBareUserId(): void
+    public function testProvisioningUsesTheBareUserIdOnceRegistered(): void
     {
         $this->appConfig['link_instance_id'] = 'pi_nc';
         $this->appConfig['link_instance_secret'] = 'enc:s3cret';
@@ -392,11 +396,9 @@ class UserAccountServiceTest extends TestCase
         $this->service()->getCurrentUserApiKey();
 
         $this->assertSame('alice', $captured[0][0]['external_id']);
-        $this->assertSame('pi_nc', $captured[0][1]['X-Instance-Id']);
-        $this->assertSame('s3cret', $captured[0][1]['X-Instance-Secret']);
         $this->assertSame('sk_admin_key', $captured[0][1]['X-API-Key']);
-        $this->assertSame('pi_nc', $captured[1][1]['X-Instance-Id']);
-        $this->assertSame('s3cret', $captured[1][1]['X-Instance-Secret']);
+        $this->assertArrayNotHasKey('X-Instance-Secret', $captured[0][1]);
+        $this->assertArrayNotHasKey('X-Instance-Id', $captured[1][1]);
     }
 
     public function testSharedModeResolvesNull(): void

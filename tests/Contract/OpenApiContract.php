@@ -53,7 +53,7 @@ final class OpenApiContract
      *
      * @return list<string> what the pinned Synaplan does not accept
      */
-    public function violations(string $method, string $path, array $body, bool $multipart): array
+    public function violations(string $method, string $path, array $body, bool $multipart, bool $form = false): array
     {
         $template = $this->specPath($method, $path);
         if ($template === null) {
@@ -65,7 +65,9 @@ final class OpenApiContract
             return ["$method $path: $template has no " . strtoupper($method)];
         }
 
-        $contentType = $multipart ? 'multipart/form-data' : 'application/json';
+        $contentType = $multipart
+            ? 'multipart/form-data'
+            : ($form ? 'application/x-www-form-urlencoded' : 'application/json');
         $schema = $this->resolve($operation['requestBody']['content'][$contentType]['schema'] ?? []);
         if ($body !== [] && $schema === []) {
             // Synaplan reads this body (status, remote_path, remote_id, open_url,

@@ -57,7 +57,7 @@ class SynaplanConfig
     }
 
     /**
-     * Origin the user's browser opens for /connect/platform.
+     * Origin the user's browser opens for the OAuth consent page.
      *
      * Falls back to getBaseUrl() when unset. Needed when Nextcloud talks to
      * Synaplan on an internal hostname (Docker `http://backend`) that the
@@ -117,7 +117,7 @@ class SynaplanConfig
     }
 
     /**
-     * Link mode with a stored instance registration (id + secret).
+     * Link mode with a stored client id and signing key.
      */
     public function isLinkAvailable(): bool
     {
@@ -143,7 +143,7 @@ class SynaplanConfig
     }
 
     /**
-     * Encrypted instance secret (ICrypto). Decrypt in PlatformLinkService.
+     * Encrypted private key this cloud signs client assertions with.
      */
     public function getLinkInstanceSecretCipher(): string
     {

@@ -13,15 +13,15 @@
 					t('synaplan_integration', 'Conversations')
 				}}</label>
 				<NcSelect
-					input-id="research-conversations"
-					:model-value="currentConversation"
+					inputId="research-conversations"
+					:modelValue="currentConversation"
 					:options="conversations"
 					label="title"
 					:placeholder="t('synaplan_integration', 'New conversation')"
 					:clearable="false"
 					:disabled="loading"
 					class="conversation-select"
-					@update:model-value="onPickConversation" />
+					@update:modelValue="onPickConversation" />
 				<NcButton
 					variant="secondary"
 					:disabled="loading"
@@ -40,7 +40,7 @@
 			<!-- One-time "Activate AI" consent (per-user mode only). Until the
 			     user activates AI, no account is created and sending is blocked. -->
 			<AiConsentGate
-				@blocked-change="onAiBlockedChange"
+				@blockedChange="onAiBlockedChange"
 				@granted="onConsentGranted" />
 
 			<!-- Controls bar -->
@@ -197,13 +197,14 @@
 				<div
 					v-for="(msg, idx) in messages"
 					:key="idx"
-					:class="['message', msg.role]">
+					class="message"
+					:class="[msg.role]">
 					<NcRichText
 						v-if="msg.text && msg.role === 'assistant'"
 						class="message-content markdown-body"
 						:text="msg.text"
-						:use-markdown="true"
-						:use-extended-markdown="true" />
+						:useMarkdown="true"
+						:useExtendedMarkdown="true" />
 					<div
 						v-else-if="msg.text"
 						class="message-content"
@@ -264,7 +265,7 @@
 								@click="saveMedia(idx)">
 								{{
 									msg.media.saving
-										? t('synaplan_integration', 'Saving...')
+										? t('synaplan_integration', 'Saving…')
 										: t(
 												'synaplan_integration',
 												'Save to Nextcloud',
@@ -349,10 +350,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
-import { generateUrl } from '@nextcloud/router'
 import { t } from '@nextcloud/l10n'
+import { generateUrl } from '@nextcloud/router'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcRichText from '@nextcloud/vue/components/NcRichText'
@@ -361,7 +364,7 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
 import { streamChat } from '../chat/stream'
-import { describeFailure, failureFromError, type Failure } from '../failures'
+import { describeFailure, failureFromError } from '../failures'
 
 interface MediaInfo {
 	url: string
@@ -422,7 +425,7 @@ function newConversationId(): string {
 
 const currentId = ref(newConversationId())
 const messagesContainer = ref<HTMLElement | null>(null)
-const loadingText = ref(t('synaplan_integration', 'Thinking...'))
+const loadingText = ref(t('synaplan_integration', 'Thinking…'))
 
 const selectedGroup = ref<string | null>(null)
 const groupOptions = ref<string[]>([])
@@ -457,12 +460,12 @@ const activeModelLabel = computed(
 
 const inputPlaceholder = computed(() => {
 	if (capabilities.value.image && capabilities.value.video) {
-		return t('synaplan_integration', 'Ask a question, or use /pic or /vid...')
+		return t('synaplan_integration', 'Ask a question, or use /pic or /vid…')
 	}
 	if (capabilities.value.image) {
-		return t('synaplan_integration', 'Ask a question, or use /pic...')
+		return t('synaplan_integration', 'Ask a question, or use /pic…')
 	}
-	return t('synaplan_integration', 'Ask a question...')
+	return t('synaplan_integration', 'Ask a question…')
 })
 
 /**
@@ -575,7 +578,7 @@ function stopThinkingStages() {
 		clearInterval(stageTimer)
 		stageTimer = null
 	}
-	loadingText.value = t('synaplan_integration', 'Thinking...')
+	loadingText.value = t('synaplan_integration', 'Thinking…')
 }
 
 /**
@@ -618,9 +621,13 @@ async function scrollToBottom() {
  */
 async function sendMessage() {
 	const text = inputMessage.value.trim()
-	if (!text || loading.value) return
+	if (!text || loading.value) {
+		return
+	}
 	// AI not activated yet — the consent gate is showing the activation prompt.
-	if (aiConsentBlocked.value) return
+	if (aiConsentBlocked.value) {
+		return
+	}
 
 	const { command, prompt } = parseCommand(text)
 
@@ -675,8 +682,8 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 	const type = command === 'pic' ? 'image' : 'video'
 	loadingText.value =
 		type === 'image'
-			? t('synaplan_integration', 'Generating image...')
-			: t('synaplan_integration', 'Generating video...')
+			? t('synaplan_integration', 'Generating image…')
+			: t('synaplan_integration', 'Generating video…')
 
 	try {
 		const payload: Record<string, unknown> = { prompt, type }
@@ -718,7 +725,7 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 	} catch (err: unknown) {
 		failure.value = failureFromError(err)
 	} finally {
-		loadingText.value = t('synaplan_integration', 'Thinking...')
+		loadingText.value = t('synaplan_integration', 'Thinking…')
 	}
 }
 
@@ -809,7 +816,9 @@ async function handleChatMessageBlocking(payload: Record<string, unknown>) {
  */
 async function saveMedia(messageIdx: number) {
 	const msg = messages.value[messageIdx]
-	if (!msg?.media || msg.media.saved || msg.media.saving) return
+	if (!msg?.media || msg.media.saved || msg.media.saving) {
+		return
+	}
 
 	msg.media.saving = true
 	failure.value = null
@@ -833,6 +842,10 @@ async function saveMedia(messageIdx: number) {
 	}
 }
 
+/**
+ *
+ * @param value
+ */
 function onAiBlockedChange(value: boolean) {
 	aiConsentBlocked.value = value
 }
@@ -859,7 +872,7 @@ function startConversation() {
 }
 
 /**
- * @param {Conversation | null} value The conversation chosen in the list
+ * @param value The conversation chosen in the list
  */
 function onPickConversation(value: Conversation | null) {
 	if (value && value.id !== currentId.value) {
@@ -884,7 +897,7 @@ async function loadConversations() {
 }
 
 /**
- * @param {string} id Conversation to show
+ * @param id Conversation to show
  */
 async function openConversation(id: string) {
 	try {

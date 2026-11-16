@@ -36,9 +36,6 @@ class UserDeletedListener implements IEventListener
         $key = $this->userAccounts->getStoredApiKey($uid);
         // Decide before disconnect clears the stored key.
         $report = $linked || $key !== '' || $this->hasIdentity($uid);
-        if (!$linked && $key !== '') {
-            $this->platformLinks?->adoptBeforeDelete($uid, $key);
-        }
         if ($report) {
             $this->platformLinks?->reportLifecycle($uid, 'deleted');
         }

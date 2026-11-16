@@ -47,10 +47,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { t } from '@nextcloud/l10n'
-import { filesSidebarOffset } from '../chat/filesSidebarOffset'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ResearchChat from './ResearchChat.vue'
+import { filesSidebarOffset } from '../chat/filesSidebarOffset'
 
 const open = ref(false)
 const sidebarOffset = ref(0)
@@ -80,7 +80,7 @@ function updateOffset(): void {
 }
 
 /**
- * @param {HTMLElement | null} sidebar The current sidebar element, or null
+ * @param sidebar The current sidebar element, or null
  */
 function watchSidebar(sidebar: HTMLElement | null): void {
 	if (sidebar === watched) {
