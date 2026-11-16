@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -20,10 +21,11 @@ use OCP\IUser;
 use OCP\IUserSession;
 
 /**
- * Authorization-code handshake: push the request, the person allows it on
- * Synaplan, the callback exchanges the code for tokens.
+ * Connecting a person through Synaplan's OAuth2 server: start → Synaplan
+ * consent → callback → the person's grant (code flow with PKCE).
  *
- * The browser never sees the tokens. `state` is the CSRF check.
+ * The browser never sees a token. `state` is the CSRF check; the PKCE
+ * verifier stays in the session.
  */
 class LinkController extends Controller
 {
@@ -40,6 +42,7 @@ class LinkController extends Controller
         private SynaplanConfig $synaplanConfig,
         private UserAccountService $userAccounts,
         private PlatformLinkService $platformLinks,
+        private OAuthClient $oauth,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -58,31 +61,31 @@ class LinkController extends Controller
             ]));
         }
 
-        if (!$this->synaplanConfig->isLinkAvailable()) {
+        if (!$this->synaplanConfig->isLinkAvailable() || $this->platformLinks->isWaitingForApproval()) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_INSTANCE_PENDING,
             ]));
         }
 
         $state = bin2hex(random_bytes(16));
-        $this->session->set(self::SESSION_STATE, $state);
-        $this->session->set(self::SESSION_STATE_AT, time());
-        $this->session->set(self::SESSION_UID, $user->getUID());
-
         try {
-            $begun = $this->platformLinks->beginConnect($user->getUID(), $state);
+            $authorize = $this->oauth->authorizeUrl(
+                $user->getUID(),
+                $state,
+                $this->platformLinks->callbackUrl(),
+                $this->synaplanConfig->isMemoriesEnabled(),
+            );
         } catch (PlatformLinkException $e) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => $e->getErrorCode(),
             ]));
-        } catch (\Throwable) {
-            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
-                'link_error' => PlatformLinkException::CODE_EXCHANGE,
-            ]));
         }
-        $this->session->set(self::SESSION_VERIFIER, $begun['code_verifier']);
+        $this->session->set(self::SESSION_STATE, $state);
+        $this->session->set(self::SESSION_STATE_AT, time());
+        $this->session->set(self::SESSION_UID, $user->getUID());
+        $this->session->set(self::SESSION_VERIFIER, $authorize['verifier']);
 
-        return new RedirectResponse($begun['url']);
+        return new RedirectResponse($authorize['url']);
     }
 
     /**
@@ -96,8 +99,9 @@ class LinkController extends Controller
         $state = trim((string) $this->request->getParam('state', ''));
         $user = $this->userSession->getUser();
         $uid = $user instanceof IUser ? $user->getUID() : '';
-
         $verifier = (string) $this->session->get(self::SESSION_VERIFIER);
+        $this->session->remove(self::SESSION_VERIFIER);
+
         $error = $this->consumeState($state, $uid);
         if ($error !== null) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
@@ -105,15 +109,21 @@ class LinkController extends Controller
             ]));
         }
 
-        if (!$user instanceof IUser || $code === '') {
+        if ($this->request->getParam('error') === 'access_denied') {
+            return new RedirectResponse($this->platformLinks->personalSettingsUrl([
+                'link_error' => PlatformLinkException::CODE_DENIED,
+            ]));
+        }
+
+        if (!$user instanceof IUser || $code === '' || $verifier === '') {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => PlatformLinkException::CODE_EXCHANGE,
             ]));
         }
 
         try {
-            $exchange = $this->platformLinks->exchange($code, $verifier);
-            $this->userAccounts->storeLinkedAccount($user, $exchange);
+            $this->oauth->connect($user->getUID(), $code, $verifier, $this->platformLinks->callbackUrl());
+            $this->userAccounts->storeLinkedAccount($user, $this->whoIs($user->getUID()));
         } catch (PlatformLinkException $e) {
             return new RedirectResponse($this->platformLinks->personalSettingsUrl([
                 'link_error' => $e->getErrorCode(),
@@ -130,7 +140,8 @@ class LinkController extends Controller
     }
 
     /**
-     * Revoke the linked key and forget local prefs.
+     * Revoke the person's grant (which ends their link in Synaplan) and
+     * forget local prefs.
      */
     #[NoAdminRequired]
     public function disconnect(): JSONResponse
@@ -156,6 +167,21 @@ class LinkController extends Controller
     }
 
     /**
+     * Who the person is in Synaplan, for the settings page. The connection
+     * stands without it; the name shows once Synaplan answers.
+     *
+     * @return array{id?: int|string, email?: string}
+     */
+    private function whoIs(string $uid): array
+    {
+        try {
+            return $this->platformLinks->whoAmI($uid);
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
      * Validate, then delete, the session state. Always single-use.
      * The initiating UID is bound to the state so a later login cannot
      * complete the first person's handshake.
@@ -168,7 +194,6 @@ class LinkController extends Controller
         $this->session->remove(self::SESSION_STATE);
         $this->session->remove(self::SESSION_STATE_AT);
         $this->session->remove(self::SESSION_UID);
-        $this->session->remove(self::SESSION_VERIFIER);
 
         if ($state === '' || $expected === '' || $uid === '' || $expectedUid === '') {
             return PlatformLinkException::CODE_STATE;

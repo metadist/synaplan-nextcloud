@@ -17,7 +17,7 @@ use OCP\IConfig;
 class NotifyKeyCache
 {
     private const KEYS = 'notify_keys';
-    private const ISSUER = 'notify_issuer';
+    public const ISSUER = 'notify_issuer';
 
     public function __construct(
         private IConfig $config,
@@ -46,6 +46,15 @@ class NotifyKeyCache
         if ($this->config->getAppValue(Application::APP_ID, 'link_instance_id', '') === '') {
             return;
         }
+        $this->refreshTrust();
+    }
+
+    /**
+     * Read Synaplan's issuer and keys now, registered or not: registering
+     * needs the issuer to address its first client assertion.
+     */
+    public function refreshTrust(): void
+    {
         try {
             $trust = $this->links->notificationTrust();
         } catch (\Throwable) {
