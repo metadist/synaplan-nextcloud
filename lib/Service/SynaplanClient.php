@@ -15,7 +15,8 @@ use Psr\Log\LoggerInterface;
 /**
  * HTTP client for the Synaplan API.
  *
- * Sends the person's Synaplan credential: an API key, or an OAuth bearer.
+ * Sends the person's or the install's credential with every request: an API
+ * key in X-API-Key, a connected person's access token as a bearer.
  * No Nextcloud-specific business logic — only HTTP transport.
  */
 class SynaplanClient
@@ -421,9 +422,9 @@ class SynaplanClient
         }
 
         $options = [
-            'headers' => SynaplanCredential::headers(
-                $apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey(),
-            ),
+            'headers' => SynaplanCredential::header($apiKey !== null && $apiKey !== '' ? $apiKey : $this->requireApiKey()) + [
+                'Accept' => 'application/json',
+            ],
             'multipart' => $multipart,
             'timeout' => 180,
             'nextcloud' => [
@@ -474,8 +475,8 @@ class SynaplanClient
         $url = $this->getBaseUrl() . '/api/v1/media/generate';
 
         $options = [
-            'headers' => [
-                ...SynaplanCredential::headers($this->requireApiKey()),
+            'headers' => SynaplanCredential::header($this->requireApiKey()) + [
+                'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ],
             'body' => json_encode($body),
@@ -536,7 +537,7 @@ class SynaplanClient
         $url = $this->getBaseUrl() . $relativePath;
 
         $options = [
-            'headers' => SynaplanCredential::headers($this->requireApiKey()),
+            'headers' => SynaplanCredential::header($this->requireApiKey()),
             'timeout' => self::MEDIA_TIMEOUT,
         ];
 
@@ -662,9 +663,15 @@ class SynaplanClient
             throw FailureException::notConnected();
         }
 
-        throw $this->userAccounts->hasConsentForCurrentUser()
-            ? FailureException::accountUnavailable()
-            : FailureException::consentRequired();
+        if (!$this->userAccounts->hasConsentForCurrentUser()) {
+            throw FailureException::consentRequired();
+        }
+        $problem = $this->userAccounts->provisioningFailure();
+        if ($problem !== null) {
+            throw new FailureException($problem, 'No Synaplan key for a user who activated AI: ' . $problem->code);
+        }
+
+        throw FailureException::accountUnavailable();
     }
 
     /**
@@ -713,8 +720,11 @@ class SynaplanClient
             $url .= '?' . http_build_query($query);
         }
 
+        $credential = $requiresKey ? $this->requireApiKey() : (string) $this->getApiKey();
         $options = [
-            'headers' => SynaplanCredential::headers($requiresKey ? $this->requireApiKey() : $this->getApiKey()),
+            'headers' => ($credential !== '' ? SynaplanCredential::header($credential) : []) + [
+                'Accept' => 'application/json',
+            ],
             'timeout' => self::TIMEOUT,
             'nextcloud' => [
                 'allow_local_address' => true,
@@ -740,24 +750,6 @@ class SynaplanClient
             // it and retry once so the next getApiKey() re-provisions. In
             // link mode a 401 means the user disconnected — clear prefs and
             // do not remint (the UI shows Connect again).
-            if ($this->isUnauthorized($e) && $this->synaplanConfig->isLinkMode()) {
-                $refreshed = $this->userAccounts->refreshCurrentUserToken();
-                if (is_string($refreshed) && $refreshed !== '') {
-                    try {
-                        $options['headers'] = [
-                            ...SynaplanCredential::headers($refreshed),
-                            'Content-Type' => 'application/json',
-                        ];
-                        $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
-                        $decoded = json_decode($response->getBody(), true);
-                        if (is_array($decoded)) {
-                            return $decoded;
-                        }
-                    } catch (\Exception) {
-                        // The refresh was accepted and the repeat was not: the link is over.
-                    }
-                }
-            }
             if ($this->isUnauthorized($e) && $this->synaplanConfig->isPerUserAccountsEnabled()) {
                 $this->userAccounts->clearCurrentUserApiKey();
                 if ($this->synaplanConfig->isLinkMode()) {
@@ -772,10 +764,7 @@ class SynaplanClient
                     throw FailureException::notConnected();
                 }
                 try {
-                    $options['headers'] = [
-                        ...SynaplanCredential::headers($this->requireApiKey()),
-                        'Content-Type' => 'application/json',
-                    ];
+                    $options['headers'] = SynaplanCredential::header($this->requireApiKey()) + array_diff_key($options['headers'], ['X-API-Key' => 1, 'Authorization' => 1]);
                     $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                     $decoded = json_decode($response->getBody(), true);
                     if (is_array($decoded)) {
@@ -793,10 +782,7 @@ class SynaplanClient
                 $renewed = $this->userAccounts->renewProvisionedKey();
                 if (is_string($renewed) && $renewed !== '') {
                     try {
-                        $options['headers'] = [
-                            ...SynaplanCredential::headers($renewed),
-                            'Content-Type' => 'application/json',
-                        ];
+                        $options['headers'] = SynaplanCredential::header($renewed) + array_diff_key($options['headers'], ['X-API-Key' => 1, 'Authorization' => 1]);
                         $response = $this->doRequest($this->clientService->newClient(), $method, $url, $options);
                         $decoded = json_decode($response->getBody(), true);
                         if (is_array($decoded)) {

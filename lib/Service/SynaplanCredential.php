@@ -6,14 +6,27 @@ namespace OCA\SynaplanIntegration\Service;
 
 /**
  * How a stored Synaplan credential is sent. An API key (`sk_…`) stays in
- * X-API-Key. An OAuth access token is a JWT and must be a bearer: Synaplan
- * ignores a bearer on a request that also carries an API key.
+ * X-API-Key. Anything else is a person's access token and must be a bearer:
+ * Synaplan ignores a bearer on a request that also carries an API key.
  */
 final class SynaplanCredential
 {
     public static function isBearer(string $key): bool
     {
-        return $key !== '' && !str_starts_with($key, 'sk_') && substr_count($key, '.') === 2;
+        return $key !== '' && !str_starts_with($key, 'sk_');
+    }
+
+    /**
+     * The credential header alone, without Accept.
+     *
+     * @return array<string, string>
+     */
+    public static function header(string $credential): array
+    {
+        $headers = self::headers($credential);
+        unset($headers['Accept']);
+
+        return $headers;
     }
 
     /**

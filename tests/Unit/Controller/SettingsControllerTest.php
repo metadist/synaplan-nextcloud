@@ -179,6 +179,77 @@ class SettingsControllerTest extends TestCase
         $this->assertFalse($response->getData()['delivery_error']);
     }
 
+    public function testSaveSettingsAnnouncesOnceRegistered(): void
+    {
+        $this->config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => match ($key) {
+                'link_instance_id' => 'client-1',
+                'oauth_kid' => 'kid-1',
+                default => $default,
+            }
+        );
+        $platformLinks = $this->createMock(\OCA\SynaplanIntegration\Service\PlatformLinkService::class);
+        $platformLinks->expects($this->once())->method('announceDelivery')->with('http://nextcloud/inbound');
+        $keys = $this->keyStorageFrom($this->config);
+        $controller = new SettingsController(
+            $this->request,
+            $this->config,
+            $this->synaplanClient,
+            new SynaplanConfig($this->config, $keys),
+            $keys,
+            $platformLinks,
+        );
+
+        $response = $controller->saveSettings(mode: 'link', delivery_url: 'http://nextcloud/inbound');
+
+        $this->assertFalse($response->getData()['delivery_error']);
+    }
+
+    public function testRegisterInstancePassesTheRegistrationToken(): void
+    {
+        $this->request->method('getParam')->with('registration_token', '')->willReturn(' iat-123 ');
+        $platformLinks = $this->createMock(\OCA\SynaplanIntegration\Service\PlatformLinkService::class);
+        $platformLinks->expects($this->once())->method('register')->with('iat-123')
+            ->willReturn(['instance_id' => 'client-1', 'status' => 'active']);
+        $keys = $this->keyStorageFrom($this->config);
+        $controller = new SettingsController(
+            $this->request,
+            $this->config,
+            $this->synaplanClient,
+            new SynaplanConfig($this->config, $keys),
+            $keys,
+            $platformLinks,
+        );
+
+        $data = $controller->registerInstance()->getData();
+
+        $this->assertTrue($data['success']);
+        $this->assertSame('client-1', $data['instance_id']);
+        $this->assertSame('active', $data['status']);
+    }
+
+    public function testRegisterInstanceReportsARefusal(): void
+    {
+        $platformLinks = $this->createMock(\OCA\SynaplanIntegration\Service\PlatformLinkService::class);
+        $platformLinks->method('register')->willThrowException(
+            new \OCA\SynaplanIntegration\Exception\PlatformLinkException('no', \OCA\SynaplanIntegration\Exception\PlatformLinkException::CODE_GRANT_ENDED)
+        );
+        $keys = $this->keyStorageFrom($this->config);
+        $controller = new SettingsController(
+            $this->request,
+            $this->config,
+            $this->synaplanClient,
+            new SynaplanConfig($this->config, $keys),
+            $keys,
+            $platformLinks,
+        );
+
+        $data = $controller->registerInstance()->getData();
+
+        $this->assertFalse($data['success']);
+        $this->assertSame('grant_ended', $data['code']);
+    }
+
     public function testRegisterInstanceWithoutServiceReturnsError(): void
     {
         $response = $this->controller->registerInstance();

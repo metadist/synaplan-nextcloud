@@ -6,11 +6,12 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use OCP\Http\Client\IClientService;
 use OCP\IConfig;
 use OCP\IUser;
 use OCP\IUserSession;
-use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -20,11 +21,10 @@ use Psr\Log\LoggerInterface;
  *   1. provision a Synaplan account for the NC user, and
  *   2. mint a per-user API key on that account.
  *
- * Once this Nextcloud is registered, provisioning uses the bare Nextcloud
- * user id. Without a registration the external id stays
+ * Once this Nextcloud is registered, both calls also send the instance
+ * credential and the bare Nextcloud user id, so Synaplan stores the
+ * canonical identity row. Without a registration the external id stays
  * "<instanceId>:<uid>", as older releases sent it.
- * A linked person stores an OAuth access token instead of an API key, plus
- * the refresh token that renews it.
  *
  * The minted key is cached in the NC user's preferences (server-side only,
  * never exposed to the browser). All subsequent Synaplan calls made on behalf
@@ -40,8 +40,6 @@ class UserAccountService
     public const USER_KEY_PREF = KeyStorage::USER_KEY;
     public const USER_ACCOUNT_ID_PREF = 'synaplan_user_id';
     public const USER_KEY_ID_PREF = 'synaplan_user_key_id';
-    public const REFRESH_PREF = 'synaplan_refresh_token';
-    public const EXPIRES_PREF = 'synaplan_token_expires';
     /** Scopes of the stored key. Empty means a key minted before watching existed. */
     public const KEY_SCOPES_PREF = 'synaplan_key_scopes';
     public const CONSENT_PREF = 'ai_consent';
@@ -49,7 +47,6 @@ class UserAccountService
     public const LINK_KIND_PREF = 'synaplan_link_kind';
     public const LINK_EMAIL_PREF = 'synaplan_link_email';
     public const LINKED_AT_PREF = 'synaplan_linked_at';
-    public const LINK_ID_PREF = 'synaplan_link_id';
     /** Durable: survives disconnect / 401 so a removed linked person is reported, not dropped silently. */
     public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
 
@@ -60,6 +57,12 @@ class UserAccountService
     /** Scopes granted to a per-user key (see Synaplan CORE-3 scope vocabulary). */
     private const USER_KEY_SCOPES = ['chat', 'files', 'rag', 'cloud:watch'];
 
+    /**
+     * Why the last provision in this request failed, for the person who asked.
+     * Null when provisioning was not attempted or it succeeded.
+     */
+    private ?Failure $provisioningFailure = null;
+
     public function __construct(
         private IClientService $clientService,
         private IConfig $config,
@@ -67,8 +70,7 @@ class UserAccountService
         private SynaplanConfig $synaplanConfig,
         private LoggerInterface $logger,
         private KeyStorage $keys,
-        private ICrypto $crypto,
-        private CloudClientKey $cloudKey,
+        private OAuthClient $oauth,
     ) {
     }
 
@@ -96,15 +98,21 @@ class UserAccountService
      * provision → stored key, or provision+mint after consent.
      * link → stored key or null — never provisions implicitly.
      */
+    public function provisioningFailure(): ?Failure
+    {
+        return $this->provisioningFailure;
+    }
+
     public function resolveKeyForUser(IUser $user): ?string
     {
+        $this->provisioningFailure = null;
         if ($this->synaplanConfig->getMode() === SynaplanConfig::MODE_SHARED) {
             return null;
         }
 
         $stored = $this->storedKey($user->getUID());
         if ($stored !== '') {
-            return $this->fresh($user->getUID(), $stored);
+            return $stored;
         }
 
         if ($this->synaplanConfig->isLinkMode()) {
@@ -122,10 +130,12 @@ class UserAccountService
         try {
             return $this->provisionAndMint($user);
         } catch (\Throwable $e) {
+            $this->provisioningFailure = $this->explainProvisioningFailure($e);
             $this->logger->error('Per-user Synaplan provisioning failed for {uid}: {message}', [
                 'app' => Application::APP_ID,
                 'uid' => $user->getUID(),
                 'message' => $e->getMessage(),
+                'reason' => $this->provisioningFailure->code,
             ]);
 
             return null;
@@ -151,6 +161,7 @@ class UserAccountService
     {
         $user = $this->userSession->getUser();
         if ($user instanceof IUser) {
+            $this->oauth->forget($user->getUID());
             $this->clearLinkPrefsForUid($user->getUID());
         }
     }
@@ -161,10 +172,7 @@ class UserAccountService
             self::LINK_KIND_PREF,
             self::LINK_EMAIL_PREF,
             self::LINKED_AT_PREF,
-            self::LINK_ID_PREF,
             self::USER_KEY_ID_PREF,
-            self::REFRESH_PREF,
-            self::EXPIRES_PREF,
             self::CONSENT_PREF,
             self::CONSENT_AT_PREF,
         ] as $key) {
@@ -173,41 +181,19 @@ class UserAccountService
     }
 
     /**
-     * Persist a successful handshake. A link is consent.
+     * Remember that the person connected (the grant itself is kept by
+     * {@see OAuthClient}). Connecting is consent.
      *
-     * @param array{api_key?: array{id?: int|string, key?: string}, access_token?: string, refresh_token?: string, expires_in?: int, user?: array{id?: int|string, email?: string}, link_id?: int|string} $exchange
+     * @param array{id?: int|string, email?: string} $account who they are in Synaplan
      */
-    public function storeLinkedAccount(IUser $user, array $exchange): void
+    public function storeLinkedAccount(IUser $user, array $account): void
     {
         $uid = $user->getUID();
-        $access = (string) ($exchange['access_token'] ?? '');
-        $key = $access !== '' ? $access : (string) ($exchange['api_key']['key'] ?? '');
-        $keyId = (string) ($exchange['api_key']['id'] ?? '');
-        $refresh = (string) ($exchange['refresh_token'] ?? '');
-        $expiresIn = (int) ($exchange['expires_in'] ?? 0);
-        $userInfo = is_array($exchange['user'] ?? null) ? $exchange['user'] : [];
-        $synaplanUserId = (string) ($userInfo['id'] ?? '');
-        $email = (string) ($userInfo['email'] ?? '');
-        $linkId = (string) ($exchange['link_id'] ?? '');
+        $synaplanUserId = (string) ($account['id'] ?? '');
+        $email = (string) ($account['email'] ?? '');
         $now = (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
 
-        if ($key !== '') {
-            $this->keys->setUserKey($uid, $key);
-        }
-        if ($keyId !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, $keyId);
-        }
-        if ($refresh !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::REFRESH_PREF, $this->crypto->encrypt($refresh));
-        }
-        if ($expiresIn > 0) {
-            $this->config->setUserValue(
-                $uid,
-                Application::APP_ID,
-                self::EXPIRES_PREF,
-                (string) (time() + max(0, $expiresIn - 60)),
-            );
-        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF);
         if ($synaplanUserId !== '') {
             $this->config->setUserValue($uid, Application::APP_ID, self::USER_ACCOUNT_ID_PREF, $synaplanUserId);
         }
@@ -215,9 +201,6 @@ class UserAccountService
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ORIGIN_PREF, self::KIND_LINKED);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINK_EMAIL_PREF, $email);
         $this->config->setUserValue($uid, Application::APP_ID, self::LINKED_AT_PREF, $now);
-        if ($linkId !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::LINK_ID_PREF, $linkId);
-        }
         $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_PREF, '1');
         $this->config->setUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF, $now);
     }
@@ -227,6 +210,9 @@ class UserAccountService
      */
     public function getLinkKind(string $uid): ?string
     {
+        if ($this->oauth->isConnected($uid)) {
+            return self::KIND_LINKED;
+        }
         // Read the key first: a key that no longer decrypts takes the link with it.
         $key = $this->storedKey($uid);
         $kind = $this->config->getUserValue($uid, Application::APP_ID, self::LINK_KIND_PREF, '');
@@ -316,37 +302,20 @@ class UserAccountService
         return $this->storedKey($uid);
     }
 
+    /**
+     * The credential to act for this person when they are not signed in.
+     * An API key is returned as stored. An OAuth access token is renewed
+     * first when it is inside its expiry window, the same way a signed-in
+     * request is.
+     */
+    public function credentialFor(string $uid): string
+    {
+        return $this->storedKey($uid);
+    }
+
     public function getStoredApiKeyId(string $uid): string
     {
         return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, '');
-    }
-
-    public function getRefreshToken(string $uid): string
-    {
-        $cipher = $this->config->getUserValue($uid, Application::APP_ID, self::REFRESH_PREF, '');
-        if ($cipher === '') {
-            return '';
-        }
-        try {
-            return $this->crypto->decrypt($cipher);
-        } catch (\Throwable) {
-            return '';
-        }
-    }
-
-    /**
-     * A new access token for the signed-in person, or null when there is
-     * nothing to refresh. The stored token is replaced only after Synaplan
-     * accepts the refresh token.
-     */
-    public function refreshCurrentUserToken(): ?string
-    {
-        $user = $this->userSession->getUser();
-        if (!$user instanceof IUser) {
-            return null;
-        }
-
-        return $this->refresh($user->getUID());
     }
 
     /**
@@ -421,6 +390,16 @@ class UserAccountService
      */
     private function storedKey(string $uid): string
     {
+        if ($this->oauth->isConnected($uid)) {
+            $token = $this->oauth->accessToken($uid);
+            // '' with the grant still held is a passing failure (Synaplan
+            // unreachable): the person stays connected.
+            if ($token === '' && !$this->oauth->isConnected($uid)) {
+                $this->clearLinkPrefsForUid($uid);
+            }
+
+            return $token;
+        }
         $key = $this->keys->getUserKey($uid);
         if ($key === null && $this->synaplanConfig->isLinkMode()) {
             $this->clearLinkPrefsForUid($uid);
@@ -447,18 +426,15 @@ class UserAccountService
     }
 
     /**
-     * Synaplan removed this link. Drop the stored key for whoever holds it.
+     * Synaplan ended this person's link: forget their grant and link here.
      */
-    public function revokeLinkedKey(string $linkId): void
+    public function linkEnded(string $uid): void
     {
-        if ($linkId === '') {
+        if ($uid === '') {
             return;
         }
-        foreach ($this->config->getUsersForUserValue(Application::APP_ID, self::LINK_ID_PREF, $linkId) as $uid) {
-            if ($uid !== '') {
-                $this->deactivateUser($uid);
-            }
-        }
+        $this->oauth->forget($uid);
+        $this->deactivateUser($uid);
     }
 
     /**
@@ -472,6 +448,7 @@ class UserAccountService
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->oauth->forget($uid);
         $this->clearLinkPrefsForUid($uid);
 
         $this->logger->info('Admin deactivated AI for user {uid}', [
@@ -499,6 +476,7 @@ class UserAccountService
     {
         $adminKey = $this->synaplanConfig->getAdminApiKey();
         if ($adminKey === '') {
+            $this->provisioningFailure = new Failure(Http::STATUS_BAD_GATEWAY, Failure::ADMIN_KEY_MISSING);
             $this->logger->warning('Per-user mode enabled but no admin API key configured', [
                 'app' => Application::APP_ID,
             ]);
@@ -506,10 +484,10 @@ class UserAccountService
             return null;
         }
 
-        $registered = $this->synaplanConfig->getLinkInstanceId() !== '';
-        $externalId = $registered
-            ? $user->getUID()
-            : $this->synaplanConfig->getInstanceId() . ':' . $user->getUID();
+        $instanceId = $this->synaplanConfig->getLinkInstanceId();
+        $externalId = $instanceId === ''
+            ? $this->synaplanConfig->getInstanceId() . ':' . $user->getUID()
+            : $user->getUID();
         $email = $user->getEMailAddress();
         if ($email === null || $email === '') {
             // Synaplan requires an email; synthesize a stable, unique one from
@@ -520,6 +498,7 @@ class UserAccountService
         try {
             $account = $this->adminRequest('POST', '/api/v1/admin/users', [
                 'source' => self::SOURCE,
+                'instance_id' => $instanceId !== '' ? $instanceId : null,
                 'external_id' => $externalId,
                 'email' => $email,
                 'display_name' => $user->getDisplayName(),
@@ -537,6 +516,7 @@ class UserAccountService
         }
 
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
+            'instance_id' => $instanceId !== '' ? $instanceId : null,
             'name' => 'nextcloud-' . $user->getUID(),
             'scopes' => self::USER_KEY_SCOPES,
         ], $adminKey);
@@ -641,82 +621,6 @@ class UserAccountService
     }
 
     /**
-     * Renew an OAuth access token that is inside its skew window.
-     */
-    private function fresh(string $uid, string $stored): string
-    {
-        if (!SynaplanCredential::isBearer($stored)) {
-            return $stored;
-        }
-        $expires = (int) $this->config->getUserValue($uid, Application::APP_ID, self::EXPIRES_PREF, '0');
-        if ($expires === 0 || $expires > time()) {
-            return $stored;
-        }
-        $renewed = $this->refresh($uid);
-
-        return $renewed ?? $stored;
-    }
-
-    private function refresh(string $uid): ?string
-    {
-        $refresh = $this->getRefreshToken($uid);
-        if ($refresh === '' || $this->synaplanConfig->getLinkInstanceId() === '') {
-            return null;
-        }
-        try {
-            $client = $this->clientService->newClient();
-            $response = $client->post($this->synaplanConfig->getBaseUrl() . '/oauth/token', [
-                'headers' => [
-                    'Accept' => 'application/json',
-                    'Content-Type' => 'application/x-www-form-urlencoded',
-                ],
-                'body' => http_build_query([
-                    'grant_type' => 'refresh_token',
-                    'refresh_token' => $refresh,
-                    'client_assertion_type' => CloudClientKey::ASSERTION_TYPE,
-                    'client_assertion' => $this->cloudKey->assertion('/oauth/token'),
-                ]),
-                'timeout' => 30,
-                'nextcloud' => ['allow_local_address' => true],
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->info('The Synaplan access token could not be refreshed: {message}', [
-                'app' => Application::APP_ID,
-                'message' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-        if ((int) $response->getStatusCode() >= 400) {
-            return null;
-        }
-        $decoded = json_decode($response->getBody(), true);
-        if (!is_array($decoded)) {
-            return null;
-        }
-        $access = (string) ($decoded['access_token'] ?? '');
-        if ($access === '') {
-            return null;
-        }
-        $this->keys->setUserKey($uid, $access);
-        $next = (string) ($decoded['refresh_token'] ?? '');
-        if ($next !== '') {
-            $this->config->setUserValue($uid, Application::APP_ID, self::REFRESH_PREF, $this->crypto->encrypt($next));
-        }
-        $expiresIn = (int) ($decoded['expires_in'] ?? 0);
-        if ($expiresIn > 0) {
-            $this->config->setUserValue(
-                $uid,
-                Application::APP_ID,
-                self::EXPIRES_PREF,
-                (string) (time() + max(0, $expiresIn - 60)),
-            );
-        }
-
-        return $access;
-    }
-
-    /**
      * @param array<string, mixed>|null $body Request body for POST; null for GET.
      * @param array<string, string> $extraHeaders
      * @return array<string, mixed>
@@ -783,5 +687,72 @@ class UserAccountService
         }
 
         return (bool) preg_match('/\b409\b/', $e->getMessage());
+    }
+
+    /**
+     * The failure the person can be shown. A 409 and Synaplan's API_PLAN_REQUIRED
+     * code are named directly. Any other safe sentence Synaplan sent is passed
+     * on. A server crash is only the HTTP status: its SQL and page stay in the log.
+     */
+    private function explainProvisioningFailure(\Throwable $e): Failure
+    {
+        $text = $this->httpText($e);
+        if ($e instanceof EmailConflictException) {
+            return new Failure(Http::STATUS_CONFLICT, Failure::EMAIL_ALREADY_USED);
+        }
+        if (str_contains($text, 'API_PLAN_REQUIRED')) {
+            return new Failure(Http::STATUS_FORBIDDEN, Failure::API_PLAN_REQUIRED);
+        }
+        if (str_contains($e->getMessage(), 'cURL error') || str_ends_with($e::class, 'ConnectException')) {
+            return new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE);
+        }
+
+        $parts = $this->httpParts($e);
+        if ($parts !== null) {
+            $parsed = Failure::fromSynaplanResponse($parts[0], $parts[1]);
+            $reason = $parsed->message !== null ? Failure::safeSentence($parsed->message) : null;
+            if ($reason !== null) {
+                return new Failure(Http::STATUS_BAD_GATEWAY, Failure::ACCOUNT_UNAVAILABLE, $reason);
+            }
+            if ($parsed->code === Failure::SYNAPLAN_KEY_REJECTED) {
+                return $parsed;
+            }
+        }
+
+        return new Failure(Http::STATUS_BAD_GATEWAY, Failure::ACCOUNT_UNAVAILABLE);
+    }
+
+    /**
+     * Response body when the HTTP client kept it, otherwise the exception text.
+     */
+    private function httpText(\Throwable $e): string
+    {
+        $parts = $this->httpParts($e);
+
+        return $parts !== null ? $parts[1] . "\n" . $e->getMessage() : $e->getMessage();
+    }
+
+    /**
+     * @return array{0: int, 1: string}|null status and body
+     */
+    private function httpParts(\Throwable $e): ?array
+    {
+        $current = $e;
+        while ($current !== null) {
+            if (method_exists($current, 'getResponse')) {
+                $response = $current->getResponse();
+                if (is_object($response) && method_exists($response, 'getBody') && method_exists($response, 'getStatusCode')) {
+                    $body = $response->getBody();
+                    if (is_object($body) && method_exists($body, 'isSeekable') && $body->isSeekable() && method_exists($body, 'rewind')) {
+                        $body->rewind();
+                    }
+
+                    return [(int) $response->getStatusCode(), (string) $body];
+                }
+            }
+            $current = $current->getPrevious();
+        }
+
+        return null;
     }
 }

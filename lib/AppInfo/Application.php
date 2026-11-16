@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\AppInfo;
 
-use OCA\SynaplanIntegration\BackgroundJob\AdoptIdentitiesJob;
 use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
 use OCA\SynaplanIntegration\Listener\SourceEventListener;
@@ -59,9 +58,6 @@ class Application extends App implements IBootstrap
         $context->injectFn(function (IJobList $jobs): void {
             if (!$jobs->has(RefreshNotifyKeysJob::class, null)) {
                 $jobs->add(RefreshNotifyKeysJob::class);
-            }
-            if (!$jobs->has(AdoptIdentitiesJob::class, null)) {
-                $jobs->add(AdoptIdentitiesJob::class);
             }
         });
 
