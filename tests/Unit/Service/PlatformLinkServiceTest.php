@@ -223,6 +223,42 @@ class PlatformLinkServiceTest extends TestCase
         $this->assertStringStartsWith('Bearer ', (string) ($seen[2]['Authorization'] ?? ''));
     }
 
+    public function testACopyIsClaimedWithThePersonsOwnCredential(): void
+    {
+        $cases = [
+            'sk_ada' => ['X-API-Key' => 'sk_ada'],
+            'aaa.bbb.ccc' => ['Authorization' => 'Bearer aaa.bbb.ccc'],
+        ];
+        foreach ($cases as $stored => $expected) {
+            $this->userAccounts = $this->createMock(UserAccountService::class);
+            $this->userAccounts->method('credentialFor')->with('ada')->willReturn($stored);
+            $resp = $this->createMock(IResponse::class);
+            $resp->method('getStatusCode')->willReturn(200);
+            $resp->method('getBody')->willReturn('{"success":true}');
+            $this->httpClient = $this->createMock(IClient::class);
+            $this->clientService = $this->createMock(IClientService::class);
+            $this->clientService->method('newClient')->willReturn($this->httpClient);
+            $this->httpClient->expects($this->once())
+                ->method('post')
+                ->with(
+                    'https://synaplan.example/api/v1/platform-links/deliveries/9/claim',
+                    $this->callback(function (array $options) use ($expected): bool {
+                        foreach ($expected as $name => $value) {
+                            if (($options['headers'][$name] ?? '') !== $value) {
+                                return false;
+                            }
+                        }
+
+                        return !isset($options['headers']['X-API-Key'], $options['headers']['Authorization'])
+                            || count(array_intersect_key($options['headers'], ['X-API-Key' => true, 'Authorization' => true])) === 1;
+                    })
+                )
+                ->willReturn($resp);
+
+            $this->service()->claimDelivery('9', 'ada');
+        }
+    }
+
     public function testDisconnectUidClearsEvenWhenRevokeFails(): void
     {
         $this->userAccounts->method('getStoredApiKeyId')->with('jdoe')->willReturn('44');
