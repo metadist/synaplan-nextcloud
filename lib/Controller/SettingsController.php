@@ -97,9 +97,9 @@ class SettingsController extends Controller
                 'link_auto_provision',
                 '0'
             ) === '1',
-            'link_registered' => $this->synaplanConfig->getLinkInstanceId() !== '',
+            'link_registered' => $this->synaplanConfig->isRegistered(),
             'link_instance_id' => $this->synaplanConfig->getLinkInstanceId(),
-            'link_instance' => $this->platformLinks?->instanceStatus(),
+            'link_instance' => $this->registrationStatus(),
             'delivery_url' => (string) $this->config->getAppValue(Application::APP_ID, 'delivery_url', ''),
             'read_folder_cap' => max(1, min(500, (int) $this->config->getAppValue(
                 Application::APP_ID,
@@ -278,8 +278,7 @@ class SettingsController extends Controller
             $this->config->setAppValue(Application::APP_ID, 'delivery_url', $delivery_url);
         }
         // Only a registered cloud can announce its delivery URL and server id.
-        if ($this->synaplanConfig->getLinkInstanceId() !== ''
-            && $this->synaplanConfig->getLinkInstanceSecretCipher() !== '') {
+        if ($this->synaplanConfig->isRegistered()) {
             $url = ($delivery_url !== null && $delivery_url !== '')
                 ? $delivery_url
                 : ($this->platformLinks?->defaultDeliveryUrl() ?? '');
@@ -327,7 +326,8 @@ class SettingsController extends Controller
         }
 
         try {
-            $result = $this->platformLinks->registerInstance();
+            $this->notifyKeys?->refreshTrust();
+            $result = $this->platformLinks->register(trim((string) $this->request->getParam('registration_token', '')));
             $this->notifyKeys?->refresh();
 
             return new JSONResponse(['success' => true, ...$result]);
@@ -346,7 +346,8 @@ class SettingsController extends Controller
     }
 
     /**
-     * Forget the stored instance id and secret. Does not revoke on Synaplan.
+     * Leave Synaplan: the registration ends there, every person's grant with
+     * it, and the client key goes here.
      */
     public function forgetInstance(): JSONResponse
     {
@@ -355,11 +356,23 @@ class SettingsController extends Controller
         return new JSONResponse(['success' => true]);
     }
 
+    /**
+     * @return array{status: string, host: string, delivery_url: string, reachable: ?bool}|null
+     */
+    private function registrationStatus(): ?array
+    {
+        try {
+            return $this->platformLinks?->registrationStatus();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function instanceStatus(): JSONResponse
     {
         return new JSONResponse([
             'success' => true,
-            'instance' => $this->platformLinks?->instanceStatus(),
+            'instance' => $this->registrationStatus(),
         ]);
     }
 

@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
-use OCA\SynaplanIntegration\Service\CloudClientKey;
+use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCP\App\IAppManager;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
-use OCP\Security\ICrypto;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -26,7 +27,8 @@ class PlatformLinkServiceTest extends TestCase
     private IClient&MockObject $httpClient;
     private IConfig&MockObject $config;
     private IURLGenerator&MockObject $urlGenerator;
-    private ICrypto&MockObject $crypto;
+    private OAuthClient&MockObject $oauth;
+    private IAppManager&MockObject $appManager;
     private SynaplanConfig&MockObject $synaplanConfig;
     private UserAccountService&MockObject $userAccounts;
     private LoggerInterface&MockObject $logger;
@@ -37,7 +39,8 @@ class PlatformLinkServiceTest extends TestCase
         $this->httpClient = $this->createMock(IClient::class);
         $this->config = $this->createMock(IConfig::class);
         $this->urlGenerator = $this->createMock(IURLGenerator::class);
-        $this->crypto = $this->createMock(ICrypto::class);
+        $this->oauth = $this->createMock(OAuthClient::class);
+        $this->appManager = $this->createMock(IAppManager::class);
         $this->synaplanConfig = $this->createMock(SynaplanConfig::class);
         $this->userAccounts = $this->createMock(UserAccountService::class);
         $this->logger = $this->createMock(LoggerInterface::class);
@@ -47,10 +50,6 @@ class PlatformLinkServiceTest extends TestCase
             'https://files.example.org/apps/synaplan_integration/link/callback'
         );
         $this->synaplanConfig->method('getBaseUrl')->willReturn('https://synaplan.example');
-        $this->crypto->method('encrypt')->willReturnCallback(fn (string $s) => 'enc:' . $s);
-        $this->crypto->method('decrypt')->willReturnCallback(
-            fn (string $s) => str_starts_with($s, 'enc:') ? substr($s, 4) : $s
-        );
     }
 
     private function service(): PlatformLinkService
@@ -59,82 +58,154 @@ class PlatformLinkServiceTest extends TestCase
             $this->clientService,
             $this->config,
             $this->urlGenerator,
+            $this->oauth,
+            $this->appManager,
             $this->synaplanConfig,
             $this->userAccounts,
             $this->logger,
-            new CloudClientKey($this->config, $this->crypto, $this->synaplanConfig),
         );
     }
 
-    public function testExchangePostsTheCodeAndReadsThePerson(): void
+    public function testRegisterSendsThisServerAndWhatTheAppDoes(): void
     {
-        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
-        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
-        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
+        $this->synaplanConfig->method('getInstanceId')->willReturn('oc0abc');
+        $this->config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => $key === 'delivery_url' ? 'https://files.example.org/inbound' : $default
+        );
+        $this->urlGenerator->method('getAbsoluteURL')->with('/')->willReturn('https://files.example.org/');
+        $this->appManager->method('getAppVersion')->willReturn('2.0.0');
+        $this->oauth->method('clientId')->willReturn('client-1');
+        $this->oauth->expects($this->once())->method('register')
+            ->with([
+                'client_uri' => 'https://files.example.org/',
+                'redirect_uri' => 'https://files.example.org/apps/synaplan_integration/link/callback',
+                'delivery_url' => 'https://files.example.org/inbound',
+                'capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
+                'server_id' => 'oc0abc',
+                'version' => '2.0.0',
+            ], 'reg-token')
+            ->willReturn(['client_id' => 'client-1', 'status' => 'active']);
 
-        $token = $this->createMock(IResponse::class);
-        $token->method('getStatusCode')->willReturn(200);
-        $token->method('getBody')->willReturn(json_encode([
-            'access_token' => 'header.payload.signature',
-            'refresh_token' => 'refresh-token',
-            'expires_in' => 900,
-            'token_type' => 'Bearer',
-        ]));
-        $me = $this->createMock(IResponse::class);
-        $me->method('getStatusCode')->willReturn(200);
-        $me->method('getBody')->willReturn(json_encode([
-            'success' => true,
-            'user' => ['id' => 2, 'email' => 'a@b.test'],
-        ]));
-
-        $captured = [];
-        $this->httpClient->expects($this->once())
-            ->method('post')
-            ->willReturnCallback(function (string $url, array $options) use (&$captured, $token): IResponse {
-                parse_str((string) $options['body'], $parsed);
-                $captured = [$url, $parsed];
-
-                return $token;
-            });
-        $this->httpClient->expects($this->once())->method('get')->willReturn($me);
-
-        $result = $this->service()->exchange('the-code', 'verifier-1');
-
-        $this->assertSame('https://synaplan.example/oauth/token', $captured[0]);
-        $this->assertSame('authorization_code', $captured[1]['grant_type']);
-        $this->assertSame('the-code', $captured[1]['code']);
-        $this->assertSame('verifier-1', $captured[1]['code_verifier']);
-        $this->assertSame('header.payload.signature', $result['access_token']);
-        $this->assertSame('a@b.test', $result['user']['email']);
+        $this->assertSame(
+            ['instance_id' => 'client-1', 'status' => 'active'],
+            $this->service()->register('reg-token'),
+        );
     }
 
-    public function testSecretIsNeverLogged(): void
+    public function testRegistrationStatusReadsTheClientConfiguration(): void
     {
-        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
-        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:super-secret-value');
-        $this->synaplanConfig->method('getAdminApiKey')->willReturn('');
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willReturn([
+            'status' => 'active',
+            'client_uri' => 'https://files.example.org/',
+            'delivery_url' => 'https://files.example.org/inbound',
+            'reachable' => true,
+        ]);
 
+        $status = $this->service()->registrationStatus();
+
+        $this->assertSame([
+            'status' => 'active',
+            'host' => 'https://files.example.org',
+            'delivery_url' => 'https://files.example.org/inbound',
+            'reachable' => true,
+        ], $status);
+    }
+
+    public function testARegistrationSynaplanNoLongerAcceptsIsRefused(): void
+    {
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('A client assertion of this client is required.', PlatformLinkException::CODE_CLIENT_REFUSED),
+        );
+        $this->config->expects($this->once())->method('setAppValue')
+            ->with(Application::APP_ID, 'link_registration_status', 'refused');
+
+        $this->assertSame([
+            'status' => 'refused',
+            'host' => '',
+            'delivery_url' => '',
+            'reachable' => null,
+        ], $this->service()->registrationStatus());
+    }
+
+    public function testAnUnansweredStatusQuestionIsNotARefusal(): void
+    {
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE),
+        );
+        $this->config->expects($this->never())->method('setAppValue');
+
+        $this->expectException(PlatformLinkException::class);
+
+        $this->service()->registrationStatus();
+    }
+
+    public function testARefusedRegistrationNoLongerWaitsForApproval(): void
+    {
+        $this->config->method('getAppValue')->willReturnCallback(
+            static fn (string $app, string $key, string $default = ''): string => $key === 'link_registration_status' ? 'pending' : $default
+        );
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('configuration')->willThrowException(
+            new PlatformLinkException('A client assertion of this client is required.', PlatformLinkException::CODE_CLIENT_REFUSED),
+        );
+
+        $this->assertFalse($this->service()->isWaitingForApproval());
+    }
+
+    public function testRegistrationStatusIsNullWhenNotRegistered(): void
+    {
+        $this->oauth->method('isRegistered')->willReturn(false);
+        $this->oauth->expects($this->never())->method('configuration');
+
+        $this->assertNull($this->service()->registrationStatus());
+    }
+
+    public function testForgetRegistrationLeavesSynaplan(): void
+    {
+        $this->oauth->expects($this->once())->method('unregister');
+
+        $this->service()->forgetRegistration();
+    }
+
+    public function testWhoAmIAsksWithThePersonsAccessToken(): void
+    {
+        $this->userAccounts->method('credentialFor')->with('jdoe')->willReturn('at_jdoe');
         $resp = $this->createMock(IResponse::class);
-        $resp->method('getStatusCode')->willReturn(201);
-        $resp->method('getBody')->willReturn(json_encode([
-            'client_id' => 'pi_new',
-            'status' => 'pending',
-        ]));
-        $this->httpClient->method('post')->willReturn($resp);
-        $this->config->method('setAppValue');
-
-        $this->logger->expects($this->atLeastOnce())->method('info')
+        $resp->method('getStatusCode')->willReturn(200);
+        $resp->method('getBody')->willReturn('{"user":{"id":9,"email":"j@doe.test"}}');
+        $this->httpClient->expects($this->once())->method('get')
             ->with(
-                $this->anything(),
-                $this->callback(function (array $context): bool {
-                    $blob = json_encode($context) ?: '';
+                'https://synaplan.example/api/v1/auth/me',
+                $this->callback(fn (array $o): bool => ($o['headers']['Authorization'] ?? '') === 'Bearer at_jdoe'
+                    && !isset($o['headers']['X-API-Key']))
+            )
+            ->willReturn($resp);
 
-                    return !str_contains($blob, 'super-secret-value')
-                        && !str_contains($blob, 'BEGIN PRIVATE KEY');
-                })
-            );
+        $this->assertSame(['id' => 9, 'email' => 'j@doe.test'], $this->service()->whoAmI('jdoe'));
+    }
 
-        $this->service()->registerInstance();
+    public function testWhoAmINeedsACredential(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('');
+        $this->httpClient->expects($this->never())->method('get');
+
+        $this->expectException(\RuntimeException::class);
+        $this->service()->whoAmI('jdoe');
+    }
+
+    public function testDisconnectRevokesTheGrantOfAConnectedPerson(): void
+    {
+        $user = $this->createMock(IUser::class);
+        $user->method('getUID')->willReturn('jdoe');
+        $this->oauth->method('isConnected')->with('jdoe')->willReturn(true);
+        $this->oauth->expects($this->once())->method('revoke')->with('jdoe');
+        $this->httpClient->expects($this->never())->method('delete');
+        $this->userAccounts->expects($this->once())->method('deactivateUser')->with('jdoe');
+
+        $this->service()->disconnect($user);
     }
 
     public function testDisconnectRevokesKeyThenClearsUser(): void
@@ -173,54 +244,62 @@ class PlatformLinkServiceTest extends TestCase
 
     public function testAnnounceNamesThisServerAndWhatTheAppDoes(): void
     {
-        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
-        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
         $this->synaplanConfig->method('getInstanceId')->willReturn('oc0abc');
-        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
-
-        $resp = $this->createMock(IResponse::class);
-        $resp->method('getStatusCode')->willReturn(200);
-        $resp->method('getBody')->willReturn('{"success":true}');
-        $body = null;
-        $this->httpClient->expects($this->once())
-            ->method('put')
-            ->willReturnCallback(function (string $url, array $options) use (&$body, $resp): IResponse {
-                $this->assertStringEndsWith('/oauth/register/pi_abc', $url);
-                $body = json_decode($options['body'], true);
-
-                return $resp;
-            });
+        $this->appManager->method('getAppVersion')->willReturn('2.0.0');
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->expects($this->once())->method('updateConfiguration')->with([
+            'delivery_url' => 'http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound',
+            'server_id' => 'oc0abc',
+            'app_capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
+            'software_version' => '2.0.0',
+        ])->willReturn([]);
+        $this->httpClient->expects($this->never())->method($this->anything());
 
         $this->service()->announceDelivery('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
-
-        $this->assertSame('oc0abc', $body['server_id']);
-        $this->assertSame(['deliveries', 'pickups', 'read_scope', 'source_events'], $body['app_capabilities']);
-        $this->assertSame('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound', $body['delivery_url']);
     }
 
-    public function testLifecycleUsesAClientAssertion(): void
+    public function testAnnounceWaitsForTheRegistration(): void
     {
-        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('pi_abc');
-        $this->synaplanConfig->method('getLinkInstanceSecretCipher')->willReturn('enc:s3cret');
-        $this->synaplanConfig->method('getPublicBaseUrl')->willReturn('https://synaplan.example');
+        $this->oauth->method('isRegistered')->willReturn(false);
+        $this->oauth->expects($this->never())->method('updateConfiguration');
 
-        $resp = $this->createMock(IResponse::class);
-        $resp->method('getStatusCode')->willReturn(200);
-        $resp->method('getBody')->willReturn('{"success":true}');
-        $seen = [];
-        $this->httpClient->method('post')->willReturnCallback(
-            function (string $url, array $options) use (&$seen, $resp): IResponse {
-                $seen = [$url, json_decode($options['body'], true), $options['headers']];
+        $this->service()->announceDelivery('http://nextcloud/inbound');
+    }
 
-                return $resp;
-            }
-        );
+    public function testACopyIsClaimedWithThePersonsOwnCredential(): void
+    {
+        $cases = [
+            'sk_ada' => ['X-API-Key' => 'sk_ada'],
+            'aaa.bbb.ccc' => ['Authorization' => 'Bearer aaa.bbb.ccc'],
+        ];
+        foreach ($cases as $stored => $expected) {
+            $this->userAccounts = $this->createMock(UserAccountService::class);
+            $this->userAccounts->method('credentialFor')->with('ada')->willReturn($stored);
+            $resp = $this->createMock(IResponse::class);
+            $resp->method('getStatusCode')->willReturn(200);
+            $resp->method('getBody')->willReturn('{"success":true}');
+            $this->httpClient = $this->createMock(IClient::class);
+            $this->clientService = $this->createMock(IClientService::class);
+            $this->clientService->method('newClient')->willReturn($this->httpClient);
+            $this->httpClient->expects($this->once())
+                ->method('post')
+                ->with(
+                    'https://synaplan.example/api/v1/platform-links/deliveries/9/claim',
+                    $this->callback(function (array $options) use ($expected): bool {
+                        foreach ($expected as $name => $value) {
+                            if (($options['headers'][$name] ?? '') !== $value) {
+                                return false;
+                            }
+                        }
 
-        $this->service()->reportLifecycle('ada', 'disabled');
+                        return !isset($options['headers']['X-API-Key'], $options['headers']['Authorization'])
+                            || count(array_intersect_key($options['headers'], ['X-API-Key' => true, 'Authorization' => true])) === 1;
+                    })
+                )
+                ->willReturn($resp);
 
-        $this->assertStringEndsWith('/oauth/register/pi_abc/lifecycle', $seen[0]);
-        $this->assertSame(['external_id' => 'ada', 'event' => 'disabled'], $seen[1]);
-        $this->assertStringStartsWith('Bearer ', (string) ($seen[2]['Authorization'] ?? ''));
+            $this->service()->claimDelivery('9', 'ada');
+        }
     }
 
     public function testDisconnectUidClearsEvenWhenRevokeFails(): void
