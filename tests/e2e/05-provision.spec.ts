@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { logIn, openFileAction, resetPerson, saveSettings } from './support'
+import {
+	deleteSynaplanAccount,
+	logIn,
+	openFileAction,
+	resetPerson,
+	saveSettings,
+} from './support'
 
 test.beforeAll(async () => {
 	await saveSettings({ mode: 'provision' })
@@ -7,6 +13,7 @@ test.beforeAll(async () => {
 
 test.beforeEach(async () => {
 	await resetPerson('carol')
+	await deleteSynaplanAccount('carol@example.org')
 })
 
 test.afterAll(async () => {

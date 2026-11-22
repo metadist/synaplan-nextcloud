@@ -95,6 +95,33 @@ export async function resetPerson(uid: string): Promise<void> {
 }
 
 /**
+ * Delete the Synaplan account provisioning created for a person. Deactivate
+ * leaves that account's identity on this Nextcloud revoked, and provisioning
+ * the same person again lands on it, so a provisioning journey starts
+ * without the account. Accounts people made themselves are never touched.
+ *
+ * @param email the person's email address in Nextcloud
+ */
+export async function deleteSynaplanAccount(email: string): Promise<void> {
+	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
+	const found = await synaplan.get(
+		`/api/v1/admin/users?search=${encodeURIComponent(email)}`,
+	)
+	expect(found.ok(), `looking up ${email} in Synaplan`).toBe(true)
+	const { users = [] } = (await found.json()) as {
+		users?: { id: number; email: string; providerId: string }[]
+	}
+	for (const user of users) {
+		if (user.email !== email || user.providerId !== 'external') {
+			continue
+		}
+		const deleted = await synaplan.delete(`/api/v1/admin/users/${user.id}`)
+		expect(deleted.ok(), `deleting ${email} from Synaplan`).toBe(true)
+	}
+	await synaplan.dispose()
+}
+
+/**
  * Sign in on the Nextcloud login page.
  *
  * @param page the browser page
