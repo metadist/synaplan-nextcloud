@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\WatchController;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCA\SynaplanIntegration\Service\WatchPolicy;
@@ -15,6 +16,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IRequest;
+use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -28,6 +30,8 @@ final class WatchControllerTest extends TestCase
     private Folder&MockObject $home;
     private LoggerInterface&MockObject $logger;
     private WatchIndex&MockObject $index;
+    private PlatformLinkService&MockObject $links;
+    private WatchPolicy&MockObject $policy;
     private WatchController $controller;
 
     protected function setUp(): void
@@ -44,6 +48,11 @@ final class WatchControllerTest extends TestCase
         $this->index = $this->createMock(WatchIndex::class);
         $time = $this->createStub(ITimeFactory::class);
         $time->method('getTime')->willReturn(1700000000);
+        $this->links = $this->createMock(PlatformLinkService::class);
+        $this->policy = $this->createMock(WatchPolicy::class);
+        $this->policy->method('markStopped')->willReturnArgument(1);
+        $urls = $this->createStub(IURLGenerator::class);
+        $urls->method('getAbsoluteURL')->willReturnCallback(static fn (string $path): string => 'https://cloud.example' . $path);
         $this->controller = new WatchController(
             $this->createStub(IRequest::class),
             $this->client,
@@ -52,6 +61,9 @@ final class WatchControllerTest extends TestCase
             $this->index,
             $session,
             $time,
+            $this->links,
+            $this->policy,
+            $urls,
         );
     }
 
@@ -171,5 +183,65 @@ final class WatchControllerTest extends TestCase
         $this->assertSame('synaplan_unreachable', $data['error']);
         $this->assertSame([], $data['tasks']);
         $this->assertStringNotContainsString('backend', (string) json_encode($data));
+    }
+
+    public function testTheListShowsThePersonsWatchesWithAWayToOpenEach(): void
+    {
+        $this->links->expects($this->once())->method('listWatches')->with('ada')->willReturn([
+            ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'name' => 'Incoming-DE', 'state' => 'paused', 'reason' => 'by_owner', 'last_run_at' => 1700000000, 'sentence' => 'Paused by you.'],
+            ['id' => 'broken'],
+        ]);
+
+        $data = $this->controller->index()->getData();
+
+        $this->assertTrue($data['success']);
+        $this->assertSame([[
+            'id' => 5,
+            'kind' => 'folder',
+            'targetId' => '30',
+            'name' => 'Incoming-DE',
+            'state' => 'paused',
+            'sentence' => 'Paused by you.',
+            'lastRunAt' => 1700000000,
+            'policyOff' => false,
+            'openUrl' => 'https://cloud.example/index.php/f/30',
+        ]], $data['watches']);
+    }
+
+    public function testAStateOtherThanPausedOrActiveIsABadRequest(): void
+    {
+        $this->client->expects($this->never())->method('updateWatch');
+
+        $response = $this->controller->update(5, 'stopped');
+
+        $this->assertSame(400, $response->getStatus());
+    }
+
+    public function testPausingTellsSynaplanAndTheIndexHere(): void
+    {
+        $watch = ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'paused', 'sentence' => 'Paused by you.'];
+        $this->client->expects($this->once())->method('updateWatch')->with(5, 'paused')->willReturn($watch);
+        $this->index->expects($this->once())->method('update')->with('ada', $watch, 1700000000);
+
+        $response = $this->controller->update(5, 'paused');
+
+        $this->assertSame(200, $response->getStatus());
+        $this->assertSame('paused', $response->getData()['watch']['state']);
+    }
+
+    public function testStoppingTellsSynaplanAndDropsTheWatchHere(): void
+    {
+        $this->client->expects($this->once())->method('stopWatch')->with(5)->willReturn(['id' => 5, 'state' => 'stopped']);
+        $this->index->expects($this->once())->method('stop')->with(5);
+
+        $this->assertSame(200, $this->controller->stop(5)->getStatus());
+    }
+
+    public function testAWatchSynaplanDoesNotKnowIsNotDroppedHere(): void
+    {
+        $this->client->method('stopWatch')->willThrowException(new \RuntimeException('cURL error 7: Failed to connect'));
+        $this->index->expects($this->never())->method('stop');
+
+        $this->assertSame(502, $this->controller->stop(5)->getStatus());
     }
 }

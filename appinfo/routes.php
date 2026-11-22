@@ -30,6 +30,9 @@ return [
         ['name' => 'cloudStatus#searchable', 'url' => '/api/v1/cloud/searchable', 'verb' => 'GET'],
         ['name' => 'watch#options', 'url' => '/api/v1/watches/options', 'verb' => 'GET'],
         ['name' => 'watch#start', 'url' => '/api/v1/watches', 'verb' => 'POST'],
+        ['name' => 'watch#index', 'url' => '/api/v1/watches', 'verb' => 'GET'],
+        ['name' => 'watch#update', 'url' => '/api/v1/watches/{id}', 'verb' => 'PATCH', 'requirements' => ['id' => '\d+']],
+        ['name' => 'watch#stop', 'url' => '/api/v1/watches/{id}', 'verb' => 'DELETE', 'requirements' => ['id' => '\d+']],
 
         // Client runtime config (language + memory availability) for the chat UI
         ['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],

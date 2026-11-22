@@ -331,6 +331,14 @@ OC.L10N.register(
     "Allow watching shared folders" : "Autoriser la surveillance des dossiers partagés",
     "When this is off, nobody can start watching a shared folder or file, and the watches already on one stop." : "Si cette option est désactivée, personne ne peut commencer à surveiller un dossier ou un fichier partagé, et les surveillances déjà en place s’arrêtent.",
     "Your administrator turned off watching shared folders." : "Votre administrateur a désactivé la surveillance des dossiers partagés.",
-    "Stopped — your administrator turned off watching shared folders" : "Arrêtée — votre administrateur a désactivé la surveillance des dossiers partagés"
+    "Stopped — your administrator turned off watching shared folders" : "Arrêtée — votre administrateur a désactivé la surveillance des dossiers partagés",
+    "Pause" : "Mettre en pause",
+    "Resume" : "Reprendre",
+    "Stop watching" : "Arrêter la surveillance",
+    "Watched folders" : "Dossiers surveillés",
+    "Synaplan stops watching {name}. Files and translations already made stay where they are." : "Synaplan arrête de surveiller {name}. Les fichiers et traductions déjà créés restent où ils sont.",
+    "Last activity {time}" : "Dernière activité {time}",
+    "Open folder" : "Ouvrir le dossier",
+    "Open file" : "Ouvrir le fichier"
 },
 "nplurals=2; plural=(n > 1);");

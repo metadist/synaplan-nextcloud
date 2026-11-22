@@ -330,7 +330,15 @@
 		"Allow watching shared folders": "Beobachten geteilter Ordner erlauben",
 		"When this is off, nobody can start watching a shared folder or file, and the watches already on one stop.": "Wenn das aus ist, kann niemand einen geteilten Ordner oder eine geteilte Datei beobachten lassen, und bestehende Beobachtungen darauf halten an.",
 		"Your administrator turned off watching shared folders.": "Ihre Administration hat das Beobachten geteilter Ordner ausgeschaltet.",
-		"Stopped — your administrator turned off watching shared folders": "Angehalten – Ihre Administration hat das Beobachten geteilter Ordner ausgeschaltet"
+		"Stopped — your administrator turned off watching shared folders": "Angehalten – Ihre Administration hat das Beobachten geteilter Ordner ausgeschaltet",
+		"Pause": "Pausieren",
+		"Resume": "Fortsetzen",
+		"Stop watching": "Nicht mehr beobachten",
+		"Watched folders": "Beobachtete Ordner",
+		"Synaplan stops watching {name}. Files and translations already made stay where they are.": "Synaplan beobachtet {name} nicht mehr. Dateien und Übersetzungen, die schon entstanden sind, bleiben, wo sie sind.",
+		"Last activity {time}": "Zuletzt aktiv {time}",
+		"Open folder": "Ordner öffnen",
+		"Open file": "Datei öffnen"
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

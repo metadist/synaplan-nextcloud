@@ -330,7 +330,15 @@
 		"Allow watching shared folders": "Paylaşılan klasörlerin izlenmesine izin ver",
 		"When this is off, nobody can start watching a shared folder or file, and the watches already on one stop.": "Bu kapalıyken kimse paylaşılan bir klasörü veya dosyayı izlemeye başlayamaz ve bunlardaki mevcut izlemeler durur.",
 		"Your administrator turned off watching shared folders.": "Yöneticiniz paylaşılan klasörlerin izlenmesini kapattı.",
-		"Stopped — your administrator turned off watching shared folders": "Durduruldu — yöneticiniz paylaşılan klasörlerin izlenmesini kapattı"
+		"Stopped — your administrator turned off watching shared folders": "Durduruldu — yöneticiniz paylaşılan klasörlerin izlenmesini kapattı",
+		"Pause": "Duraklat",
+		"Resume": "Sürdür",
+		"Stop watching": "İzlemeyi durdur",
+		"Watched folders": "İzlenen klasörler",
+		"Synaplan stops watching {name}. Files and translations already made stay where they are.": "Synaplan artık {name} öğesini izlemiyor. Daha önce oluşturulan dosyalar ve çeviriler oldukları yerde kalır.",
+		"Last activity {time}": "Son etkinlik {time}",
+		"Open folder": "Klasörü aç",
+		"Open file": "Dosyayı aç"
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

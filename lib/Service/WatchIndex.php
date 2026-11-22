@@ -75,6 +75,32 @@ class WatchIndex
         }
     }
 
+    /**
+     * The owner paused or resumed a watch here. A resumed watch gets its
+     * next pass right away, for the files that arrived while it was paused.
+     *
+     * @param array<mixed> $watch a watch as Synaplan answers it
+     */
+    public function update(string $uid, array $watch, int $now): void
+    {
+        $row = self::parse($watch);
+        if ($row === null || $uid === '') {
+            return;
+        }
+        $this->upsert($uid, $row, $now, false);
+        if ($row['state'] === self::ACTIVE) {
+            $this->markReconciled($row['id'], 0);
+        }
+    }
+
+    /**
+     * The owner stopped a watch here; its waiting files go too.
+     */
+    public function stop(int $watchId): void
+    {
+        $this->drop($watchId);
+    }
+
     public function forget(string $uid): void
     {
         foreach ($this->rowsOf($uid) as $known) {
@@ -166,10 +192,6 @@ class WatchIndex
         $qb->executeStatement();
     }
 
-    /**
-     * Queue a file for a watch, or push its time back when it is already
-     * waiting: a file goes once it has been quiet until `due`.
-     */
     /**
      * Queue a file, or an event of the watch's target, as changed at
      * $changed. A file waits out the quiet period from then; an event goes

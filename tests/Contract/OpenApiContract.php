@@ -82,6 +82,9 @@ final class OpenApiContract
             if ($method === 'POST' && $template === '/api/v1/cloud/watches') {
                 return $this->watchCreateViolations($method, $template, $body);
             }
+            if ($method === 'PATCH' && preg_match('#^/api/v1/cloud/watches/\{[^}/]+\}$#', $template) === 1) {
+                return $this->watchUpdateViolations($method, $template, $body);
+            }
             if ($method === 'POST' && preg_match('#^/api/v1/cloud/watches/\{[^}/]+\}/reconcile$#', $template) === 1) {
                 return $this->watchReconcileViolations($method, $template, $body);
             }
@@ -235,6 +238,30 @@ final class OpenApiContract
         }
         if (($body['preset'] ?? null) === 'task' && (!isset($body['task_id']) || !is_int($body['task_id']))) {
             $violations[] = "$method $template: required field 'task_id' is not sent";
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Synaplan's CloudWatchController::update reads `state`, paused or
+     * active; the spec does not describe it.
+     *
+     * @param array<string, mixed> $body
+     * @return list<string>
+     */
+    private function watchUpdateViolations(string $method, string $template, array $body): array
+    {
+        $violations = [];
+        foreach (array_keys($body) as $field) {
+            if ($field !== 'state') {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        $state = $body['state'] ?? null;
+        if (!in_array($state, ['paused', 'active'], true)) {
+            $rendered = is_scalar($state) ? (string) $state : 'nothing';
+            $violations[] = "$method $template: 'state' = '$rendered' is not one of paused, active";
         }
 
         return $violations;

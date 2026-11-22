@@ -331,6 +331,14 @@ OC.L10N.register(
     "Allow watching shared folders" : "Permitir vigilar carpetas compartidas",
     "When this is off, nobody can start watching a shared folder or file, and the watches already on one stop." : "Si está desactivado, nadie puede empezar a vigilar una carpeta o un archivo compartido, y las vigilancias que ya los cubren se detienen.",
     "Your administrator turned off watching shared folders." : "Tu administrador desactivó la vigilancia de carpetas compartidas.",
-    "Stopped — your administrator turned off watching shared folders" : "Detenida: tu administrador desactivó la vigilancia de carpetas compartidas"
+    "Stopped — your administrator turned off watching shared folders" : "Detenida: tu administrador desactivó la vigilancia de carpetas compartidas",
+    "Pause" : "Pausar",
+    "Resume" : "Reanudar",
+    "Stop watching" : "Dejar de vigilar",
+    "Watched folders" : "Carpetas vigiladas",
+    "Synaplan stops watching {name}. Files and translations already made stay where they are." : "Synaplan deja de vigilar {name}. Los archivos y las traducciones ya creados se quedan donde están.",
+    "Last activity {time}" : "Última actividad {time}",
+    "Open folder" : "Abrir carpeta",
+    "Open file" : "Abrir archivo"
 },
 "nplurals=2; plural=(n != 1);");
