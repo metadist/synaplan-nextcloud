@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\BackgroundJob\DeliveryRetryJob;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -35,8 +38,12 @@ final class CopyDeliveryTest extends TestCase
     /** @var array<string, mixed>|null */
     private ?array $reported = null;
 
+    private IJobList&MockObject $jobs;
+    private int $now = 1_800_000_000;
+
     protected function setUp(): void
     {
+        $this->jobs = $this->createMock(IJobList::class);
         $this->links = $this->createMock(PlatformLinkService::class);
         $this->links->method('reportDelivery')->willReturnCallback(
             function (string $id, string $uid, array $result): array {
@@ -144,6 +151,44 @@ final class CopyDeliveryTest extends TestCase
         self::assertSame('unreachable', $this->failure());
     }
 
+    public function testAFailedClaimIsTriedAgainInTheBackground(): void
+    {
+        $this->links->method('claimDelivery')->willThrowException(new \RuntimeException('connection refused'));
+        $this->links->expects($this->never())->method('reportDelivery');
+        $this->jobs->expects($this->once())->method('add')
+            ->with(DeliveryRetryJob::class, ['id' => '9', 'uid' => 'ada', 'since' => $this->now]);
+
+        $answer = $this->delivery()->handle('9', 'ada');
+
+        self::assertSame(202, $answer['status']);
+        self::assertSame('pending', $answer['body']['state']);
+    }
+
+    public function testTheBackgroundTryWritesTheCopyAndReportsIt(): void
+    {
+        $this->claim();
+        $this->jobs->expects($this->never())->method('add');
+
+        $this->delivery()->retry('9', 'ada', $this->now - 240);
+
+        self::assertSame('delivered', $this->reported['status'] ?? null);
+    }
+
+    public function testTheBackgroundTryIsTheLastOne(): void
+    {
+        $this->links->expects($this->once())->method('claimDelivery')->willThrowException(new \RuntimeException('connection refused'));
+        $this->jobs->expects($this->never())->method('add');
+
+        $this->delivery()->retry('9', 'ada', $this->now - 60);
+    }
+
+    public function testAnExpiredCopyIsNotClaimedAgain(): void
+    {
+        $this->links->expects($this->never())->method('claimDelivery');
+
+        $this->delivery()->retry('9', 'ada', $this->now - 301);
+    }
+
     /**
      * @param array<string, mixed> $override
      */
@@ -182,6 +227,8 @@ final class CopyDeliveryTest extends TestCase
         $caches->method('createDistributed')->willReturn($this->createMock(ICache::class));
         $urls = $this->createMock(IURLGenerator::class);
         $urls->method('linkToRouteAbsolute')->willReturn('https://cloud.example/f/42');
+        $time = $this->createMock(ITimeFactory::class);
+        $time->method('getTime')->willReturnCallback(fn (): int => $this->now);
 
         return new CopyDelivery(
             $this->links,
@@ -192,6 +239,8 @@ final class CopyDeliveryTest extends TestCase
             $urls,
             $this->createMock(IManager::class),
             new NullLogger(),
+            $this->jobs,
+            $time,
         );
     }
 }

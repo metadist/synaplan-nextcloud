@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\BackgroundJob\DeliveryRetryJob;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\AlreadyExistsException;
 use OCP\Files\EntityTooLargeException;
 use OCP\Files\File;
@@ -36,6 +39,9 @@ class CopyDelivery
     /** Synaplan's cap for a copy; it refuses larger files before sending. */
     private const MAX_BYTES = 100 * 1024 * 1024;
 
+    /** How long Synaplan keeps a copy's ticket and download path. */
+    private const TICKET_TTL = 300;
+
     /** `name.ext` and `name (2).ext` up to `name (20).ext`. */
     private const MAX_SAME_NAME = 20;
 
@@ -61,6 +67,8 @@ class CopyDelivery
         private IURLGenerator $urls,
         private IManager $notifications,
         private LoggerInterface $logger,
+        private IJobList $jobs,
+        private ITimeFactory $time,
     ) {
     }
 
@@ -72,15 +80,43 @@ class CopyDelivery
         // Synaplan waits 30 seconds for the answer, then takes the result
         // call instead; a slow download must not stop when it hangs up.
         ignore_user_abort(true);
+
+        return $this->deliver($id, $uid, null);
+    }
+
+    /**
+     * The background try after a failed claim. Past the ticket's life the
+     * claim can only fail, so Synaplan's sweep reports the copy instead.
+     */
+    public function retry(string $id, string $uid, int $since): void
+    {
+        if ($this->time->getTime() - $since > self::TICKET_TTL) {
+            $this->logger->info('A Synaplan copy expired before it could be claimed again', [
+                'app' => Application::APP_ID,
+            ]);
+
+            return;
+        }
+        $this->deliver($id, $uid, $since);
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function deliver(string $id, string $uid, ?int $retriedSince): array
+    {
         try {
             $claim = $this->links->claimDelivery($id, $uid);
         } catch (\Throwable $e) {
-            // The person's credential is gone or Synaplan is unreachable:
-            // the copy stays pending for Synaplan to offer again.
+            // Synaplan is unreachable or the person's credential failed. A
+            // 202 promises a result call, so try once more in the background.
             $this->logger->warning('Could not claim a Synaplan copy: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
             ]);
+            if ($retriedSince === null) {
+                $this->jobs->add(DeliveryRetryJob::class, ['id' => $id, 'uid' => $uid, 'since' => $this->time->getTime()]);
+            }
 
             return ['status' => 202, 'body' => ['state' => 'pending']];
         }

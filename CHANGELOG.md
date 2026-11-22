@@ -26,6 +26,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   seconds, and finishes after Synaplan stops waiting for the answer; the
   result call tells Synaplan when it is done. The download only goes to that
   copy's own file on Synaplan.
+- **A copy whose claim failed** is claimed once more in the background while
+  it is still valid. The app answered "still copying" and then never sent
+  the result, so Synaplan marked the copy unconfirmed after ten minutes.
 
 ## 2.0.0 – 2026-11-16
 
