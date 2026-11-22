@@ -128,6 +128,26 @@ final class FolderReadTest extends TestCase
         $this->reads->handle('15', 'ada');
     }
 
+    public function testAClaimedReadThatBreaksStillReportsAFailure(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willThrowException(new \RuntimeException('cURL error 28: timed out'));
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'unreachable',
+        ));
+
+        $this->reads->handle('15', 'ada');
+    }
+
+    public function testAReadThatCannotBeClaimedReportsNothing(): void
+    {
+        $this->links->method('claimPickup')->willThrowException(new \RuntimeException('cURL error 7'));
+        $this->links->expects($this->never())->method('reportPickupResult');
+
+        $this->reads->handle('15', 'ada');
+    }
+
     public function testAFileChangedSinceTheListingIsNotSentUnderItsOldVersion(): void
     {
         $this->etag = 'etag-2';

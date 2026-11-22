@@ -102,6 +102,25 @@ class FolderRead
 
             return;
         }
+        // Once claimed, Synaplan waits for a result until its timeout: every
+        // way out of the read has to report one.
+        try {
+            $this->read($id, $uid, $claim, $deadline);
+        } catch (\Throwable $e) {
+            $this->logger->warning('A claimed folder read failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+            $this->report($id, $uid, 'failed', 0, 0, [], 'unreachable');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $claim
+     */
+    private function read(string $id, string $uid, array $claim, float $deadline): void
+    {
         $selector = is_array($claim['selector'] ?? null) ? $claim['selector'] : [];
         $userFolder = $this->rootFolder->getUserFolder($uid);
         $folder = $this->folder($userFolder, $selector);
