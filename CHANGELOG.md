@@ -22,6 +22,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   folder the person may not write to, a target folder that is gone, twenty
   files with that name, or a file over 100 MB. Every failure used to read
   "could not reach".
+- **A large copy** has the five minutes its download is valid, not 30
+  seconds, and finishes after Synaplan stops waiting for the answer; the
+  result call tells Synaplan when it is done. The download only goes to that
+  copy's own file on Synaplan.
 
 ## 2.0.0 – 2026-11-16
 

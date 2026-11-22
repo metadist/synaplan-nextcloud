@@ -17,6 +17,7 @@ use OCP\Http\Client\IResponse;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -264,6 +265,44 @@ class PlatformLinkServiceTest extends TestCase
         $this->oauth->expects($this->never())->method('updateConfiguration');
 
         $this->service()->announceDelivery('http://nextcloud/inbound');
+    }
+
+    public function testACopyIsDownloadedFromItsOwnPathWithTimeForALargeFile(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('aaa.bbb.ccc');
+        $resp = $this->createMock(IResponse::class);
+        $resp->method('getStatusCode')->willReturn(200);
+        $resp->method('getBody')->willReturn('bytes');
+        $this->httpClient->expects($this->once())->method('get')
+            ->with(
+                'https://synaplan.example/api/v1/platform-links/deliveries/9/file?ticket=0f3a9c',
+                $this->callback(fn (array $o): bool => $o['timeout'] >= 300),
+            )
+            ->willReturn($resp);
+
+        self::assertSame('bytes', $this->service()->downloadDelivery('9', '/api/v1/platform-links/deliveries/9/file?ticket=0f3a9c', 'ada'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function pathsOutsideTheCopy(): iterable
+    {
+        yield 'another copy' => ['/api/v1/platform-links/deliveries/10/file?ticket=0f3a9c'];
+        yield 'another endpoint' => ['/api/v1/apikeys'];
+        yield 'a longer id' => ['/api/v1/platform-links/deliveries/99/file?ticket=0f3a9c'];
+        yield 'extra query' => ['/api/v1/platform-links/deliveries/9/file?ticket=0f3a9c&x=/api/v1/apikeys'];
+        yield 'no ticket' => ['/api/v1/platform-links/deliveries/9/file?ticket='];
+        yield 'an address' => ['https://evil.example/api/v1/platform-links/deliveries/9/file?ticket=0f3a9c'];
+    }
+
+    #[DataProvider('pathsOutsideTheCopy')]
+    public function testADownloadOutsideTheCopysOwnPathIsRefused(string $path): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('aaa.bbb.ccc');
+        $this->httpClient->expects($this->never())->method('get');
+
+        self::assertNull($this->service()->downloadDelivery('9', $path, 'ada'));
     }
 
     public function testACopyIsClaimedWithThePersonsOwnCredential(): void

@@ -69,6 +69,9 @@ class CopyDelivery
      */
     public function handle(string $id, string $uid): array
     {
+        // Synaplan waits 30 seconds for the answer, then takes the result
+        // call instead; a slow download must not stop when it hangs up.
+        ignore_user_abort(true);
         try {
             $claim = $this->links->claimDelivery($id, $uid);
         } catch (\Throwable $e) {
@@ -87,7 +90,7 @@ class CopyDelivery
         }
 
         $result = (string) ($claim['external_id'] ?? '') === $uid
-            ? $this->write($claim)
+            ? $this->write($id, $claim)
             : ['status' => 'failed', 'error_code' => 'not_found'];
         try {
             $this->links->reportDelivery($id, $uid, $result);
@@ -123,7 +126,7 @@ class CopyDelivery
      * @param array<string, mixed> $claim
      * @return array<string, mixed>
      */
-    private function write(array $claim): array
+    private function write(string $id, array $claim): array
     {
         $uid = (string) ($claim['external_id'] ?? '');
         if ($uid === '' || $this->users->get($uid) === null) {
@@ -132,7 +135,7 @@ class CopyDelivery
         if ((int) ($claim['size'] ?? 0) > self::MAX_BYTES) {
             return ['status' => 'failed', 'error_code' => 'too_large'];
         }
-        $bytes = $this->links->downloadDelivery((string) ($claim['download_path'] ?? ''), $uid);
+        $bytes = $this->links->downloadDelivery($id, (string) ($claim['download_path'] ?? ''), $uid);
         if ($bytes === null) {
             return ['status' => 'failed', 'error_code' => 'unreachable'];
         }

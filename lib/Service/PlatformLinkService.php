@@ -25,6 +25,7 @@ class PlatformLinkService
 {
     public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events'];
     private const REGISTRATION_STATUS = 'link_registration_status';
+    private const DOWNLOAD_TIMEOUT = 300;
     /** Synaplan no longer accepts this registration; its own statuses are pending and active. */
     public const STATUS_REFUSED = 'refused';
 
@@ -180,16 +181,28 @@ class PlatformLinkService
         );
     }
 
-    public function downloadDelivery(string $downloadPath, string $uid): ?string
+    /**
+     * The bytes of a claimed copy. The path must be that copy's own file:
+     * the request carries the person's key, so a claim answer cannot point
+     * it at any other Synaplan address.
+     */
+    public function downloadDelivery(string $id, string $downloadPath, string $uid): ?string
     {
-        if (!str_starts_with($downloadPath, '/api/') || str_contains($downloadPath, '..') || str_contains($downloadPath, '://')) {
+        $file = '/api/v1/platform-links/deliveries/' . rawurlencode($id) . '/file?ticket=';
+        if (!str_starts_with($downloadPath, $file)
+            || preg_match('/^[A-Za-z0-9_-]+$/', substr($downloadPath, strlen($file))) !== 1) {
+            $this->logger->warning('Refused a Synaplan copy download outside the copy\'s own path', [
+                'app' => Application::APP_ID,
+            ]);
+
             return null;
         }
         $client = $this->clientService->newClient();
         try {
             $response = $client->get($this->synaplanConfig->getBaseUrl() . $downloadPath, [
                 'headers' => $this->personHeaders($uid),
-                'timeout' => 30,
+                // A copy may be 100 MB; the one-time path is valid this long.
+                'timeout' => self::DOWNLOAD_TIMEOUT,
                 'nextcloud' => ['allow_local_address' => true],
             ]);
         } catch (\Throwable $e) {

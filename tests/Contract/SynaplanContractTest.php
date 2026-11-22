@@ -256,7 +256,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->listRecentFiles(),
             fn () => $client->downloadStoredFile(42),
             fn () => $links->claimDelivery('9', 'ada'),
-            fn () => $links->downloadDelivery('/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),
+            fn () => $links->downloadDelivery('9', '/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),
             fn () => $links->reportDelivery('9', 'ada', [
                 'status' => 'delivered',
                 'remote_path' => '/Synaplan/Documents/plan.docx',
