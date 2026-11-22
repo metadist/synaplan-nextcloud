@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCP\Files\AlreadyExistsException;
+use OCP\Files\EntityTooLargeException;
 use OCP\Files\File;
 use OCP\Files\Folder;
+use OCP\Files\ForbiddenException;
 use OCP\Files\IRootFolder;
+use OCP\Files\NotEnoughSpaceException;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IURLGenerator;
@@ -27,6 +32,12 @@ class CopyDelivery
 
     /** Remember a file this app wrote, so a later copy may replace only that. */
     private const OWN_WRITE_TTL = 600;
+
+    /** Synaplan's cap for a copy; it refuses larger files before sending. */
+    private const MAX_BYTES = 100 * 1024 * 1024;
+
+    /** `name.ext` and `name (2).ext` up to `name (20).ext`. */
+    private const MAX_SAME_NAME = 20;
 
     private const KIND_FOLDERS = [
         'docx' => 'Documents', 'doc' => 'Documents', 'pptx' => 'Documents',
@@ -118,9 +129,15 @@ class CopyDelivery
         if ($uid === '' || $this->users->get($uid) === null) {
             return ['status' => 'failed', 'error_code' => 'not_found'];
         }
+        if ((int) ($claim['size'] ?? 0) > self::MAX_BYTES) {
+            return ['status' => 'failed', 'error_code' => 'too_large'];
+        }
         $bytes = $this->links->downloadDelivery((string) ($claim['download_path'] ?? ''), $uid);
         if ($bytes === null) {
             return ['status' => 'failed', 'error_code' => 'unreachable'];
+        }
+        if (strlen($bytes) > self::MAX_BYTES) {
+            return ['status' => 'failed', 'error_code' => 'too_large'];
         }
 
         try {
@@ -128,6 +145,10 @@ class CopyDelivery
             $name = $this->fileName((string) ($claim['name'] ?? 'file'));
             $target = is_array($claim['target'] ?? null) ? $claim['target'] : [];
             $folder = $this->folder($userFolder, $uid, $name, $target);
+            $free = $folder->getFreeSpace();
+            if ($free >= 0 && $free < strlen($bytes)) {
+                throw new NotEnoughSpaceException('The copy does not fit in the person\'s storage.');
+            }
             $replace = ($claim['on_conflict'] ?? '') === 'replace_own';
             $file = $this->place($folder, $uid, $name, $bytes, $replace);
         } catch (\Throwable $e) {
@@ -137,7 +158,7 @@ class CopyDelivery
                 'message' => $e->getMessage(),
             ]);
 
-            return ['status' => 'failed', 'error_code' => 'unreachable'];
+            return ['status' => 'failed', 'error_code' => self::failureCode($e)];
         }
 
         $relative = $userFolder->getRelativePath($file->getPath()) ?? $file->getName();
@@ -205,6 +226,9 @@ class CopyDelivery
         $ext = pathinfo($name, PATHINFO_EXTENSION);
         $n = 2;
         while ($folder->nodeExists($target)) {
+            if ($n > self::MAX_SAME_NAME) {
+                throw new AlreadyExistsException('Twenty files with this name already exist.');
+            }
             $target = $stem . ' (' . $n . ')' . ($ext !== '' ? '.' . $ext : '');
             $n++;
         }
@@ -212,6 +236,21 @@ class CopyDelivery
         $file->putContent($bytes);
 
         return $file;
+    }
+
+    /**
+     * The failure code Synaplan shows the person (`03` §6).
+     */
+    private static function failureCode(\Throwable $e): string
+    {
+        return match (true) {
+            $e instanceof NotFoundException => 'not_found',
+            $e instanceof NotEnoughSpaceException => 'quota_exceeded',
+            $e instanceof NotPermittedException, $e instanceof ForbiddenException => 'forbidden',
+            $e instanceof AlreadyExistsException => 'conflict',
+            $e instanceof EntityTooLargeException => 'too_large',
+            default => 'unreachable',
+        };
     }
 
     private function ensure(Folder $root, string $path): Folder

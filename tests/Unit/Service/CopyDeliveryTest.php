@@ -1,0 +1,197 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\SynaplanIntegration\Tests\Unit\Service;
+
+use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCP\Files\File;
+use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
+use OCP\Files\NotPermittedException;
+use OCP\ICache;
+use OCP\ICacheFactory;
+use OCP\IConfig;
+use OCP\IURLGenerator;
+use OCP\IUser;
+use OCP\IUserManager;
+use OCP\Notification\IManager;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
+
+final class CopyDeliveryTest extends TestCase
+{
+    private PlatformLinkService&MockObject $links;
+    private Folder&MockObject $userFolder;
+    private Folder&MockObject $dir;
+
+    /** @var list<string> names that already exist in the target folder */
+    private array $existing = [];
+    private int $free = -3;
+    private ?\Throwable $newFileFails = null;
+
+    /** @var array<string, mixed>|null */
+    private ?array $reported = null;
+
+    protected function setUp(): void
+    {
+        $this->links = $this->createMock(PlatformLinkService::class);
+        $this->links->method('reportDelivery')->willReturnCallback(
+            function (string $id, string $uid, array $result): array {
+                $this->reported = $result;
+
+                return [];
+            },
+        );
+        $this->dir = $this->createMock(Folder::class);
+        $this->dir->method('nodeExists')->willReturnCallback(fn (string $name): bool => in_array($name, $this->existing, true));
+        $this->dir->method('newFolder')->willReturnSelf();
+        $this->dir->method('getFreeSpace')->willReturnCallback(fn (): int => $this->free);
+        $this->dir->method('newFile')->willReturnCallback(function (string $name): File {
+            if ($this->newFileFails !== null) {
+                throw $this->newFileFails;
+            }
+            $file = $this->createMock(File::class);
+            $file->method('getId')->willReturn(42);
+            $file->method('getName')->willReturn($name);
+            $file->method('getPath')->willReturn('/ada/files/Synaplan/Documents/' . $name);
+
+            return $file;
+        });
+        $this->userFolder = $this->createMock(Folder::class);
+        $this->userFolder->method('nodeExists')->willReturn(false);
+        $this->userFolder->method('newFolder')->willReturn($this->dir);
+        $this->userFolder->method('getRelativePath')->willReturnCallback(
+            fn (string $path): string => substr($path, strlen('/ada/files')),
+        );
+    }
+
+    public function testACopyIsWrittenAndReported(): void
+    {
+        $this->claim();
+
+        $answer = $this->delivery()->handle('9', 'ada');
+
+        self::assertSame(200, $answer['status']);
+        self::assertSame('delivered', $answer['body']['status']);
+        self::assertSame('/Synaplan/Documents/Q3 plan.docx', $answer['body']['remote_path']);
+        self::assertSame($answer['body'], $this->reported);
+    }
+
+    public function testAFullStorageIsQuotaExceeded(): void
+    {
+        $this->claim();
+        $this->free = 3;
+
+        self::assertSame('quota_exceeded', $this->failure());
+    }
+
+    public function testAFolderThePersonMayNotWriteIsForbidden(): void
+    {
+        $this->claim();
+        $this->newFileFails = new NotPermittedException('read-only share');
+
+        self::assertSame('forbidden', $this->failure());
+    }
+
+    public function testATargetFolderThatIsGoneIsNotFound(): void
+    {
+        $this->claim(['target' => ['kind' => 'folder_id', 'ref' => '77']]);
+        $this->userFolder->method('getById')->willReturn([]);
+
+        self::assertSame('not_found', $this->failure());
+    }
+
+    public function testTwentyFilesWithTheSameNameAreAConflict(): void
+    {
+        $this->claim();
+        $this->existing = ['Q3 plan.docx'];
+        for ($n = 2; $n <= 20; $n++) {
+            $this->existing[] = 'Q3 plan (' . $n . ').docx';
+        }
+
+        self::assertSame('conflict', $this->failure());
+    }
+
+    public function testNineteenFilesWithTheSameNameStillLeaveRoom(): void
+    {
+        $this->claim();
+        $this->existing = ['Q3 plan.docx'];
+        for ($n = 2; $n <= 19; $n++) {
+            $this->existing[] = 'Q3 plan (' . $n . ').docx';
+        }
+
+        $answer = $this->delivery()->handle('9', 'ada');
+
+        self::assertSame('/Synaplan/Documents/Q3 plan (20).docx', $answer['body']['remote_path']);
+    }
+
+    public function testAFileOverTheCapIsTooLargeAndNotDownloaded(): void
+    {
+        $this->claim(['size' => 100 * 1024 * 1024 + 1]);
+        $this->links->expects($this->never())->method('downloadDelivery');
+
+        self::assertSame('too_large', $this->failure());
+    }
+
+    public function testAnyOtherWriteErrorIsUnreachable(): void
+    {
+        $this->claim();
+        $this->newFileFails = new \RuntimeException('storage offline');
+
+        self::assertSame('unreachable', $this->failure());
+    }
+
+    /**
+     * @param array<string, mixed> $override
+     */
+    private function claim(array $override = []): void
+    {
+        $this->links->method('claimDelivery')->willReturn($override + [
+            'id' => '9',
+            'external_id' => 'ada',
+            'name' => 'Q3 plan.docx',
+            'size' => 5,
+            'target' => ['kind' => 'kind_folder', 'ref' => ''],
+            'on_conflict' => 'rename',
+            'download_path' => '/api/v1/platform-links/deliveries/9/file?ticket=abc',
+        ]);
+        $this->links->method('downloadDelivery')->willReturn('hello');
+    }
+
+    private function failure(): string
+    {
+        $answer = $this->delivery()->handle('9', 'ada');
+        self::assertSame('failed', $answer['body']['status']);
+        self::assertSame($answer['body'], $this->reported);
+
+        return (string) $answer['body']['error_code'];
+    }
+
+    private function delivery(): CopyDelivery
+    {
+        $root = $this->createMock(IRootFolder::class);
+        $root->method('getUserFolder')->willReturn($this->userFolder);
+        $users = $this->createMock(IUserManager::class);
+        $users->method('get')->willReturn($this->createMock(IUser::class));
+        $config = $this->createMock(IConfig::class);
+        $config->method('getUserValue')->willReturn('');
+        $caches = $this->createMock(ICacheFactory::class);
+        $caches->method('createDistributed')->willReturn($this->createMock(ICache::class));
+        $urls = $this->createMock(IURLGenerator::class);
+        $urls->method('linkToRouteAbsolute')->willReturn('https://cloud.example/f/42');
+
+        return new CopyDelivery(
+            $this->links,
+            $root,
+            $users,
+            $config,
+            $caches,
+            $urls,
+            $this->createMock(IManager::class),
+            new NullLogger(),
+        );
+    }
+}

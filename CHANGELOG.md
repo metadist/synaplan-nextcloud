@@ -18,6 +18,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A folder a person let Synaplan read** stays readable when it is renamed
   or moved, and a new folder created under its old name is not readable.
   The permission followed the name only.
+- **A copy that cannot be written** tells Synaplan why: storage full, a
+  folder the person may not write to, a target folder that is gone, twenty
+  files with that name, or a file over 100 MB. Every failure used to read
+  "could not reach".
 
 ## 2.0.0 – 2026-11-16
 
