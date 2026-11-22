@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Watches are fed from here.** A file that arrives in a watched folder, or
+  a new version of a watched file, goes to its watch once it has been quiet
+  for a minute. Once an hour each watch asks Synaplan which files it still
+  needs. The app's own copies don't start a watch again. Starting a folder
+  watch asks whether the files already there go too. "Only what I watch"
+  lets Synaplan read the folders you watch. The release needs a new version
+  number so that updated servers get the new tables and background jobs.
+
 ### Fixed
 
 - **Deactivate** in the admin's AI Users panel pauses a person whose account
