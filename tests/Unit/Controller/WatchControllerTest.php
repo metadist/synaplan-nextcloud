@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 use OCA\SynaplanIntegration\Controller\WatchController;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\WatchIndex;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Constants;
@@ -46,7 +47,7 @@ final class WatchControllerTest extends TestCase
         $this->controller = new WatchController(
             $this->createStub(IRequest::class),
             $this->client,
-            new WatchTarget($root, $session),
+            new WatchTarget($root, $session, $this->createStub(WatchPolicy::class)),
             $this->logger,
             $this->index,
             $session,
@@ -120,6 +121,19 @@ final class WatchControllerTest extends TestCase
         $this->client->method('watchOptions')->willReturn(['tasks' => []]);
 
         $this->assertSame(2, $this->controller->options('42')->getData()['existing']);
+    }
+
+    public function testOptionsForAFolderThePersonMayOnlyReadSayWhyBeforeTheDialogOffersAnything(): void
+    {
+        $folder = $this->createStub(Folder::class);
+        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ);
+        $this->home->method('getFirstNodeById')->willReturn($folder);
+        $this->client->expects($this->never())->method('watchOptions');
+
+        $response = $this->controller->options('42');
+
+        $this->assertSame(403, $response->getStatus());
+        $this->assertSame('watch_needs_edit', $response->getData()['error']);
     }
 
     private function readableFolder(): Folder&\PHPUnit\Framework\MockObject\Stub

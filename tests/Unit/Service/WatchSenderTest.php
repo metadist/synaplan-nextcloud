@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Service\OwnWrites;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCA\SynaplanIntegration\Service\WatchSender;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -23,6 +24,7 @@ final class WatchSenderTest extends TestCase
     private PlatformLinkService&MockObject $links;
     private OwnWrites&Stub $ownWrites;
     private Folder&Stub $home;
+    private bool $sharedOff = false;
 
     protected function setUp(): void
     {
@@ -45,6 +47,15 @@ final class WatchSenderTest extends TestCase
             ->willReturn(['status_code' => 200, 'state' => 'accepted']);
 
         self::assertSame(WatchSender::SENT, $this->sender()->file(self::WATCH, 7));
+    }
+
+    public function testAFileInASharedFolderIsNotSentWhileTheAdministratorTurnedThatOff(): void
+    {
+        $this->file(7, 30, 'Incoming/report.pdf', 'e1', 1234);
+        $this->sharedOff = true;
+        $this->links->expects($this->never())->method('sendWatchFile');
+
+        self::assertSame(WatchSender::DROP, $this->sender()->file(self::WATCH, 7));
     }
 
     public function testAFileThisAppWroteGoesAsAnOwnWriteWithoutItsBytes(): void
@@ -149,6 +160,9 @@ final class WatchSenderTest extends TestCase
         $root = $this->createStub(IRootFolder::class);
         $root->method('getUserFolder')->willReturn($this->home);
 
-        return new WatchSender($this->links, $root, $this->ownWrites, new NullLogger());
+        $policy = $this->createStub(WatchPolicy::class);
+        $policy->method('blocks')->willReturn($this->sharedOff);
+
+        return new WatchSender($this->links, $root, $this->ownWrites, new NullLogger(), $policy);
     }
 }

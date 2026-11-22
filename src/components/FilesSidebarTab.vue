@@ -116,7 +116,14 @@
 			<div v-if="watches.length > 0" class="sp-sidebar-watches">
 				<div v-for="item in watches" :key="item.id" class="sp-watch-box">
 					<div class="sp-watch-sentence">
-						{{ item.sentence }}
+						{{
+							item.policy_off
+								? t(
+										'synaplan_integration',
+										'Stopped — your administrator turned off watching shared folders',
+									)
+								: item.sentence
+						}}
 					</div>
 					<div class="sp-watch-hint">
 						{{

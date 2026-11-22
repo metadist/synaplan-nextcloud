@@ -326,7 +326,11 @@
 		"Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again.": "Synaplan n’accepte plus ce Nextcloud. Demandez à votre administrateur de l’enregistrer à nouveau.",
 		"Also the files already in this folder ({count})": "Aussi les fichiers déjà présents dans ce dossier ({count})",
 		"Synaplan takes the {count} files one after the other. This can take about an hour.": "Synaplan prend les {count} fichiers l’un après l’autre. Cela peut prendre environ une heure.",
-		"Only people who may edit a folder or a file can watch it.": "Seules les personnes autorisées à modifier un dossier ou un fichier peuvent le surveiller."
+		"Only people who may edit a folder or a file can watch it.": "Seules les personnes autorisées à modifier un dossier ou un fichier peuvent le surveiller.",
+		"Allow watching shared folders": "Autoriser la surveillance des dossiers partagés",
+		"When this is off, nobody can start watching a shared folder or file, and the watches already on one stop.": "Si cette option est désactivée, personne ne peut commencer à surveiller un dossier ou un fichier partagé, et les surveillances déjà en place s’arrêtent.",
+		"Your administrator turned off watching shared folders.": "Votre administrateur a désactivé la surveillance des dossiers partagés.",
+		"Stopped — your administrator turned off watching shared folders": "Arrêtée — votre administrateur a désactivé la surveillance des dossiers partagés"
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 use OCA\SynaplanIntegration\Service\OwnWrites;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\WatchIndex;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCA\SynaplanIntegration\Service\WatchReconcile;
 use OCA\SynaplanIntegration\Service\WatchSender;
 use OCA\SynaplanIntegration\Service\WatchSync;
@@ -26,6 +27,7 @@ final class WatchReconcileTest extends TestCase
     private WatchSender&MockObject $sender;
     private WatchSync&MockObject $sync;
     private PlatformLinkService&MockObject $links;
+    private bool $sharedOff = false;
 
     protected function setUp(): void
     {
@@ -60,6 +62,16 @@ final class WatchReconcileTest extends TestCase
         $this->links->expects($this->once())->method('reconcileWatch')
             ->with('ada', 5, [['id' => '8', 'version' => 'e8']])
             ->willReturn(['process' => [], 'forget' => ['8']]);
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
+    }
+
+    public function testASharedFolderIsNotAskedAboutWhileTheAdministratorTurnedThatOff(): void
+    {
+        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW)]));
+        $this->sharedOff = true;
+        $this->links->expects($this->never())->method('reconcileWatch');
+        $this->index->expects($this->once())->method('markReconciled');
 
         $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
     }
@@ -164,6 +176,8 @@ final class WatchReconcileTest extends TestCase
     {
         $config = $this->createStub(IConfig::class);
         $config->method('getAppValue')->willReturnArgument(2);
+        $policy = $this->createStub(WatchPolicy::class);
+        $policy->method('blocks')->willReturn($this->sharedOff);
 
         return new WatchReconcile(
             $this->index,
@@ -173,6 +187,7 @@ final class WatchReconcileTest extends TestCase
             $this->createStub(OwnWrites::class),
             $config,
             new NullLogger(),
+            $policy,
         );
     }
 }

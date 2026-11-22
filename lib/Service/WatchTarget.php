@@ -28,12 +28,15 @@ final class WatchTarget
     public function __construct(
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
+        private WatchPolicy $policy,
     ) {
     }
 
     /**
      * How many files are directly in this person's folder: the files a
      * folder watch would get when the person asks for the ones already there.
+     *
+     * @throws FailureException the person may not watch the folder
      */
     public function existingFiles(string $id): int
     {
@@ -41,6 +44,8 @@ final class WatchTarget
             $this->resolve('folder', $id);
             $user = $this->userSession->getUser();
             $folder = $user instanceof IUser ? $this->rootFolder->getUserFolder($user->getUID())->getFirstNodeById((int) $id) : null;
+        } catch (FailureException $e) {
+            throw $e;
         } catch (\Throwable) {
             return 0;
         }
@@ -54,7 +59,7 @@ final class WatchTarget
     /**
      * @return array{target_kind: string, target_id: string, target_path: string}
      * @throws NotFoundException the id is not a readable file or folder of this kind
-     * @throws FailureException the person may read it but not edit it
+     * @throws FailureException the person may not edit it, or it is shared while watching shared folders is off
      */
     public function resolve(string $kind, string $id): array
     {
@@ -88,6 +93,12 @@ final class WatchTarget
             throw new FailureException(
                 new Failure(Http::STATUS_FORBIDDEN, Failure::WATCH_NEEDS_EDIT),
                 'Watching needs permission to edit the target',
+            );
+        }
+        if ($this->policy->blocks($node)) {
+            throw new FailureException(
+                new Failure(Http::STATUS_FORBIDDEN, Failure::WATCH_SHARED_OFF),
+                'Watching shared folders is turned off',
             );
         }
 

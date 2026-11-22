@@ -466,6 +466,6 @@ class ApiControllerTest extends TestCase
     {
         $this->synaplanClient->method('offersSummaryType')->willReturnMap([['translation', false]]);
 
-        $this->assertSame(['translation' => false], $this->controller->features()->getData());
+        $this->assertSame(['translation' => false, 'watchShared' => true], $this->controller->features()->getData());
     }
 }

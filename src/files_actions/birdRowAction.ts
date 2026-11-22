@@ -106,7 +106,8 @@ export const birdRowAction: IFileAction = {
 				resolved.item?.knowledge_folder?.name
 				?? resolved.item?.knowledge_folder?.key
 				?? null
-			const watchState = watch?.state ?? null
+			const policyOff = watch?.policy_off === true
+			const watchState = policyOff ? 'attention' : (watch?.state ?? null)
 			const label = labelForState(
 				state,
 				folderName,

@@ -34,6 +34,7 @@ class WatchSender
         private IRootFolder $rootFolder,
         private OwnWrites $ownWrites,
         private LoggerInterface $logger,
+        private WatchPolicy $policy,
     ) {
     }
 
@@ -44,6 +45,9 @@ class WatchSender
     {
         $node = $this->ownerNode($watch['uid'], $fileId);
         if (!$node instanceof File || !self::belongs($watch, $node)) {
+            return self::DROP;
+        }
+        if ($this->policy->blocks($watch['kind'] === 'file' ? $node : $node->getParent())) {
             return self::DROP;
         }
         try {

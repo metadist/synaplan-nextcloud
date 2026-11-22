@@ -134,6 +134,21 @@
 					</div>
 				</div>
 
+				<NcCheckboxRadioSwitch
+					v-model="watchSharedFolders"
+					type="switch"
+					:disabled="saving">
+					{{ t('synaplan_integration', 'Allow watching shared folders') }}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When this is off, nobody can start watching a shared folder or file, and the watches already on one stop.',
+						)
+					}}
+				</p>
+
 				<div :style="{ height: '20px' }" />
 
 				<div class="sp-field">
@@ -464,6 +479,7 @@ const linkRegistered = ref(false)
 const linkInstanceId = ref('')
 const deliveryUrl = ref('')
 const readFolderCap = ref('20')
+const watchSharedFolders = ref(true)
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
@@ -644,6 +660,7 @@ async function loadSettings() {
 		linkInstance.value = data.link_instance || null
 		deliveryUrl.value = data.delivery_url || ''
 		readFolderCap.value = String(data.read_folder_cap || 20)
+		watchSharedFolders.value = data.watch_shared_folders !== false
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
@@ -671,6 +688,7 @@ async function save() {
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
 			read_folder_cap: Number(readFolderCap.value) || 20,
+			watch_shared_folders: watchSharedFolders.value,
 			...(mode.value === 'link' || mode.value === 'provision'
 				? { delivery_url: deliveryUrl.value }
 				: {}),

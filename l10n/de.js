@@ -327,6 +327,10 @@ OC.L10N.register(
     "Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again." : "Synaplan nimmt diese Nextcloud nicht mehr an. Bitte deine Administration, sie neu zu registrieren.",
     "Also the files already in this folder ({count})" : "Auch die Dateien, die schon in diesem Ordner sind ({count})",
     "Synaplan takes the {count} files one after the other. This can take about an hour." : "Synaplan nimmt die {count} Dateien nacheinander. Das kann etwa eine Stunde dauern.",
-    "Only people who may edit a folder or a file can watch it." : "Beobachten kann nur, wer den Ordner oder die Datei bearbeiten darf."
+    "Only people who may edit a folder or a file can watch it." : "Beobachten kann nur, wer den Ordner oder die Datei bearbeiten darf.",
+    "Allow watching shared folders" : "Beobachten geteilter Ordner erlauben",
+    "When this is off, nobody can start watching a shared folder or file, and the watches already on one stop." : "Wenn das aus ist, kann niemand einen geteilten Ordner oder eine geteilte Datei beobachten lassen, und bestehende Beobachtungen darauf halten an.",
+    "Your administrator turned off watching shared folders." : "Deine Administration hat das Beobachten geteilter Ordner ausgeschaltet.",
+    "Stopped — your administrator turned off watching shared folders" : "Angehalten – deine Administration hat das Beobachten geteilter Ordner ausgeschaltet"
 },
 "nplurals=2; plural=(n != 1);");

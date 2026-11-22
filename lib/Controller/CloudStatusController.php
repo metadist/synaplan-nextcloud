@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -33,6 +34,7 @@ class CloudStatusController extends Controller
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
         private IURLGenerator $urlGenerator,
+        private WatchPolicy $policy,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -56,13 +58,14 @@ class CloudStatusController extends Controller
         if (!$answer['enabled']) {
             return new JSONResponse(['success' => true, 'enabled' => false, 'items' => [], 'watches' => []]);
         }
+        $user = $this->userSession->getUser();
 
         return new JSONResponse([
             'success' => true,
             'enabled' => true,
             'unreachable' => (bool) ($answer['unreachable'] ?? false),
             'items' => $answer['items'],
-            'watches' => $answer['watches'],
+            'watches' => $user !== null ? $this->policy->markStopped($user->getUID(), $answer['watches']) : $answer['watches'],
             'glyphs' => $this->cloudState->glyphOverrides(),
             'openSynaplanUrl' => $this->synaplanConfig->getPublicBaseUrl() . '/files',
         ]);
@@ -128,7 +131,7 @@ class CloudStatusController extends Controller
                 : null,
             'keptUpToDate' => (bool) ($item['kept_up_to_date'] ?? false),
             'synaplanFileId' => $synaplanFileId,
-            'watches' => $answer['watches'],
+            'watches' => $this->policy->markStopped($user->getUID(), $answer['watches']),
             'glyphs' => $this->cloudState->glyphOverrides(),
             'openSynaplanUrl' => $this->synaplanConfig->getPublicBaseUrl() . '/files',
         ]);

@@ -1,4 +1,5 @@
 import type { IFileAction } from '@nextcloud/files'
+import type { NodeCompat } from './compat'
 
 import EyePlusOutlineSvg from '@mdi/svg/svg/eye-plus-outline.svg?raw'
 import { Permission } from '@nextcloud/files'
@@ -6,6 +7,7 @@ import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
+import { watchSharedAllowed } from './features'
 
 /**
  * Whether a node is a folder.
@@ -16,6 +18,28 @@ import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
  */
 function isFolder(node: { type?: string; mime?: string }): boolean {
 	return node.type === 'folder' || node.mime === 'httpd/unix-directory'
+}
+
+/**
+ * Whether the Files app shows the node as shared: shared with the person,
+ * or shared by them. A folder below one of their shares is not marked; the
+ * dialog then says why it cannot start.
+ *
+ * @param node the file list node
+ */
+function isShared(node: NodeCompat): boolean {
+	const mountType = node.attributes?.['mount-type']
+	if (typeof mountType === 'string' && mountType.startsWith('shared')) {
+		return true
+	}
+	const shareTypes = node.attributes?.['share-types']
+	if (Array.isArray(shareTypes)) {
+		return shareTypes.length > 0
+	}
+	return (
+		typeof shareTypes === 'number'
+		|| (typeof shareTypes === 'object' && shareTypes !== null)
+	)
 }
 
 export const watchAction: IFileAction = {
@@ -32,7 +56,10 @@ export const watchAction: IFileAction = {
 		// renamed; adding files is what editing a folder means.
 		const edit = isFolder(nodes[0]) ? Permission.CREATE : Permission.UPDATE
 		const needed = Permission.READ | edit
-		return (nodes[0].permissions & needed) === needed
+		if ((nodes[0].permissions & needed) !== needed) {
+			return false
+		}
+		return watchSharedAllowed() || !isShared(nodes[0])
 	},
 
 	async exec(...args: unknown[]) {

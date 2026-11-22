@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -124,6 +125,7 @@ class ApiController extends Controller
     {
         return new JSONResponse([
             'translation' => $this->synaplanClient->offersSummaryType('translation'),
+            'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
         ]);
     }
 

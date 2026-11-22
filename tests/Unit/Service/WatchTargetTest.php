@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\Failure;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\Constants;
 use OCP\Files\File;
@@ -84,6 +85,19 @@ final class WatchTargetTest extends TestCase
         $this->target($node, 'Shared')->resolve('folder', '8');
     }
 
+    public function testASharedTargetCannotBeWatchedWhileTheAdministratorTurnedThatOff(): void
+    {
+        $target = $this->target($this->file('Shared/Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE), 'Shared/Notes.md', true);
+
+        try {
+            $target->resolve('file', '7');
+            self::fail('A shared file was accepted');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::WATCH_SHARED_OFF, $e->failure->code);
+        }
+    }
+
     public function testAKindThatDoesNotMatchTheNodeIsNotFound(): void
     {
         $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE));
@@ -111,7 +125,7 @@ final class WatchTargetTest extends TestCase
         return $file;
     }
 
-    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md'): WatchTarget
+    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md', bool $sharedOff = false): WatchTarget
     {
         $user = $this->createStub(IUser::class);
         $user->method('getUID')->willReturn('ada');
@@ -125,6 +139,9 @@ final class WatchTargetTest extends TestCase
         $root = $this->createStub(IRootFolder::class);
         $root->method('getUserFolder')->willReturn($home);
 
-        return new WatchTarget($root, $session);
+        $policy = $this->createStub(WatchPolicy::class);
+        $policy->method('blocks')->willReturn($sharedOff);
+
+        return new WatchTarget($root, $session, $policy);
     }
 }

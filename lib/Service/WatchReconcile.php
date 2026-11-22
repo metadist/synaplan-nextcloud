@@ -37,6 +37,7 @@ class WatchReconcile
         private OwnWrites $ownWrites,
         private IConfig $config,
         private LoggerInterface $logger,
+        private WatchPolicy $policy,
     ) {
     }
 
@@ -77,7 +78,7 @@ class WatchReconcile
     private function watch(array $watch, int $now, float $deadline): bool
     {
         $target = $this->sender->ownerNode($watch['uid'], $watch['target']);
-        if ($target === null) {
+        if ($target === null || $this->policy->blocks($target)) {
             return true;
         }
         $versions = [];
