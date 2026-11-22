@@ -27,6 +27,18 @@ final class WatchTargetTest extends TestCase
         ], $target->resolve('file', '7'));
     }
 
+    public function testALongPathIsCutOnACharacterBoundary(): void
+    {
+        $relative = str_repeat('ä', 200) . '.md';
+        $target = $this->target($this->file($relative, Constants::PERMISSION_READ), $relative);
+
+        $path = $target->resolve('file', '7')['target_path'];
+
+        self::assertLessThanOrEqual(255, strlen($path));
+        self::assertTrue(mb_check_encoding($path, 'UTF-8'));
+        self::assertNotFalse(json_encode(['target_path' => $path]));
+    }
+
     public function testAFolderIsAcceptedAsAFolder(): void
     {
         $node = $this->createStub(Folder::class);

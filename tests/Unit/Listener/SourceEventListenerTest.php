@@ -76,6 +76,17 @@ class SourceEventListenerTest extends TestCase
         $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/ada/files/Specs/spec.pdf', 'etag-2')));
     }
 
+    public function testAPathLongerThanSynaplanTakesIsSentEmpty(): void
+    {
+        $folder = str_repeat('ä', 130);
+        $this->jobs->expects($this->once())->method('add')->with(
+            SourceEventsJob::class,
+            ['uid' => 'ada', 'id' => '42', 'event' => 'changed', 'version' => 'etag-2', 'path' => ''],
+        );
+
+        $this->listener()->handle(new NodeWrittenEvent($this->fileNode(42, '/ada/files/' . $folder . '/spec.pdf', 'etag-2')));
+    }
+
     public function testASharedFileIsReportedForTheEditorAndTheOwnerEachWithTheirPath(): void
     {
         $adaFolder = $this->createMock(Folder::class);
