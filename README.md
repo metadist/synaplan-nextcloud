@@ -182,6 +182,49 @@ make e2e-down     # stop both stacks and delete their data
 - A host port of the Synaplan test stack already taken (3308, 11434, …): put a
   compose file that drops it in `E2E_SYNAPLAN_FILES`.
 
+### Next to ownCloud.online
+
+This repo and [synaplan-owncloud-online](https://github.com/metadist/synaplan-owncloud-online)
+run on one machine at the same time, against one Synaplan test stack:
+
+| | Nextcloud | ownCloud.online |
+|---|---|---|
+| Dev stack | :8081, containers `synaplan-nextcloud-dev*` | :8083, containers `synaplan-owncloud-dev*` |
+| e2e stack | :8091, Compose project `synaplan-nextcloud-e2e` | its dev stack on :8083 |
+| Synaplan test stack | shared on :8001 | shared on :8001 |
+
+Each Compose project has its own default network and project-named volumes.
+The Synaplan test stack has fixed container names and host ports, so only one
+runs: whichever repo starts it owns it, and `make e2e-up` in the other repo
+finds it at `E2E_SYNAPLAN_URL` and uses it. The two e2e overlays set the
+same environment apart from the registration token, and registration is
+`open`, so each app registers its own client either way. The journeys only
+look at links of their own client and host.
+
+```bash
+make e2e-up SYNAPLAN_DIR=../synaplan   # starts the Synaplan test stack, or uses the one that answers on :8001
+make test-e2e                          # meanwhile `make e2e-up test-e2e` in ../synaplan-owncloud-online
+make e2e-down E2E_KEEP_SYNAPLAN=1      # removes this Nextcloud and leaves the shared Synaplan running
+```
+
+`make e2e-down` without `E2E_KEEP_SYNAPLAN` also removes the Synaplan test
+stack when this repo started it; a stack the other repo started is left
+alone, as Compose only removes its own project. As long as the
+ownCloud.online `e2e-up` starts the stack without checking for a running
+one, start the journeys there first.
+
+For hand testing, the dev Nextcloud can use the same Synaplan test stack
+instead of the Synaplan dev stack. `docker/dev-test-backend.yml` takes it off
+the Synaplan dev network, points it at `http://host.docker.internal:8001` and
+installs it without organisation login (the test stack has no Keycloak). The
+address is written at install time, so switching needs fresh volumes:
+
+```bash
+make dev-reset dev-up DEV_SYNAPLAN=test
+```
+
+Pass `DEV_SYNAPLAN=test` to every later `make dev-*` call on that install.
+
 ## Release
 
 Releases come from CI (`.github/workflows/release.yml`):
