@@ -6,18 +6,8 @@ import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
+import { isExtractable } from './extractable'
 import { translationOffered } from './features'
-
-const SUPPORTED_MIMES = [
-	'text/',
-	'application/pdf',
-	'application/json',
-	'application/xml',
-	'application/rtf',
-	'application/msword',
-	'application/vnd.openxmlformats-officedocument',
-	'application/vnd.oasis.opendocument',
-]
 
 export const translateAction: IFileAction = {
 	id: 'synaplan:translate',
@@ -36,8 +26,7 @@ export const translateAction: IFileAction = {
 		if ((node.permissions & Permission.READ) === 0) {
 			return false
 		}
-		const mime = node.mime ?? ''
-		return SUPPORTED_MIMES.some((prefix) => mime.startsWith(prefix))
+		return isExtractable(node.mime ?? '')
 	},
 
 	async exec(...args: unknown[]) {
