@@ -44,6 +44,8 @@ class ConsentController extends Controller
 
     /**
      * Current consent state for the logged-in user.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function getConsent(): JSONResponse
@@ -56,6 +58,8 @@ class ConsentController extends Controller
 
     /**
      * Grant or withdraw consent to activate AI.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function setConsent(bool $granted = false, bool $createAccount = false): JSONResponse

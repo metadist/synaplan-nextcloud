@@ -63,6 +63,8 @@ class MediaController extends Controller
 
     /**
      * Generate an image or video via Synaplan.
+     *
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function generate(): JSONResponse
@@ -108,6 +110,8 @@ class MediaController extends Controller
 
     /**
      * Download generated media from Synaplan and save it to the user's Nextcloud files.
+     *
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function save(): JSONResponse
@@ -180,6 +184,8 @@ class MediaController extends Controller
 
     /**
      * Proxy a Synaplan media file through the Nextcloud server.
+     *
+     * @return Http\Response<Http::STATUS_*, array<string, mixed>>
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]

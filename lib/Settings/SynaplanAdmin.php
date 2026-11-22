@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Settings;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\Settings\ISettings;
 
@@ -15,6 +16,9 @@ use OCP\Settings\ISettings;
  */
 class SynaplanAdmin implements ISettings
 {
+    /**
+     * @return TemplateResponse<Http::STATUS_OK, array{}>
+     */
     public function getForm(): TemplateResponse
     {
         \OCP\Util::addScript(Application::APP_ID, 'synaplan_integration-settings');

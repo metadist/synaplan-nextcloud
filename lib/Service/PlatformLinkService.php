@@ -45,6 +45,9 @@ class PlatformLinkService
         return $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.link.callback');
     }
 
+    /**
+     * @param array<string, string> $query
+     */
     public function personalSettingsUrl(array $query = []): string
     {
         $url = $this->urlGenerator->linkToRouteAbsolute('settings.PersonalSettings.index', [

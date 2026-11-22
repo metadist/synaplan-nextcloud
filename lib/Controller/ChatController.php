@@ -54,6 +54,7 @@ class ChatController extends Controller
      * @param string|null $model       Provider model id (null = the account's chat model)
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
      * @param list<mixed> $history Earlier turns of this Research Chat. Ignored for a file.
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function chat(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false, array $history = []): JSONResponse
@@ -110,6 +111,7 @@ class ChatController extends Controller
      * @param string|null $model       Provider model id/name (null = user default)
      * @param bool        $useMemories Whether to enrich the answer with the user's memories
      * @param list<mixed> $history Earlier turns of this Research Chat. Ignored for a file.
+     * @return Response<Http::STATUS_*, array<string, mixed>>
      */
     #[NoAdminRequired]
     public function chatStream(string $message = '', ?int $fileId = null, ?string $groupKey = null, ?string $model = null, bool $useMemories = false, array $history = []): Response

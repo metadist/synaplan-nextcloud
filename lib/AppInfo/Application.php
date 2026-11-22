@@ -31,6 +31,9 @@ class Application extends App implements IBootstrap
 {
     public const APP_ID = 'synaplan_integration';
 
+    /**
+     * @param array<string, mixed> $urlParams
+     */
     public function __construct(array $urlParams = [])
     {
         parent::__construct(self::APP_ID, $urlParams);

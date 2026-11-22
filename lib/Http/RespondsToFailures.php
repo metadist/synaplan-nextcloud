@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Http;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 
 /**
@@ -16,6 +17,7 @@ trait RespondsToFailures
 {
     /**
      * @param array<string, mixed> $extra keys the frontend reads beside the failure
+     * @return JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     private function failed(\Throwable $e, string $action, array $extra = []): JSONResponse
     {

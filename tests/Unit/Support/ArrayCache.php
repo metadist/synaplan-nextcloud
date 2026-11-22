@@ -15,11 +15,21 @@ final class ArrayCache implements ICache
     /** @var array<string, mixed> */
     public array $values = [];
 
+    // Keys stay untyped in the signatures: Nextcloud 33's ICache declares none,
+    // Nextcloud 35's declares string.
+
+    /**
+     * @param string $key
+     */
     public function get($key)
     {
         return $this->values[(string) $key] ?? null;
     }
 
+    /**
+     * @param string $key
+     * @param int $ttl
+     */
     public function set($key, $value, $ttl = 0)
     {
         $this->values[(string) $key] = $value;
@@ -27,11 +37,17 @@ final class ArrayCache implements ICache
         return true;
     }
 
+    /**
+     * @param string $key
+     */
     public function hasKey($key)
     {
         return array_key_exists((string) $key, $this->values);
     }
 
+    /**
+     * @param string $key
+     */
     public function remove($key)
     {
         unset($this->values[(string) $key]);
@@ -39,6 +55,9 @@ final class ArrayCache implements ICache
         return true;
     }
 
+    /**
+     * @param string $prefix
+     */
     public function clear($prefix = '')
     {
         foreach (array_keys($this->values) as $key) {

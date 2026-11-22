@@ -32,6 +32,9 @@ class WatchController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function options(): JSONResponse
     {
@@ -47,6 +50,9 @@ class WatchController extends Controller
         }
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function start(
         string $targetKind,

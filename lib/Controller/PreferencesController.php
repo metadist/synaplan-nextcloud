@@ -30,6 +30,9 @@ class PreferencesController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function get(): JSONResponse
     {
@@ -47,6 +50,8 @@ class PreferencesController extends Controller
 
     /**
      * Add one folder the person lets Synaplan read.
+     *
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function allowFolder(string $fileId = '', string $path = ''): JSONResponse
@@ -80,6 +85,9 @@ class PreferencesController extends Controller
         return new JSONResponse(['success' => true, 'read_scope' => $this->scope->get($uid)]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function save(?string $copy_folder = null): JSONResponse
     {

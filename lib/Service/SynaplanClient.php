@@ -750,6 +750,7 @@ class SynaplanClient
     }
 
     /**
+     * @param array<string, mixed>|null $body
      * @param bool $requiresKey false for public routes, which work without an account
      * @param array<string, scalar> $query
      * @return array<string, mixed>
@@ -876,6 +877,9 @@ class SynaplanClient
         return str_contains((string) $response->getBody(), '"insufficient_scope"');
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private function doRequest(IClient $client, string $method, string $url, array $options): \OCP\Http\Client\IResponse
     {
         return match (strtoupper($method)) {

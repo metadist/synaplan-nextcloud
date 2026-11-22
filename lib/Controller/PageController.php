@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -24,6 +25,8 @@ class PageController extends Controller
 
     /**
      * Research chat page.
+     *
+     * @return TemplateResponse<Http::STATUS_OK, array{}>
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]

@@ -60,7 +60,7 @@ class ResearchHistory
     }
 
     /**
-     * @param list<array<string, mixed>> $messages
+     * @param array<mixed> $messages as the browser sent them; entries are checked here
      *
      * @return array{id: string, title: string, updated: int}
      */
@@ -181,7 +181,7 @@ class ResearchHistory
     }
 
     /**
-     * @param list<mixed> $messages
+     * @param array<mixed> $messages
      *
      * @return list<array{role: string, text: string, model?: string}>
      */

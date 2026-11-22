@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -119,6 +120,9 @@ final class ControllerErrorTest extends TestCase
         self::assertSame('not_connected', $response->getData()['error']);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     private function failWith(string $action, \Throwable $failure): JSONResponse
     {
         $method = match ($action) {
@@ -148,6 +152,8 @@ final class ControllerErrorTest extends TestCase
 
     /**
      * The failure keys only: groups and models answer with empty lists beside them.
+     *
+     * @param JSONResponse<Http::STATUS_*, array<string, mixed>, array{}> $response
      *
      * @return array<string, mixed>
      */

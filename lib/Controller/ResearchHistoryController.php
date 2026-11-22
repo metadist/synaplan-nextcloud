@@ -26,6 +26,9 @@ class ResearchHistoryController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function list(): JSONResponse
     {
@@ -40,6 +43,9 @@ class ResearchHistoryController extends Controller
         ]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_NOT_FOUND, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function open(string $id): JSONResponse
     {
@@ -59,6 +65,11 @@ class ResearchHistoryController extends Controller
         return new JSONResponse(['success' => true, 'conversation' => $chat]);
     }
 
+    /**
+     * @param array<mixed> $messages
+     *
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function save(string $id, array $messages = []): JSONResponse
     {
@@ -84,6 +95,9 @@ class ResearchHistoryController extends Controller
         ]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_NOT_FOUND, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function remove(string $id): JSONResponse
     {
@@ -107,6 +121,9 @@ class ResearchHistoryController extends Controller
         return $user !== null ? $user->getUID() : null;
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     */
     private function denied(): JSONResponse
     {
         return new JSONResponse(['success' => false, 'error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);

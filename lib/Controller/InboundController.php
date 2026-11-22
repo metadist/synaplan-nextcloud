@@ -49,6 +49,7 @@ class InboundController extends Controller
 
     /**
      * @param string|null $body the notification token, read from the request when omitted
+     * @return JSONResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[PublicPage]
     #[NoCSRFRequired]
@@ -117,6 +118,7 @@ class InboundController extends Controller
 
     /**
      * @param array{status: int, body: array<string, mixed>} $result
+     * @return JSONResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED, array<string, mixed>, array{}>
      */
     private function delivered(array $result): JSONResponse
     {
@@ -127,6 +129,9 @@ class InboundController extends Controller
         return new JSONResponse($result['body'], $status);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_ACCEPTED, array<string, mixed>, array{}>
+     */
     private function read(string $id, string $person): JSONResponse
     {
         $this->reads->handle($id, $person);
@@ -134,6 +139,9 @@ class InboundController extends Controller
         return new JSONResponse(['state' => 'accepted'], Http::STATUS_ACCEPTED);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_NO_CONTENT, array<string, mixed>, array{}>
+     */
     private function revoked(string $person): JSONResponse
     {
         $this->accounts->linkEnded($person);
