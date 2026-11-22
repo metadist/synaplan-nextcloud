@@ -447,7 +447,7 @@ class OAuthClientTest extends TestCase
         $this->assertSame('code-1', $form['code']);
         $this->assertSame('verifier-1', $form['code_verifier']);
         $this->assertSame('https://cb', $form['redirect_uri']);
-        $this->assertSame('client-1', $form['client_id']);
+        $this->assertArrayNotHasKey('client_id', $form);
         $this->assertSame('urn:ietf:params:oauth:client-assertion-type:jwt-bearer', $form['client_assertion_type']);
         $this->assertSame('client-1', self::decodeJwt((string) $form['client_assertion'])[1]['iss']);
 

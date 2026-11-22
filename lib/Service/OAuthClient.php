@@ -350,7 +350,9 @@ class OAuthClient
      */
     private function token(array $params): array
     {
-        return $this->form('/oauth/token', $params + ['client_id' => $this->clientId()] + $this->assertionFields());
+        // The assertion names the client; the token endpoint declares no
+        // client_id field.
+        return $this->form('/oauth/token', $params + $this->assertionFields());
     }
 
     /**
