@@ -15,6 +15,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   watch asks whether the files already there go too. "Only what I watch"
   lets Synaplan read the folders you watch. The release needs a new version
   number so that updated servers get the new tables and background jobs.
+- **Only people who may edit a folder or a file can watch it.** The Watch
+  action is hidden for anything the person may only read, and the server
+  refuses it.
+- **Allow watching shared folders** on the admin screen. While it is off,
+  nobody can start watching a shared folder or file, and the watches already
+  on one stop and say why.
+- **Pause, Resume and Stop watching** for the owner, in the Synaplan sidebar
+  of a watched folder and in the new **Watched folders** list on the app
+  page. Stop asks once.
+- **A warning on the admin screen and in the watch dialog** while background
+  jobs run in AJAX mode, because watches then only move on while someone has
+  a page open.
 
 ### Fixed
 
