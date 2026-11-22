@@ -84,13 +84,10 @@ class InboundController extends Controller
 
     private function rejectReason(string $token): ?string
     {
-        $reason = NotificationSignature::verify(
-            $token,
-            $this->keys->issuer(),
-            $this->synaplanConfig->getLinkInstanceId(),
-            $this->keys->keys(),
-            $this->time->getTime(),
-        );
+        $reason = $this->verify($token);
+        if ($reason === NotificationSignature::BAD_SIGNATURE && $this->keys->refreshForUnknownKey($this->time->getTime())) {
+            $reason = $this->verify($token);
+        }
         if ($reason !== NotificationSignature::OK) {
             return $reason;
         }
@@ -105,6 +102,17 @@ class InboundController extends Controller
         }
 
         return null;
+    }
+
+    private function verify(string $token): string
+    {
+        return NotificationSignature::verify(
+            $token,
+            $this->keys->issuer(),
+            $this->synaplanConfig->getLinkInstanceId(),
+            $this->keys->keys(),
+            $this->time->getTime(),
+        );
     }
 
     /**
