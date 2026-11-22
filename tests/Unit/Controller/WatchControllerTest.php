@@ -135,6 +135,14 @@ final class WatchControllerTest extends TestCase
         $this->assertSame(2, $this->controller->options('42')->getData()['existing']);
     }
 
+    public function testOptionsSayWhetherBackgroundJobsRunOnASchedule(): void
+    {
+        $this->policy->method('jobsOnSchedule')->willReturn(false);
+        $this->client->method('watchOptions')->willReturn(['tasks' => []]);
+
+        $this->assertFalse($this->controller->options()->getData()['jobsOnSchedule']);
+    }
+
     public function testOptionsForAFolderThePersonMayOnlyReadSayWhyBeforeTheDialogOffersAnything(): void
     {
         $folder = $this->createStub(Folder::class);

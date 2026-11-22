@@ -338,7 +338,11 @@
 		"Synaplan stops watching {name}. Files and translations already made stay where they are.": "Synaplan beobachtet {name} nicht mehr. Dateien und Übersetzungen, die schon entstanden sind, bleiben, wo sie sind.",
 		"Last activity {time}": "Zuletzt aktiv {time}",
 		"Open folder": "Ordner öffnen",
-		"Open file": "Datei öffnen"
+		"Open file": "Datei öffnen",
+		"Background jobs run only when someone opens a page.": "Hintergrundjobs laufen nur, wenn jemand eine Seite öffnet.",
+		"Watched folders need background jobs that run on a schedule.": "Beobachtete Ordner brauchen Hintergrundjobs, die nach Zeitplan laufen.",
+		"How to set it up": "So richten Sie es ein",
+		"Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.": "Bis Ihre Administration das einrichtet, bekommt Synaplan neue Dateien nur, während jemand eine Seite dieser Nextcloud geöffnet hat."
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

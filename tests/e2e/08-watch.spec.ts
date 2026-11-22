@@ -310,6 +310,65 @@ test('the owner pauses and resumes a watch in the Watched folders list and stops
 	}
 })
 
+test('with background jobs in AJAX mode, the admin screen and the watch dialog say watches need a schedule', async ({
+	browser,
+	page,
+}) => {
+	const folder = `Ajax-${Date.now()}`
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${UID}/${folder}`
+	const before =
+		occ('config:app:get', 'core', 'backgroundjobs_mode').trim() || 'cron'
+	const admin = await browser.newPage()
+	expect((await person.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	try {
+		occ('background:ajax')
+		await expect
+			.poll(
+				async () =>
+					(
+						await (
+							await person.get(`${APP}/api/v1/watches/options`)
+						).json()
+					).jobsOnSchedule,
+				{ timeout: 60_000 },
+			)
+			.toBe(false)
+
+		const dialog = await openFileAction(page, 'Watch with Synaplan…', folder)
+		await expect(dialog.getByTestId('synaplan-watch-jobs-note')).toContainText(
+			'Watched folders need background jobs that run on a schedule.',
+		)
+		await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+		await logIn(admin, 'admin')
+		await admin.goto('/index.php/settings/admin/synaplan_integration')
+		const note = admin.getByTestId('synaplan-admin-jobs-note')
+		await expect(note).toContainText(
+			'Background jobs run only when someone opens a page.',
+		)
+		await expect(
+			note.getByRole('link', { name: /How to set it up/ }),
+		).toBeVisible()
+
+		occ('background:cron')
+		// Nextcloud serves app config from a short-lived cache.
+		await expect(async () => {
+			const loaded = admin.waitForResponse((r) =>
+				r.url().endsWith('/api/v1/settings'),
+			)
+			await admin.reload()
+			await loaded
+			await expect(note).toHaveCount(0, { timeout: 1000 })
+		}).toPass({ timeout: 60_000 })
+	} finally {
+		occ(`background:${before}`)
+		await admin.close()
+		await person.delete(dav)
+		await person.dispose()
+	}
+})
+
 /**
  * Share a folder in the owner's root with another person.
  *

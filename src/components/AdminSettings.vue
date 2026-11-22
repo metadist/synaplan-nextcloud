@@ -53,6 +53,33 @@
 				</a>
 			</div>
 
+			<NcNoteCard
+				v-if="!jobsOnSchedule"
+				type="warning"
+				class="sp-jobs-note"
+				data-testid="synaplan-admin-jobs-note">
+				<p>
+					{{
+						t(
+							'synaplan_integration',
+							'Background jobs run only when someone opens a page.',
+						)
+					}}
+					{{
+						t(
+							'synaplan_integration',
+							'Watched folders need background jobs that run on a schedule.',
+						)
+					}}
+					<a
+						href="https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/background_jobs_configuration.html"
+						target="_blank"
+						rel="noopener noreferrer">
+						{{ t('synaplan_integration', 'How to set it up') }} ↗
+					</a>
+				</p>
+			</NcNoteCard>
+
 			<NcSettingsSection
 				:name="t('synaplan_integration', 'Connection Settings')"
 				:description="
@@ -480,6 +507,7 @@ const linkInstanceId = ref('')
 const deliveryUrl = ref('')
 const readFolderCap = ref('20')
 const watchSharedFolders = ref(true)
+const jobsOnSchedule = ref(true)
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
@@ -661,6 +689,7 @@ async function loadSettings() {
 		deliveryUrl.value = data.delivery_url || ''
 		readFolderCap.value = String(data.read_folder_cap || 20)
 		watchSharedFolders.value = data.watch_shared_folders !== false
+		jobsOnSchedule.value = data.background_jobs_on_schedule !== false
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}

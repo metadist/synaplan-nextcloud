@@ -105,6 +105,23 @@
 						)
 					}}
 				</p>
+				<p
+					v-if="!jobsOnSchedule"
+					class="sp-hint"
+					data-testid="synaplan-watch-jobs-note">
+					{{
+						t(
+							'synaplan_integration',
+							'Watched folders need background jobs that run on a schedule.',
+						)
+					}}
+					{{
+						t(
+							'synaplan_integration',
+							'Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.',
+						)
+					}}
+				</p>
 			</template>
 			<p v-else>
 				{{
@@ -174,6 +191,7 @@ const folderOptions = ref<string[]>([])
 const task = ref<{ id: number; name: string } | null>(null)
 const tasks = ref<Array<{ id: number; name: string }>>([])
 const existing = ref(0)
+const jobsOnSchedule = ref(true)
 const backfill = ref(true)
 const backfillChosen = ref(false)
 
@@ -287,6 +305,7 @@ async function loadOptions() {
 				typeof item?.id === 'number' && typeof item?.name === 'string',
 		)
 		task.value = tasks.value[0] ?? null
+		jobsOnSchedule.value = data.jobsOnSchedule !== false
 		existing.value =
 			typeof data.existing === 'number' && data.existing > 0
 				? data.existing

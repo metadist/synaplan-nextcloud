@@ -23,6 +23,30 @@ final class WatchPolicyTest extends TestCase
         self::assertFalse($this->policy('no')->sharedAllowed());
     }
 
+    /**
+     * @return iterable<string, array{?string, bool}>
+     */
+    public static function jobModes(): iterable
+    {
+        yield 'never set, which Nextcloud reads as AJAX' => [null, false];
+        yield 'AJAX' => ['ajax', false];
+        yield 'webcron' => ['webcron', true];
+        yield 'cron' => ['cron', true];
+    }
+
+    #[DataProvider('jobModes')]
+    public function testOnlyAjaxLeavesBackgroundJobsWithoutASchedule(?string $mode, bool $scheduled): void
+    {
+        $config = $this->createStub(IConfig::class);
+        $config->method('getAppValue')->willReturnCallback(
+            static fn (string $app, string $key, string $default): string => $app === 'core' && $key === 'backgroundjobs_mode' && $mode !== null ? $mode : $default,
+        );
+        $policy = new WatchPolicy($config, $this->createStub(IShareManager::class), $this->createStub(IRootFolder::class));
+
+        self::assertSame($scheduled, $policy->jobsOnSchedule());
+        self::assertSame($scheduled, WatchPolicy::jobsOnScheduleIn($config));
+    }
+
     public function testAFolderSharedWithThePersonIsShared(): void
     {
         $folder = $this->folder(received: true, access: ['users' => ['bob']]);

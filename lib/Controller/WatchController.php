@@ -56,7 +56,11 @@ class WatchController extends Controller
         try {
             $existing = $targetId !== null && $targetId !== '' ? $this->targets->existingFiles($targetId) : 0;
 
-            return new JSONResponse(['success' => true, 'existing' => $existing] + $this->synaplanClient->watchOptions());
+            return new JSONResponse([
+                'success' => true,
+                'existing' => $existing,
+                'jobsOnSchedule' => $this->policy->jobsOnSchedule(),
+            ] + $this->synaplanClient->watchOptions());
         } catch (\Throwable $e) {
             return $this->failed($e, 'Loading the watch options failed', [
                 'tasks' => [],

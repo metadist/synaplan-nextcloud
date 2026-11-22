@@ -79,6 +79,20 @@ class SettingsControllerTest extends TestCase
         $this->assertSame('', $data['api_key_masked']);
     }
 
+    public function testGetSettingsSaysWhenBackgroundJobsRunOnlyWithAPageOpen(): void
+    {
+        $mode = 'ajax';
+        $this->config->method('getAppValue')->willReturnCallback(
+            static function (string $app, string $key, string $default) use (&$mode): string {
+                return $app === 'core' && $key === 'backgroundjobs_mode' ? $mode : $default;
+            },
+        );
+
+        $this->assertFalse($this->controller->getSettings()->getData()['background_jobs_on_schedule']);
+        $mode = 'cron';
+        $this->assertTrue($this->controller->getSettings()->getData()['background_jobs_on_schedule']);
+    }
+
     public function testSaveSettingsPersistsValues(): void
     {
         $this->config->expects($this->exactly(2))

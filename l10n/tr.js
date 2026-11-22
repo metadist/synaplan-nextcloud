@@ -339,6 +339,10 @@ OC.L10N.register(
     "Synaplan stops watching {name}. Files and translations already made stay where they are." : "Synaplan artık {name} öğesini izlemiyor. Daha önce oluşturulan dosyalar ve çeviriler oldukları yerde kalır.",
     "Last activity {time}" : "Son etkinlik {time}",
     "Open folder" : "Klasörü aç",
-    "Open file" : "Dosyayı aç"
+    "Open file" : "Dosyayı aç",
+    "Background jobs run only when someone opens a page." : "Arka plan işleri yalnızca biri bir sayfa açtığında çalışır.",
+    "Watched folders need background jobs that run on a schedule." : "İzlenen klasörler, zamanlanmış olarak çalışan arka plan işlerine ihtiyaç duyar.",
+    "How to set it up" : "Nasıl kurulur",
+    "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Yöneticiniz bunu ayarlayana kadar Synaplan yeni dosyaları yalnızca biri bu Nextcloud'un bir sayfasını açık tuttuğunda alır."
 },
 "nplurals=2; plural=(n > 1);");

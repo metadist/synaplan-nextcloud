@@ -32,6 +32,20 @@ class WatchPolicy
         return $config->getAppValue(Application::APP_ID, self::SHARED_KEY, 'yes') !== 'no';
     }
 
+    /**
+     * Watches move on in the every-minute job. In AJAX mode that job runs
+     * only while someone has a page of this Nextcloud open.
+     */
+    public static function jobsOnScheduleIn(IConfig $config): bool
+    {
+        return $config->getAppValue('core', 'backgroundjobs_mode', 'ajax') !== 'ajax';
+    }
+
+    public function jobsOnSchedule(): bool
+    {
+        return self::jobsOnScheduleIn($this->config);
+    }
+
     public function sharedAllowed(): bool
     {
         return self::sharedAllowedIn($this->config);
