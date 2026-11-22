@@ -44,6 +44,7 @@ final class WatchPolicyTest extends TestCase
         $policy = new WatchPolicy($config, $this->createStub(IShareManager::class), $this->createStub(IRootFolder::class));
 
         self::assertSame($scheduled, $policy->jobsOnSchedule());
+        self::assertSame($mode ?? 'ajax', WatchPolicy::jobsModeIn($config));
         self::assertSame($scheduled, WatchPolicy::jobsOnScheduleIn($config));
     }
 

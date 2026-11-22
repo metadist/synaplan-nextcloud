@@ -88,9 +88,11 @@ class SettingsControllerTest extends TestCase
             },
         );
 
-        $this->assertFalse($this->controller->getSettings()->getData()['background_jobs_on_schedule']);
+        $this->assertSame('ajax', $this->controller->getSettings()->getData()['background_jobs_mode']);
+        $mode = 'webcron';
+        $this->assertSame('webcron', $this->controller->getSettings()->getData()['background_jobs_mode']);
         $mode = 'cron';
-        $this->assertTrue($this->controller->getSettings()->getData()['background_jobs_on_schedule']);
+        $this->assertSame('cron', $this->controller->getSettings()->getData()['background_jobs_mode']);
     }
 
     public function testSaveSettingsPersistsValues(): void

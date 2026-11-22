@@ -343,6 +343,8 @@ OC.L10N.register(
     "Background jobs run only when someone opens a page." : "Hintergrundjobs laufen nur, wenn jemand eine Seite öffnet.",
     "Watched folders need background jobs that run on a schedule." : "Beobachtete Ordner brauchen Hintergrundjobs, die nach Zeitplan laufen.",
     "How to set it up" : "So richtest du es ein",
-    "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Bis deine Administration das einrichtet, bekommt Synaplan neue Dateien nur, während jemand eine Seite dieser Nextcloud geöffnet hat."
+    "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Bis deine Administration das einrichtet, bekommt Synaplan neue Dateien nur, während jemand eine Seite dieser Nextcloud geöffnet hat.",
+    "Background jobs run only as often as an outside service calls this Nextcloud." : "Hintergrundjobs laufen nur so oft, wie ein externer Dienst diese Nextcloud aufruft.",
+    "Watched folders get new files only that often, so have it call every 5 minutes." : "Beobachtete Ordner bekommen neue Dateien nur so oft. Lass den Dienst daher alle 5 Minuten aufrufen."
 },
 "nplurals=2; plural=(n != 1);");

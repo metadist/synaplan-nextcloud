@@ -111,7 +111,7 @@ class SettingsController extends Controller
                 '20',
             ))),
             'watch_shared_folders' => WatchPolicy::sharedAllowedIn($this->config),
-            'background_jobs_on_schedule' => WatchPolicy::jobsOnScheduleIn($this->config),
+            'background_jobs_mode' => WatchPolicy::jobsModeIn($this->config),
         ]);
     }
 

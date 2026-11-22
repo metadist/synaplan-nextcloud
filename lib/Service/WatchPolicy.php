@@ -33,12 +33,26 @@ class WatchPolicy
     }
 
     /**
+     * How Nextcloud runs background jobs: `ajax` while someone has a page
+     * open, `webcron` as often as an outside service calls cron.php, `cron`
+     * from the system's scheduler. Unset reads as `ajax`, like Nextcloud.
+     *
+     * @return 'ajax'|'webcron'|'cron'
+     */
+    public static function jobsModeIn(IConfig $config): string
+    {
+        $mode = $config->getAppValue('core', 'backgroundjobs_mode', 'ajax');
+
+        return $mode === 'cron' || $mode === 'webcron' ? $mode : 'ajax';
+    }
+
+    /**
      * Watches move on in the every-minute job. In AJAX mode that job runs
      * only while someone has a page of this Nextcloud open.
      */
     public static function jobsOnScheduleIn(IConfig $config): bool
     {
-        return $config->getAppValue('core', 'backgroundjobs_mode', 'ajax') !== 'ajax';
+        return self::jobsModeIn($config) !== 'ajax';
     }
 
     public function jobsOnSchedule(): bool

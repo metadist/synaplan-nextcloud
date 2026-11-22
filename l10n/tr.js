@@ -343,6 +343,8 @@ OC.L10N.register(
     "Background jobs run only when someone opens a page." : "Arka plan işleri yalnızca biri bir sayfa açtığında çalışır.",
     "Watched folders need background jobs that run on a schedule." : "İzlenen klasörler, zamanlanmış olarak çalışan arka plan işlerine ihtiyaç duyar.",
     "How to set it up" : "Nasıl kurulur",
-    "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Yöneticiniz bunu ayarlayana kadar Synaplan yeni dosyaları yalnızca biri bu Nextcloud'un bir sayfasını açık tuttuğunda alır."
+    "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Yöneticiniz bunu ayarlayana kadar Synaplan yeni dosyaları yalnızca biri bu Nextcloud'un bir sayfasını açık tuttuğunda alır.",
+    "Background jobs run only as often as an outside service calls this Nextcloud." : "Arka plan işleri yalnızca harici bir hizmetin bu Nextcloud'u çağırdığı sıklıkta çalışır.",
+    "Watched folders get new files only that often, so have it call every 5 minutes." : "İzlenen klasörler yeni dosyaları yalnızca bu sıklıkta alır, bu yüzden hizmetin her 5 dakikada bir çağırmasını sağlayın."
 },
 "nplurals=2; plural=(n > 1);");

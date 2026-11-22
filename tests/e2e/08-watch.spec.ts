@@ -310,7 +310,7 @@ test('the owner pauses and resumes a watch in the Watched folders list and stops
 	}
 })
 
-test('with background jobs in AJAX mode, the admin screen and the watch dialog say watches need a schedule', async ({
+test('with background jobs in AJAX or webcron mode, the admin screen says what watches need', async ({
 	browser,
 	page,
 }) => {
@@ -351,16 +351,27 @@ test('with background jobs in AJAX mode, the admin screen and the watch dialog s
 			note.getByRole('link', { name: /How to set it up/ }),
 		).toBeVisible()
 
-		occ('background:cron')
 		// Nextcloud serves app config from a short-lived cache.
-		await expect(async () => {
-			const loaded = admin.waitForResponse((r) =>
-				r.url().endsWith('/api/v1/settings'),
-			)
-			await admin.reload()
-			await loaded
-			await expect(note).toHaveCount(0, { timeout: 1000 })
-		}).toPass({ timeout: 60_000 })
+		const afterReload = async (check: () => Promise<void>) =>
+			expect(async () => {
+				const loaded = admin.waitForResponse((r) =>
+					r.url().endsWith('/api/v1/settings'),
+				)
+				await admin.reload()
+				await loaded
+				await check()
+			}).toPass({ timeout: 60_000 })
+
+		occ('background:webcron')
+		await afterReload(() =>
+			expect(note).toContainText(
+				'Background jobs run only as often as an outside service calls this Nextcloud.',
+				{ timeout: 1000 },
+			),
+		)
+
+		occ('background:cron')
+		await afterReload(() => expect(note).toHaveCount(0, { timeout: 1000 }))
 	} finally {
 		occ(`background:${before}`)
 		await admin.close()

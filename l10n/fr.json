@@ -342,7 +342,9 @@
 		"Background jobs run only when someone opens a page.": "Les tâches de fond ne s'exécutent que lorsque quelqu'un ouvre une page.",
 		"Watched folders need background jobs that run on a schedule.": "Les dossiers surveillés ont besoin de tâches de fond qui s'exécutent selon un planning.",
 		"How to set it up": "Comment le configurer",
-		"Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.": "Tant que votre administrateur ne l'a pas configuré, Synaplan ne reçoit de nouveaux fichiers que lorsque quelqu'un a une page de ce Nextcloud ouverte."
+		"Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.": "Tant que votre administrateur ne l'a pas configuré, Synaplan ne reçoit de nouveaux fichiers que lorsque quelqu'un a une page de ce Nextcloud ouverte.",
+		"Background jobs run only as often as an outside service calls this Nextcloud.": "Les tâches de fond ne s'exécutent qu'aussi souvent qu'un service externe appelle ce Nextcloud.",
+		"Watched folders get new files only that often, so have it call every 5 minutes.": "Les dossiers surveillés ne reçoivent de nouveaux fichiers qu'à cette fréquence : faites-le appeler toutes les 5 minutes."
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }
