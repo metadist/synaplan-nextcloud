@@ -29,6 +29,26 @@ final class WatchTarget
     }
 
     /**
+     * How many files are directly in this person's folder: the files a
+     * folder watch would get when the person asks for the ones already there.
+     */
+    public function existingFiles(string $id): int
+    {
+        try {
+            $this->resolve('folder', $id);
+            $user = $this->userSession->getUser();
+            $folder = $user instanceof IUser ? $this->rootFolder->getUserFolder($user->getUID())->getFirstNodeById((int) $id) : null;
+        } catch (\Throwable) {
+            return 0;
+        }
+        if (!$folder instanceof Folder) {
+            return 0;
+        }
+
+        return count(array_filter($folder->getDirectoryListing(), static fn ($node): bool => $node instanceof File));
+    }
+
+    /**
      * @return array{target_kind: string, target_id: string, target_path: string}
      * @throws NotFoundException the id is not a readable file or folder of this kind
      */

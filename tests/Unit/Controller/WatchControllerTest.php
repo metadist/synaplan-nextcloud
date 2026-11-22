@@ -6,8 +6,11 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\WatchController;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCA\SynaplanIntegration\Service\WatchTarget;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Constants;
+use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IRequest;
@@ -23,6 +26,7 @@ final class WatchControllerTest extends TestCase
     private SynaplanClient&MockObject $client;
     private Folder&MockObject $home;
     private LoggerInterface&MockObject $logger;
+    private WatchIndex&MockObject $index;
     private WatchController $controller;
 
     protected function setUp(): void
@@ -36,11 +40,17 @@ final class WatchControllerTest extends TestCase
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($user);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->index = $this->createMock(WatchIndex::class);
+        $time = $this->createStub(ITimeFactory::class);
+        $time->method('getTime')->willReturn(1700000000);
         $this->controller = new WatchController(
             $this->createStub(IRequest::class),
             $this->client,
             new WatchTarget($root, $session),
             $this->logger,
+            $this->index,
+            $session,
+            $time,
         );
     }
 
@@ -79,10 +89,47 @@ final class WatchControllerTest extends TestCase
             ->with(['target_kind' => 'folder', 'target_id' => '42', 'target_path' => 'Projects', 'preset' => 'task', 'task_id' => 7])
             ->willReturn(['id' => 3]);
 
+        $this->index->expects($this->once())->method('remember')->with('ada', ['id' => 3], 1700000000);
+
         $response = $this->controller->start('folder', '42', 'task', 7);
 
         $this->assertSame(200, $response->getStatus());
         $this->assertSame(['id' => 3], $response->getData()['watch']);
+    }
+
+    public function testAskingForTheFilesAlreadyThereFeedsTheWatchFromTheBeginning(): void
+    {
+        $this->home->method('getFirstNodeById')->willReturn($this->readableFolder());
+        $this->home->method('getRelativePath')->willReturn('/Projects');
+        $this->client->method('startWatch')->willReturn(['id' => 3]);
+        $this->index->expects($this->once())->method('remember')->with('ada', ['id' => 3], 0);
+
+        $this->controller->start('folder', '42', 'keep_searchable', null, 'Projects', true);
+    }
+
+    public function testOptionsCountTheFilesDirectlyInTheFolder(): void
+    {
+        $folder = $this->readableFolder();
+        $folder->method('getDirectoryListing')->willReturn([
+            $this->createStub(File::class),
+            $this->createStub(File::class),
+            $this->createStub(Folder::class),
+        ]);
+        $this->home->method('getFirstNodeById')->willReturn($folder);
+        $this->home->method('getRelativePath')->willReturn('/Projects');
+        $this->client->method('watchOptions')->willReturn(['tasks' => []]);
+
+        $this->assertSame(2, $this->controller->options('42')->getData()['existing']);
+    }
+
+    private function readableFolder(): Folder&\PHPUnit\Framework\MockObject\Stub
+    {
+        $folder = $this->createStub(Folder::class);
+        $folder->method('getId')->willReturn(42);
+        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ);
+        $folder->method('getPath')->willReturn('/ada/files/Projects');
+
+        return $folder;
     }
 
     public function testANodeThePersonCannotReadIsNotFoundAndLoggedAtInfo(): void
