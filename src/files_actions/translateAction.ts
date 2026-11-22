@@ -6,6 +6,7 @@ import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
+import { translationOffered } from './features'
 
 const SUPPORTED_MIMES = [
 	'text/',
@@ -24,6 +25,9 @@ export const translateAction: IFileAction = {
 	iconSvgInline: () => TranslateSvg,
 
 	enabled(...args: unknown[]) {
+		if (!translationOffered()) {
+			return false
+		}
 		const nodes = extractNodesFromEnabled(...args)
 		if (nodes.length !== 1) {
 			return false

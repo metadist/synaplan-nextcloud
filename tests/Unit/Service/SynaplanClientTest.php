@@ -180,6 +180,22 @@ class SynaplanClientTest extends TestCase
         $this->assertSame('Hola mundo', $this->synaplanClient->translate('Hello world', 'es')['summary']);
     }
 
+    public function testOffersTranslationOnlyWhenSynaplanListsIt(): void
+    {
+        $this->httpClient->method('get')->willReturnOnConsecutiveCalls(
+            $this->capabilities(['abstractive', 'translation']),
+        );
+        $this->assertTrue($this->synaplanClient->offersSummaryType('translation'));
+        $this->assertFalse($this->synaplanClient->offersSummaryType('extractive'));
+    }
+
+    public function testAnUnreadableAnswerStillOffersTranslation(): void
+    {
+        $this->httpClient->method('get')->willThrowException(new \Exception('Connection refused'));
+
+        $this->assertTrue($this->synaplanClient->offersSummaryType('translation'));
+    }
+
     public function testCapabilitiesAreReadOncePerRequest(): void
     {
         $this->httpClient->expects($this->once())

@@ -601,6 +601,15 @@ class SynaplanClient
     }
 
     /**
+     * Whether the connected Synaplan offers a summary type, such as
+     * translation. An unreadable answer counts as offered, as for requests.
+     */
+    public function offersSummaryType(string $type): bool
+    {
+        return !$this->knownSummaryTypesMiss($type);
+    }
+
+    /**
      * True when Synaplan answered and its summary types do not include $type.
      * An unreadable answer is not a refusal: the request is still sent.
      */

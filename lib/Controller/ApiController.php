@@ -111,6 +111,18 @@ class ApiController extends Controller
     }
 
     /**
+     * Which file actions the connected Synaplan supports, for the Files app
+     * to offer only those (R11).
+     */
+    #[NoAdminRequired]
+    public function features(): JSONResponse
+    {
+        return new JSONResponse([
+            'translation' => $this->synaplanClient->offersSummaryType('translation'),
+        ]);
+    }
+
+    /**
      * Summarize a file.
      *
      * @param int    $fileId         Nextcloud file ID

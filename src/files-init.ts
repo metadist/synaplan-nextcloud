@@ -7,6 +7,7 @@ import {
 } from './files_actions/birdRowAction'
 import { chatAction } from './files_actions/chatAction'
 import { chatFileAction } from './files_actions/chatFileAction'
+import { loadFeatures } from './files_actions/features'
 import { registerFromSynaplanMenu } from './files_actions/fromSynaplanMenu'
 import { readFolderAction } from './files_actions/readFolderAction'
 import { registerSynaplanSidebarTab } from './files_actions/sidebarTab'
@@ -38,6 +39,7 @@ function registerAction(action: IFileAction): void {
 
 injectModalStyles()
 injectFormStyles()
+loadFeatures()
 
 registerAction(summarizeAction)
 registerAction(translateAction)
