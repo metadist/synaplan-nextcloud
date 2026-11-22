@@ -38,6 +38,8 @@ final class Failure
     public const SYNAPLAN_REJECTED = 'synaplan_rejected';
     public const RATE_LIMITED = 'rate_limited';
     public const UNEXPECTED = 'unexpected';
+    /** Only people who may edit a folder or a file can watch it. */
+    public const WATCH_NEEDS_EDIT = 'watch_needs_edit';
 
     private const MESSAGE_MAX_LENGTH = 300;
 

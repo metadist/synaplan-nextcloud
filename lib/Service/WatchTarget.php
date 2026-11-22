@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Service;
 
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use OCP\Constants;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -15,7 +18,7 @@ use OCP\IUserSession;
 
 /**
  * The folder or file a watch may name: the current person's own node, only
- * when they can read it. The path is taken from that node. A caller-supplied
+ * when they may edit it. The path is taken from that node. A caller-supplied
  * path is never trusted.
  */
 final class WatchTarget
@@ -51,6 +54,7 @@ final class WatchTarget
     /**
      * @return array{target_kind: string, target_id: string, target_path: string}
      * @throws NotFoundException the id is not a readable file or folder of this kind
+     * @throws FailureException the person may read it but not edit it
      */
     public function resolve(string $kind, string $id): array
     {
@@ -76,6 +80,15 @@ final class WatchTarget
         $actual = $node instanceof Folder ? 'folder' : 'file';
         if ($actual !== $kind) {
             throw new NotFoundException('Choose a folder or a file.');
+        }
+        // A share's root always reports UPDATE because its mount point can be
+        // renamed; adding files is what editing a folder means.
+        $edit = $node instanceof Folder ? Constants::PERMISSION_CREATE : Constants::PERMISSION_UPDATE;
+        if (($node->getPermissions() & $edit) === 0) {
+            throw new FailureException(
+                new Failure(Http::STATUS_FORBIDDEN, Failure::WATCH_NEEDS_EDIT),
+                'Watching needs permission to edit the target',
+            );
         }
 
         $relative = $home->getRelativePath($node->getPath());

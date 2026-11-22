@@ -325,7 +325,8 @@
 		"Synaplan no longer accepts this registration. Forget it and register again.": "Synaplan nimmt diese Registrierung nicht mehr an. Vergiss sie und registriere neu.",
 		"Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again.": "Synaplan nimmt diese Nextcloud nicht mehr an. Bitte deine Administration, sie neu zu registrieren.",
 		"Also the files already in this folder ({count})": "Auch die Dateien, die schon in diesem Ordner sind ({count})",
-		"Synaplan takes the {count} files one after the other. This can take about an hour.": "Synaplan nimmt die {count} Dateien nacheinander. Das kann etwa eine Stunde dauern."
+		"Synaplan takes the {count} files one after the other. This can take about an hour.": "Synaplan nimmt die {count} Dateien nacheinander. Das kann etwa eine Stunde dauern.",
+		"Only people who may edit a folder or a file can watch it.": "Beobachten kann nur, wer den Ordner oder die Datei bearbeiten darf."
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

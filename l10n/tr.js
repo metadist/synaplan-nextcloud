@@ -326,6 +326,7 @@ OC.L10N.register(
     "Synaplan no longer accepts this registration. Forget it and register again." : "Synaplan bu kaydı artık kabul etmiyor. Kaydı unutun ve yeniden kaydedin.",
     "Synaplan no longer accepts this Nextcloud. Ask your administrator to register it again." : "Synaplan bu Nextcloud'u artık kabul etmiyor. Yöneticinizden yeniden kaydetmesini isteyin.",
     "Also the files already in this folder ({count})" : "Bu klasörde zaten bulunan dosyalar da ({count})",
-    "Synaplan takes the {count} files one after the other. This can take about an hour." : "Synaplan {count} dosyayı sırayla alır. Bu yaklaşık bir saat sürebilir."
+    "Synaplan takes the {count} files one after the other. This can take about an hour." : "Synaplan {count} dosyayı sırayla alır. Bu yaklaşık bir saat sürebilir.",
+    "Only people who may edit a folder or a file can watch it." : "Bir klasörü veya dosyayı yalnızca düzenleyebilen kişiler izleyebilir."
 },
 "nplurals=2; plural=(n > 1);");

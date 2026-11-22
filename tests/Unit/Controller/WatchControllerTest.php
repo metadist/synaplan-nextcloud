@@ -81,7 +81,7 @@ final class WatchControllerTest extends TestCase
     {
         $folder = $this->createStub(Folder::class);
         $folder->method('getId')->willReturn(42);
-        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ);
+        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ | Constants::PERMISSION_CREATE);
         $folder->method('getPath')->willReturn('/ada/files/Projects');
         $this->home->method('getFirstNodeById')->with(42)->willReturn($folder);
         $this->home->method('getRelativePath')->willReturn('/Projects');
@@ -126,7 +126,7 @@ final class WatchControllerTest extends TestCase
     {
         $folder = $this->createStub(Folder::class);
         $folder->method('getId')->willReturn(42);
-        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ);
+        $folder->method('getPermissions')->willReturn(Constants::PERMISSION_READ | Constants::PERMISSION_CREATE);
         $folder->method('getPath')->willReturn('/ada/files/Projects');
 
         return $folder;

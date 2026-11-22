@@ -2,7 +2,7 @@ import type { APIRequestContext } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { ensureConnected, logIn, nextcloudAs, openFileAction } from './support'
+import { APP, ensureConnected, logIn, nextcloudAs, openFileAction } from './support'
 
 /**
  * Watch with Synaplan feeds the watch from this Nextcloud: a file dropped
@@ -17,6 +17,8 @@ import { ensureConnected, logIn, nextcloudAs, openFileAction } from './support'
  */
 
 const UID = 'ada'
+const SHARER = 'bob'
+const READ = 1
 const SYNAPLAN_CONTAINER = process.env.SYNAPLAN_APP_CONTAINER ?? 'synaplan-app-test'
 const SYNAPLAN_DB_CONTAINER = process.env.SYNAPLAN_DB_CONTAINER ?? 'synaplan-db-test'
 const NC_PROJECT = process.env.E2E_NC_PROJECT ?? 'synaplan-nextcloud-e2e'
@@ -108,6 +110,71 @@ test('a file dropped into a watched folder reaches its watch and is finished the
 		await person.dispose()
 	}
 })
+
+test('a folder the person may only read offers no watch and cannot be watched', async ({
+	page,
+}) => {
+	const folder = `Read-only-${Date.now()}`
+	const sharer = await nextcloudAs(SHARER)
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${SHARER}/${folder}`
+	expect((await sharer.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	try {
+		const folderId = await fileIdOf(sharer, dav)
+		await shareWith(sharer, folder, UID, READ)
+
+		await page.goto('/index.php/apps/files/')
+		await page
+			.locator(`[data-cy-files-list-row-name="${folder}"]`)
+			.click({ button: 'right' })
+		await expect(page.getByRole('menuitem').first()).toBeVisible()
+		await expect(
+			page.getByRole('menuitem', { name: 'Watch with Synaplan…' }),
+		).toHaveCount(0)
+
+		const refused = await person.post(`${APP}/api/v1/watches`, {
+			data: {
+				targetKind: 'folder',
+				targetId: folderId,
+				preset: 'keep_searchable',
+			},
+		})
+		expect(refused.status()).toBe(403)
+		expect((await refused.json()).error).toBe('watch_needs_edit')
+	} finally {
+		await sharer.delete(dav)
+		await sharer.dispose()
+		await person.dispose()
+	}
+})
+
+/**
+ * Share a folder in the owner's root with another person.
+ *
+ * @param owner API client signed in as the folder's owner
+ * @param folder the folder name in the owner's root
+ * @param uid who gets the share
+ * @param permissions the share's permission bits
+ */
+async function shareWith(
+	owner: APIRequestContext,
+	folder: string,
+	uid: string,
+	permissions: number,
+): Promise<void> {
+	const shared = await owner.post(
+		'/ocs/v2.php/apps/files_sharing/api/v1/shares?format=json',
+		{
+			form: {
+				path: `/${folder}`,
+				shareType: '0',
+				shareWith: uid,
+				permissions: String(permissions),
+			},
+		},
+	)
+	expect(shared.ok(), `sharing ${folder} with ${uid}`).toBe(true)
+}
 
 /**
  * Upload a text file over WebDAV.

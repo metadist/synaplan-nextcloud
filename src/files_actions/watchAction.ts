@@ -28,7 +28,11 @@ export const watchAction: IFileAction = {
 		if (nodes.length !== 1) {
 			return false
 		}
-		return (nodes[0].permissions & Permission.READ) !== 0
+		// A share's root always carries UPDATE because its mount point can be
+		// renamed; adding files is what editing a folder means.
+		const edit = isFolder(nodes[0]) ? Permission.CREATE : Permission.UPDATE
+		const needed = Permission.READ | edit
+		return (nodes[0].permissions & needed) === needed
 	},
 
 	async exec(...args: unknown[]) {
