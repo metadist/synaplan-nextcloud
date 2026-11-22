@@ -189,6 +189,37 @@ class ReadScope
     }
 
     /**
+     * Bring the saved paths up to date after folders moved. Synaplan refuses
+     * a run, and names folders to its planner, from the paths in its copy,
+     * so a moved allowed folder is reported again. True when a path changed.
+     * A folder that cannot be found (deleted, in the trash) keeps its path.
+     */
+    public function follow(string $uid): bool
+    {
+        $scope = $this->get($uid);
+        if ($scope['folders'] === []) {
+            return false;
+        }
+        $this->resolved = [];
+        $moved = false;
+        foreach ($scope['folders'] as $i => $folder) {
+            if ($folder['id'] === '') {
+                continue;
+            }
+            $path = $this->currentPath($uid, $folder);
+            if ($path !== null && $path !== $folder['path']) {
+                $scope['folders'][$i]['path'] = $path;
+                $moved = true;
+            }
+        }
+        if ($moved) {
+            $this->store($uid, $scope);
+        }
+
+        return $moved;
+    }
+
+    /**
      * Where an allowed folder is now. The person allowed a folder, not a
      * name: a folder moved or renamed keeps its permission, and a new folder
      * at the old name does not get it. An entry saved without an id is
