@@ -159,6 +159,7 @@ dev-shell: docker-compose.dev.yml ## Open a shell in the Nextcloud container as 
 
 SYNAPLAN_DIR ?= ../synaplan
 E2E_NC_PORT ?= 8091
+E2E_SYNAPLAN_URL ?= http://localhost:8001
 export APP_IMAGE ?= ghcr.io/metadist/synaplan@$(shell grep -oE 'SYNAPLAN_IMAGE_DIGEST:[[:space:]]+sha256:[a-f0-9]+' .github/workflows/ci.yml | awk '{print $$2}')
 export NC_PORT := $(E2E_NC_PORT)
 export WSLENV := $(WSLENV):APP_IMAGE:NC_PORT
@@ -175,7 +176,7 @@ e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001, Nextcloud (
 	$(COMPOSE_E2E) exec -T -u www-data nextcloud sh /mnt/synaplan_integration/docker/dev-seed.sh
 
 test-e2e: ## Run the e2e journeys against the stacks of e2e-up
-	NC_URL=http://localhost:$(E2E_NC_PORT) npx playwright test
+	NC_URL=http://localhost:$(E2E_NC_PORT) E2E_SYNAPLAN_URL=$(E2E_SYNAPLAN_URL) npx playwright test
 
 e2e-down: ## Stop the e2e stacks and delete their data
 	$(COMPOSE_E2E) down -v

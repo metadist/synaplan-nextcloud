@@ -3,7 +3,9 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test'
 import { expect, request } from '@playwright/test'
 
 export const NC_URL = process.env.NC_URL ?? 'http://localhost:8081'
-export const SYNAPLAN_URL = process.env.SYNAPLAN_URL ?? 'http://localhost:8001'
+// A test-only name: SYNAPLAN_URL is what the dev hook and a deployment read,
+// and the setup creates keys and registers a client wherever this points.
+export const SYNAPLAN_URL = process.env.E2E_SYNAPLAN_URL ?? 'http://localhost:8001'
 export const APP = '/index.php/apps/synaplan_integration'
 export const FILE = 'vendor-review.txt'
 

@@ -159,6 +159,9 @@ make e2e-down     # stop both stacks and delete their data
 
 - `NC_IMAGE=nextcloud:33-apache make e2e-up` starts the floor; `E2E_NC_PORT`
   moves Nextcloud, `SYNAPLAN_DIR` points at another synaplan checkout.
+- The journeys reach Synaplan at `E2E_SYNAPLAN_URL` (default
+  http://localhost:8001), never at `SYNAPLAN_URL`: the setup creates API keys
+  and registers a client there, so it must only ever point at a test stack.
 - The setup resets the test people, so `make test-e2e` runs again on the same
   stacks.
 - `tests/e2e/synaplan-test-stack.yml` is a Compose overlay for the **Synaplan**
