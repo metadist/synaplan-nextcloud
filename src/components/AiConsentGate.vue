@@ -43,9 +43,10 @@
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import { onConsentStale } from '../failures'
 
 const emit = defineEmits<{
 	// Fired whenever the "AI is blocked until the user activates it" state changes.
@@ -191,7 +192,14 @@ async function createAccount() {
 	}
 }
 
-onMounted(loadStatus)
+// An answer elsewhere on the page can show that consent or the connection
+// ended since the state was read; read it again so the gate comes back.
+let stopListening = () => {}
+onMounted(() => {
+	stopListening = onConsentStale(loadStatus)
+	loadStatus()
+})
+onBeforeUnmount(() => stopListening())
 </script>
 
 <style scoped>

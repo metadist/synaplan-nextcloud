@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { describeFailure, failureFromError } from '@/failures'
+import { describe, expect, it, vi } from 'vitest'
+import { describeFailure, failureFromError, onConsentStale } from '@/failures'
 
 /**
  * A rejected request as axios reports it; isAxiosError() checks the flag.
@@ -110,5 +110,33 @@ describe('failureFromError', () => {
 			failureFromError(rejected(500, '<html>Internal Server Error</html>'))
 				.text,
 		).toBe(describeFailure().text)
+	})
+})
+
+describe('onConsentStale', () => {
+	it.each(['not_connected', 'consent_required'])(
+		'tells an open consent gate when an answer says %s',
+		(code) => {
+			const listener = vi.fn()
+			const stop = onConsentStale(listener)
+
+			failureFromError(rejected(403, { error: code }))
+			expect(listener).toHaveBeenCalledTimes(1)
+
+			stop()
+			describeFailure(code)
+			expect(listener).toHaveBeenCalledTimes(1)
+		},
+	)
+
+	it('stays quiet for other failures', () => {
+		const listener = vi.fn()
+		const stop = onConsentStale(listener)
+
+		describeFailure('synaplan_unreachable')
+		describeFailure('insufficient_scope')
+		describeFailure()
+		expect(listener).not.toHaveBeenCalled()
+		stop()
 	})
 })
