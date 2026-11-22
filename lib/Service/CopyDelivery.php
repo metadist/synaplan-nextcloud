@@ -69,6 +69,7 @@ class CopyDelivery
         private LoggerInterface $logger,
         private IJobList $jobs,
         private ITimeFactory $time,
+        private OwnWrites $ownWrites,
     ) {
     }
 
@@ -256,6 +257,7 @@ class CopyDelivery
             $existing = $folder->get($name);
             if ($existing instanceof File && $this->wrote($uid, (int) $existing->getId())) {
                 $existing->putContent($bytes);
+                $this->ownWrites->note((int) $existing->getId(), time());
 
                 return $existing;
             }
@@ -273,6 +275,7 @@ class CopyDelivery
         }
         $file = $folder->newFile($target);
         $file->putContent($bytes);
+        $this->ownWrites->note((int) $file->getId(), time());
 
         return $file;
     }

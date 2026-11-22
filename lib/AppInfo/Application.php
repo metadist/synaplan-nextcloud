@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\AppInfo;
 
 use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
+use OCA\SynaplanIntegration\BackgroundJob\WatchFeedJob;
+use OCA\SynaplanIntegration\BackgroundJob\WatchReconcileJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
 use OCA\SynaplanIntegration\Listener\ReadScopeListener;
 use OCA\SynaplanIntegration\Listener\SourceEventListener;
 use OCA\SynaplanIntegration\Listener\UserChangedListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
+use OCA\SynaplanIntegration\Listener\WatchEventListener;
 use OCA\SynaplanIntegration\Notification\CopyNotifier;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SeenNotifications;
@@ -20,6 +23,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
+use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
@@ -53,6 +57,12 @@ class Application extends App implements IBootstrap
         $context->registerEventListener(BeforeNodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', SourceEventListener::class);
+        // Files arriving in a watched folder, and a watched target deleted or restored.
+        $context->registerEventListener(NodeWrittenEvent::class, WatchEventListener::class);
+        $context->registerEventListener(NodeRenamedEvent::class, WatchEventListener::class);
+        $context->registerEventListener(NodeCopiedEvent::class, WatchEventListener::class);
+        $context->registerEventListener(NodeDeletedEvent::class, WatchEventListener::class);
+        $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', WatchEventListener::class);
         $context->registerEventListener(BeforeTemplateRenderedEvent::class, LoadScriptsListener::class);
         $context->registerNotifierService(CopyNotifier::class);
         $context->registerServiceAlias(SeenNotificationStore::class, SeenNotifications::class);
@@ -61,8 +71,10 @@ class Application extends App implements IBootstrap
     public function boot(IBootContext $context): void
     {
         $context->injectFn(function (IJobList $jobs): void {
-            if (!$jobs->has(RefreshNotifyKeysJob::class, null)) {
-                $jobs->add(RefreshNotifyKeysJob::class);
+            foreach ([RefreshNotifyKeysJob::class, WatchFeedJob::class, WatchReconcileJob::class] as $job) {
+                if (!$jobs->has($job, null)) {
+                    $jobs->add($job);
+                }
             }
         });
 

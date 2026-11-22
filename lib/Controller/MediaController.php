@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
+use OCA\SynaplanIntegration\Service\OwnWrites;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -57,6 +58,7 @@ class MediaController extends Controller
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
         private LoggerInterface $logger,
+        private OwnWrites $ownWrites,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -169,6 +171,7 @@ class MediaController extends Controller
 
             $file = $targetFolder->newFile($targetName);
             $file->putContent($content);
+            $this->ownWrites->note((int) $file->getId(), time());
 
             $savedPath = $targetFolderPath . '/' . $targetName;
 
