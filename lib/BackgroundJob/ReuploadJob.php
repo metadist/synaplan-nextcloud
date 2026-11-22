@@ -6,8 +6,8 @@ namespace OCA\SynaplanIntegration\BackgroundJob;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\CloudStateService;
-use OCA\SynaplanIntegration\Service\KeyStorage;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
+use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 use OCP\Files\File;
@@ -16,7 +16,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Sends the new version of a file that is kept up to date in Synaplan, using
- * that person's stored key and overwrite=1.
+ * that person's stored credential (API key or OAuth access token) and
+ * overwrite=1.
  */
 class ReuploadJob extends QueuedJob
 {
@@ -24,7 +25,7 @@ class ReuploadJob extends QueuedJob
 
     public function __construct(
         ITimeFactory $time,
-        private KeyStorage $keys,
+        private UserAccountService $userAccounts,
         private IRootFolder $rootFolder,
         private CloudStateService $cloudState,
         private SynaplanClient $synaplanClient,
@@ -44,8 +45,8 @@ class ReuploadJob extends QueuedJob
             return;
         }
 
-        $userKey = $this->keys->getUserKey($uid);
-        if ($userKey === null || $userKey === '') {
+        $userKey = $this->userAccounts->credentialFor($uid);
+        if ($userKey === '') {
             return;
         }
 
