@@ -795,6 +795,58 @@ class UserAccountServiceTest extends TestCase
         $this->assertNull($service->renewProvisionedKey());
     }
 
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function memorySettings(): iterable
+    {
+        yield 'memories offered' => ['1', ['chat', 'files', 'rag', 'cloud:watch', 'memories']];
+        yield 'memories off' => ['0', ['chat', 'files', 'rag', 'cloud:watch']];
+    }
+
+    /**
+     * @param list<string> $expected
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('memorySettings')]
+    public function testAKeyMintedWithoutMemoriesIsReplacedWhileTheyAreOffered(string $memories, array $expected): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        $this->appConfig['enable_memories'] = $memories;
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_old';
+        $this->userConfig['alice|synaplan_key_scopes'] = 'chat files rag cloud:watch';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+        $this->userSession->method('getUser')->willReturn($user);
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 9]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['id' => 11, 'key' => 'sk_new']]));
+        $minted = null;
+        $this->httpClient->method('post')->willReturnCallback(
+            function (string $url, array $options) use ($mintResp, $provisionResp, &$minted): IResponse {
+                if (!str_contains($url, '/api-keys')) {
+                    return $provisionResp;
+                }
+                $minted = json_decode((string) $options['body'], true)['scopes'] ?? null;
+
+                return $mintResp;
+            }
+        );
+        $this->httpClient->method('delete')->willReturn($this->createStub(IResponse::class));
+
+        $renewed = $this->service()->renewProvisionedKey();
+
+        if ($memories === '1') {
+            $this->assertSame('sk_new', $renewed);
+            $this->assertSame($expected, $minted);
+            $this->assertSame(implode(' ', $expected), $this->userConfig['alice|synaplan_key_scopes']);
+        } else {
+            $this->assertNull($renewed);
+            $this->assertNull($minted);
+        }
+    }
+
     public function testALinkedKeyIsNotReplaced(): void
     {
         $this->appConfig['mode'] = 'link';

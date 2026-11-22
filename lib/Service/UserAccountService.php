@@ -549,7 +549,7 @@ class UserAccountService
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
             'instance_id' => $instanceId !== '' ? $instanceId : null,
             'name' => 'nextcloud-' . $user->getUID(),
-            'scopes' => self::USER_KEY_SCOPES,
+            'scopes' => $this->keyScopes(),
         ], $adminKey);
 
         $userKey = (string) ($minted['api_key']['key'] ?? '');
@@ -575,8 +575,8 @@ class UserAccountService
     }
 
     /**
-     * Replace a provisioned key that was minted before watching, without
-     * withdrawing consent. A linked key is left alone: connecting again is
+     * Replace a provisioned key minted without a scope the app now asks for
+     * (watching, memories), without withdrawing consent. A linked key is left alone: connecting again is
      * what gives that person the new permission. Returns the new key, or null
      * when there is nothing to replace.
      */
@@ -586,7 +586,7 @@ class UserAccountService
             return null;
         }
         $user = $this->userSession->getUser();
-        if (!$user instanceof IUser || !$this->hasConsent($user) || $this->keyIncludesWatch($user->getUID())) {
+        if (!$user instanceof IUser || !$this->hasConsent($user) || $this->keyHasEveryScope($user->getUID())) {
             return null;
         }
         $uid = $user->getUID();
@@ -612,12 +612,24 @@ class UserAccountService
         return $minted;
     }
 
-    private function keyIncludesWatch(string $uid): bool
+    /**
+     * What a provisioned key is minted with: memories only while the admin
+     * offers them, as Synaplan's /api/v1/user/memories requires that scope.
+     *
+     * @return list<string>
+     */
+    private function keyScopes(): array
     {
-        return str_contains(
-            $this->config->getUserValue($uid, Application::APP_ID, self::KEY_SCOPES_PREF, ''),
-            'cloud:watch',
-        );
+        return $this->synaplanConfig->isMemoriesEnabled()
+            ? [...self::USER_KEY_SCOPES, 'memories']
+            : self::USER_KEY_SCOPES;
+    }
+
+    private function keyHasEveryScope(string $uid): bool
+    {
+        $held = explode(' ', $this->config->getUserValue($uid, Application::APP_ID, self::KEY_SCOPES_PREF, ''));
+
+        return array_diff($this->keyScopes(), $held) === [];
     }
 
     private function rememberKeyScopes(string $uid): void
@@ -626,7 +638,7 @@ class UserAccountService
             $uid,
             Application::APP_ID,
             self::KEY_SCOPES_PREF,
-            implode(' ', self::USER_KEY_SCOPES),
+            implode(' ', $this->keyScopes()),
         );
     }
 
