@@ -591,6 +591,67 @@ class UserAccountService
         return $this->adminRequest('GET', '/api/v1/admin/users/' . $synaplanUserId . '/usage', null, $adminKey);
     }
 
+    /**
+     * Bring an account provisioned before this Nextcloud registered (external
+     * id `<server id>:<uid>`, no instance) onto this Nextcloud's client.
+     * Until then Synaplan cannot find it from a lifecycle report, so deleting
+     * or pausing the person here never reaches it (`02` §3.1).
+     *
+     * Provisioning again with the instance id rewrites that row in place.
+     * The call carries the account's own email: should Synaplan not find the
+     * row, it refuses the email instead of creating a second account.
+     *
+     * True when there is nothing left to do, false to try again later.
+     */
+    public function adoptLegacyAccount(string $uid): bool
+    {
+        $synaplanUserId = $this->getSynaplanUserId($uid);
+        $instanceId = $this->synaplanConfig->getLinkInstanceId();
+        $adminKey = $this->synaplanConfig->getAdminApiKey();
+        if ($synaplanUserId === null || $instanceId === '' || $adminKey === '') {
+            return true;
+        }
+        try {
+            $account = $this->adminRequest('GET', '/api/v1/admin/users/' . $synaplanUserId . '/usage', null, $adminKey);
+            $user = is_array($account['user'] ?? null) ? $account['user'] : [];
+            $externalId = (string) ($user['external_id'] ?? '');
+            $email = (string) ($user['email'] ?? '');
+            if (!str_contains($externalId, ':') || $email === '') {
+                return true;
+            }
+            $answer = $this->adminRequest('POST', '/api/v1/admin/users', [
+                'source' => self::SOURCE,
+                'instance_id' => $instanceId,
+                'external_id' => $uid,
+                'email' => $email,
+                'display_name' => (string) ($user['display_name'] ?? ''),
+            ], $adminKey);
+        } catch (EmailConflictException) {
+            $this->logger->warning('Synaplan did not find the account of {uid} to adopt it', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->info('Could not adopt the Synaplan account of {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+        if ((int) ($answer['user']['id'] ?? 0) !== $synaplanUserId) {
+            $this->logger->warning('Synaplan answered another account when adopting {uid}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+            ]);
+        }
+
+        return true;
+    }
+
     private function provisionAndMint(IUser $user): ?string
     {
         $adminKey = $this->synaplanConfig->getAdminApiKey();

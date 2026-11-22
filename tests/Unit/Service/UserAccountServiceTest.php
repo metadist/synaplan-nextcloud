@@ -687,6 +687,95 @@ class UserAccountServiceTest extends TestCase
         }
     }
 
+    public function testALegacyAccountIsProvisionedAgainWithTheInstanceAndItsOwnEmail(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('http://localhost:8000/api/v1/admin/users/501/usage', $this->anything())
+            ->willReturn($this->jsonResponse(['user' => [
+                'id' => 501,
+                'email' => 'alice@old.example',
+                'external_id' => 'oc0abc:alice',
+                'display_name' => 'Alice',
+            ]]));
+        $this->httpClient->expects($this->once())->method('post')
+            ->with('http://localhost:8000/api/v1/admin/users', $this->callback(function (array $options): bool {
+                $body = json_decode($options['body'], true);
+
+                return $body === [
+                    'source' => 'nextcloud',
+                    'instance_id' => 'pi_nc',
+                    'external_id' => 'alice',
+                    'email' => 'alice@old.example',
+                    'display_name' => 'Alice',
+                ] && $options['headers']['X-API-Key'] === 'sk_admin_key';
+            }))
+            ->willReturn($this->jsonResponse(['user' => ['id' => 501]]));
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testAnAccountProvisionedForThisClientIsLeftAlone(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willReturn($this->jsonResponse(['user' => [
+            'id' => 501,
+            'email' => 'alice@example.com',
+            'external_id' => 'alice',
+        ]]));
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testNothingIsAdoptedBeforeTheRegistrationOrWithoutAnAccount(): void
+    {
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->expects($this->never())->method('get');
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->assertTrue($this->service()->adoptLegacyAccount('bob'));
+    }
+
+    public function testAnAccountSynaplanCannotMatchIsNotCreatedAgain(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willReturn($this->jsonResponse(['user' => [
+            'email' => 'alice@old.example',
+            'external_id' => 'oc0abc:alice',
+        ]]));
+        $conflict = $this->createMock(IResponse::class);
+        $conflict->method('getStatusCode')->willReturn(409);
+        $this->httpClient->method('post')->willReturn($conflict);
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testAnUnreachableSynaplanIsTriedAgainLater(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willThrowException(new \RuntimeException('cURL error 7'));
+
+        $this->assertFalse($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function jsonResponse(array $body): IResponse
+    {
+        $response = $this->createMock(IResponse::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getBody')->willReturn((string) json_encode($body));
+
+        return $response;
+    }
+
     public function testSharedModeResolvesNull(): void
     {
         $this->appConfig['mode'] = 'shared';

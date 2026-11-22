@@ -32,6 +32,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A folder read of more than 500 files** lists every file. Synaplan reads
   500 items per listing call, so the files after the first 500 were left out
   without a word.
+- **Accounts provisioned before this Nextcloud registered** are moved onto
+  its registration by an hourly background job, once. Until then Synaplan
+  could not find them when a person was deleted, disabled or paused here, so
+  their Synaplan accounts stayed as they were.
 
 ## 2.0.0 – 2026-11-16
 
