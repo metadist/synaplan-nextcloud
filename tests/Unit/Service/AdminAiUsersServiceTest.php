@@ -61,9 +61,13 @@ class AdminAiUsersServiceTest extends TestCase
         $this->userAccounts->method('getSynaplanUserId')->willReturnCallback(
             fn (string $uid): ?int => $uid === 'alice' ? 501 : null
         );
-        $this->userAccounts->method('getStoredApiKey')->willReturnCallback(
-            fn (string $uid): string => $uid === 'alice' ? 'sk_alice' : ''
+        $this->userAccounts->method('hasStoredCredential')->willReturnCallback(
+            fn (string $uid): bool => $uid === 'alice'
         );
+        // The list only asks whether a key exists: renewing every expired
+        // token on the way would make it as slow as its slowest person.
+        $this->userAccounts->expects($this->never())->method('getStoredApiKey');
+        $this->userAccounts->expects($this->never())->method('credentialFor');
 
         $users = $this->service->listActivatedUsers();
 

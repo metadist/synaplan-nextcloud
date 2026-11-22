@@ -43,7 +43,7 @@ class AdminAiUsersService
                 'displayName' => $user !== null ? $user->getDisplayName() : $uid,
                 'email' => $user !== null ? (string) $user->getEMailAddress() : '',
                 'synaplanUserId' => $this->userAccounts->getSynaplanUserId($uid),
-                'hasKey' => $this->userAccounts->getStoredApiKey($uid) !== '',
+                'hasKey' => $this->userAccounts->hasStoredCredential($uid),
                 'consentAt' => $this->config->getUserValue($uid, Application::APP_ID, 'ai_consent_at', ''),
                 'kind' => $this->userAccounts->getLinkKind($uid),
             ];
