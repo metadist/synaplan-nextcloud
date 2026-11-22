@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\AdminAiUsersService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\JSONResponse;
@@ -40,7 +41,11 @@ class AdminAiUsersController extends Controller
 
     public function deactivate(string $uid): JSONResponse
     {
-        $this->aiUsers->deactivate($uid);
+        try {
+            $this->aiUsers->deactivate($uid);
+        } catch (FailureException $e) {
+            return $e->failure->toResponse();
+        }
 
         return new JSONResponse(['success' => true]);
     }

@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deactivate** in the admin's AI Users panel pauses a person whose account
+  the app created, and **Activate AI** resumes them with the same account.
+  2.0.0 deleted their key with the key itself, which ended their link in
+  Synaplan for good, so they could not turn AI on again.
+
 ## 2.0.0 – 2026-11-16
 
 1.8.1 is already on the App Store. That release added Watch with Synaplan

@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -103,7 +104,11 @@ class ConsentController extends Controller
                     }
                 }
             }
-            $this->userAccounts->grantConsent();
+            try {
+                $this->userAccounts->grantConsent();
+            } catch (FailureException $e) {
+                return $e->failure->toResponse();
+            }
         } else {
             $this->userAccounts->revokeConsent();
         }

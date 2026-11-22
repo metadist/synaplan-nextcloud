@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -281,6 +283,122 @@ class UserAccountServiceTest extends TestCase
 
         $this->appConfig['per_user_accounts'] = '0';
         $this->assertFalse($this->service()->consentRequired());
+    }
+
+    private function provisionedCarol(): void
+    {
+        $this->userConfig['carol|ai_consent'] = '1';
+        $this->userConfig['carol|ai_consent_at'] = '2026-11-01T00:00:00+00:00';
+        $this->userConfig['carol|synaplan_user_api_key'] = 'sk_carol';
+        $this->userConfig['carol|synaplan_user_key_id'] = '9';
+        $this->userConfig['carol|synaplan_user_id'] = '4';
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('isConnected')->willReturn(false);
+    }
+
+    public function testDeactivatePausesAProvisionedPersonAndKeepsTheKey(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->expects($this->once())->method('reportLifecycle')->with('carol', 'disabled')
+            ->willReturn(['account' => 'kept', 'status' => 'suspended']);
+        $this->httpClient->expects($this->never())->method('delete');
+
+        $this->assertTrue($this->service()->pauseProvisioned('carol'));
+
+        $this->assertSame('1', $this->userConfig['carol|synaplan_paused']);
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|ai_consent_at', $this->userConfig);
+        $this->assertSame('sk_carol', $this->userConfig['carol|synaplan_user_api_key']);
+        $this->assertSame('9', $this->userConfig['carol|synaplan_user_key_id']);
+        $this->assertSame('4', $this->userConfig['carol|synaplan_user_id']);
+    }
+
+    public function testAPausedPersonResolvesNoKeyUntilTheyActivateAgain(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->resolveKeyForUser($this->mockUser('carol', 'carol@example.org', 'Carol')));
+    }
+
+    public function testActivatingAPausedPersonResumesTheSameKey(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $carol = $this->mockUser('carol', 'carol@example.org', 'Carol');
+        $this->userSession->method('getUser')->willReturn($carol);
+        $this->oauth->expects($this->once())->method('reportLifecycle')->with('carol', 'enabled')
+            ->willReturn(['account' => 'kept', 'status' => 'active']);
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->service()->grantConsent();
+
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+        $this->assertSame('1', $this->userConfig['carol|ai_consent']);
+        $this->assertSame('sk_carol', $this->service()->resolveKeyForUser($carol));
+    }
+
+    public function testAResumeSynaplanRefusesLeavesAIOffAndSaysWhy(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $this->userSession->method('getUser')->willReturn($this->mockUser('carol', 'carol@example.org', 'Carol'));
+        $this->oauth->method('reportLifecycle')
+            ->willThrowException(new PlatformLinkException('Synaplan refused the request (409).', PlatformLinkException::CODE_EXCHANGE));
+
+        try {
+            $this->service()->grantConsent();
+            $this->fail('the refusal reaches the person');
+        } catch (FailureException $e) {
+            $this->assertSame(Failure::ACCOUNT_UNAVAILABLE, $e->failure->code);
+        }
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertSame('1', $this->userConfig['carol|synaplan_paused']);
+    }
+
+    public function testDeactivateChangesNothingWhenSynaplanCannotBeTold(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->method('reportLifecycle')
+            ->willThrowException(new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE));
+
+        try {
+            $this->service()->pauseProvisioned('carol');
+            $this->fail('the admin learns Synaplan was not told');
+        } catch (FailureException $e) {
+            $this->assertSame(Failure::SYNAPLAN_UNREACHABLE, $e->failure->code);
+        }
+        $this->assertSame('1', $this->userConfig['carol|ai_consent']);
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+    }
+
+    public function testDeactivateWithoutAnIdentityOnThisRegistrationForgetsTheKeyHereOnly(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->method('reportLifecycle')->willReturn(['account' => 'absent', 'status' => 'revoked']);
+        $this->httpClient->expects($this->never())->method('delete');
+
+        $this->assertTrue($this->service()->pauseProvisioned('carol'));
+
+        $this->assertArrayNotHasKey('carol|synaplan_user_api_key', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+    }
+
+    public function testPausingIsNotForConnectedPeopleOrAnUnregisteredNextcloud(): void
+    {
+        $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
+        $this->oauth->method('isConnected')->willReturnCallback(fn (string $uid): bool => $uid === 'bob');
+        $this->oauth->method('isRegistered')->willReturnOnConsecutiveCalls(false, true);
+        $this->oauth->expects($this->never())->method('reportLifecycle');
+
+        $this->assertFalse($this->service()->pauseProvisioned('ada'));
+        $this->assertFalse($this->service()->pauseProvisioned('bob'));
+        $this->assertFalse($this->service()->pauseProvisioned('nobody'));
     }
 
     public function testGrantConsentThenProvisions(): void

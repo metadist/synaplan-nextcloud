@@ -131,10 +131,13 @@ class OAuthClient
      * Tell Synaplan a person here was deleted, disabled or enabled again.
      * Synaplan pauses, resumes or ends their link; a disabled person resumes
      * without connecting again.
+     *
+     * @return array<string, mixed> Synaplan's answer: `account` (kept,
+     *                              deleted, absent, unchanged) and `status`
      */
-    public function reportLifecycle(string $externalId, string $event): void
+    public function reportLifecycle(string $externalId, string $event): array
     {
-        $this->asClient('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
+        return $this->asClient('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
             'external_id' => $externalId,
             'event' => $event,
         ]);

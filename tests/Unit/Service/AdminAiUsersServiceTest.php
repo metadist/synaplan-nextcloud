@@ -130,9 +130,21 @@ class AdminAiUsersServiceTest extends TestCase
         yield 'no key yet' => [null];
     }
 
-    #[DataProvider('kinds')]
-    public function testDeactivateRevokesTheKeyInSynaplanForEveryone(?string $kind): void
+    public function testDeactivatePausesAProvisionedPersonInsteadOfDeletingTheirKey(): void
     {
+        $this->userAccounts->expects($this->once())->method('pauseProvisioned')->with('carol')->willReturn(true);
+        $this->userAccounts->expects($this->never())->method('deactivateUser');
+        $platformLinks = $this->createMock(PlatformLinkService::class);
+        $platformLinks->expects($this->never())->method('disconnectUid');
+        $service = new AdminAiUsersService($this->config, $this->userManager, $this->userAccounts, $platformLinks);
+
+        $service->deactivate('carol');
+    }
+
+    #[DataProvider('kinds')]
+    public function testDeactivateRevokesTheKeyInSynaplanWhenThereIsNothingToPause(?string $kind): void
+    {
+        $this->userAccounts->method('pauseProvisioned')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->willReturn($kind);
         $this->userAccounts->expects($this->never())->method('deactivateUser');
         $platformLinks = $this->createMock(PlatformLinkService::class);
