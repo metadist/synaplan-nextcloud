@@ -18,11 +18,11 @@ import { injectModalStyles } from './styles/modal-fix'
 
 /**
  * Register a file action in both the v4 scoped registry and the legacy
- * _nc_fileactions array. NC34 dev builds ship @nextcloud/files RC which
+ * _nc_fileactions array. NC34 dev builds ship `@nextcloud/files` RC which
  * stores actions in window._nc_fileactions, while stable v4.0.0 uses
  * window._nc_files_scope.v4_0. Dual registration ensures compatibility.
  *
- * @param action
+ * @param action the action to register
  */
 function registerAction(action: IFileAction): void {
 	registerFileAction(action)

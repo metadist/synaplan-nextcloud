@@ -17,6 +17,7 @@
 		</div>
 		<ul class="sp-searchable-list">
 			<li v-for="file in files" :key="file.id" class="sp-searchable-row">
+				<!-- eslint-disable-next-line vue/no-v-html -- BIRD_SVG is a constant in the bundle -->
 				<span class="sp-searchable-bird" v-html="birdSvg" />
 				<div class="sp-searchable-meta">
 					<a

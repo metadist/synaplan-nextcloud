@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts",
+    "lint": "eslint --max-warnings 0 src/ tests/unit/ tests/e2e/ playwright.config.ts",
     "lint:fix": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts --fix",
     "format": "prettier --write src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",
     "format:check": "prettier --check src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",

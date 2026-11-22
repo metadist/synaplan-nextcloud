@@ -1,5 +1,5 @@
 /**
- * Compatibility layer for @nextcloud/files v3 (NC30-32) and v4 (NC33+).
+ * Compatibility layer for `@nextcloud/files` v3 (NC30-32) and v4 (NC33+).
  *
  * v3 callbacks: enabled(nodes: Node[], view) / exec(node: Node, view, dir)
  * v4 callbacks: enabled({ nodes }) / exec({ nodes })
@@ -20,8 +20,9 @@ export interface NodeCompat {
 }
 
 /**
+ * The nodes an `enabled` callback was given.
  *
- * @param args
+ * @param args the callback's arguments
  */
 export function extractNodesFromEnabled(...args: any[]): NodeCompat[] {
 	const first = args[0]
@@ -35,8 +36,9 @@ export function extractNodesFromEnabled(...args: any[]): NodeCompat[] {
 }
 
 /**
+ * The node an `exec` callback was given.
  *
- * @param args
+ * @param args the callback's arguments
  */
 export function extractNodeFromExec(...args: any[]): NodeCompat | null {
 	const first = args[0]

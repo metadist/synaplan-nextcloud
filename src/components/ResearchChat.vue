@@ -469,8 +469,9 @@ const inputPlaceholder = computed(() => {
 })
 
 /**
+ * Split a `/pic` or `/vid` command from its prompt.
  *
- * @param text
+ * @param text what the person typed
  */
 function parseCommand(text: string): {
 	command: 'pic' | 'vid' | null
@@ -674,9 +675,10 @@ async function sendMessage() {
 }
 
 /**
+ * Generate an image or a video and show it in the chat.
  *
- * @param command
- * @param prompt
+ * @param command `pic` for an image, `vid` for a video
+ * @param prompt what to generate
  */
 async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 	const type = command === 'pic' ? 'image' : 'video'
@@ -811,8 +813,9 @@ async function handleChatMessageBlocking(payload: Record<string, unknown>) {
 }
 
 /**
+ * Save a generated image or video to Nextcloud.
  *
- * @param messageIdx
+ * @param messageIdx index of the message holding it
  */
 async function saveMedia(messageIdx: number) {
 	const msg = messages.value[messageIdx]
@@ -843,8 +846,9 @@ async function saveMedia(messageIdx: number) {
 }
 
 /**
+ * Follow the consent gate.
  *
- * @param value
+ * @param value whether AI is blocked until the person activates it
  */
 function onAiBlockedChange(value: boolean) {
 	aiConsentBlocked.value = value
