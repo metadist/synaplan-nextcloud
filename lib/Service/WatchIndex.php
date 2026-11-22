@@ -173,8 +173,8 @@ class WatchIndex
         $qb->selectDistinct('uid')->from(self::TABLE);
         $result = $qb->executeQuery();
         $uids = [];
-        while (($row = $result->fetch()) !== false) {
-            if (is_array($row) && is_string($row['uid'] ?? null)) {
+        while (($row = $result->fetchAssociative()) !== false) {
+            if (is_string($row['uid'] ?? null)) {
                 $uids[] = $row['uid'];
             }
         }
@@ -244,10 +244,7 @@ class WatchIndex
             ->setMaxResults($limit);
         $result = $qb->executeQuery();
         $rows = [];
-        while (($row = $result->fetch()) !== false) {
-            if (!is_array($row)) {
-                continue;
-            }
+        while (($row = $result->fetchAssociative()) !== false) {
             $rows[] = [
                 'watch' => (int) ($row['watch_id'] ?? 0),
                 'file' => (int) ($row['file_id'] ?? 0),
@@ -387,10 +384,7 @@ class WatchIndex
     {
         $result = $qb->executeQuery();
         $rows = [];
-        while (($row = $result->fetch()) !== false) {
-            if (!is_array($row)) {
-                continue;
-            }
+        while (($row = $result->fetchAssociative()) !== false) {
             $rows[] = [
                 'id' => (int) ($row['watch_id'] ?? 0),
                 'uid' => (string) ($row['uid'] ?? ''),
