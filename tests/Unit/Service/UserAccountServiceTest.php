@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -312,6 +313,57 @@ class UserAccountServiceTest extends TestCase
 
         $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
         $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
+    }
+
+    public function testWithdrawnConsentRevokesTheGrantSoNoTokenIsLeft(): void
+    {
+        $grant = new \stdClass();
+        $grant->connected = true;
+        $this->userConfig['ada|ai_consent'] = '1';
+        $this->appConfig['mode'] = 'link';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('ada', 'ada@example.org', 'Ada'));
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (): bool => (bool) $grant->connected);
+        $this->oauth->method('accessToken')->willReturn('still.usable.token');
+        $this->oauth->expects($this->once())->method('revoke')->with('ada')->willReturnCallback(
+            static function () use ($grant): void {
+                $grant->connected = false;
+            }
+        );
+
+        $service = $this->service();
+        $service->revokeConsent();
+
+        $this->assertArrayNotHasKey('ada|ai_consent', $this->userConfig);
+        $this->assertSame('', $service->credentialFor('ada'));
+    }
+
+    public function testWithdrawnConsentForgetsTheGrantWhenSynaplanCannotBeTold(): void
+    {
+        $this->userConfig['ada|ai_consent'] = '1';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('ada', 'ada@example.org', 'Ada'));
+        $this->oauth->method('isConnected')->willReturn(true);
+        $this->oauth->method('revoke')->willThrowException(
+            new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE)
+        );
+        $this->oauth->expects($this->once())->method('forget')->with('ada');
+
+        $this->service()->revokeConsent();
+
+        $this->assertArrayNotHasKey('ada|ai_consent', $this->userConfig);
+    }
+
+    public function testStoredCredentialCheckNeverRenewsAToken(): void
+    {
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->oauth->expects($this->never())->method('accessToken');
+        $this->userConfig['bob|synaplan_user_api_key'] = 'sk_bob';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $service = $this->service();
+
+        $this->assertTrue($service->hasStoredCredential('ada'));
+        $this->assertTrue($service->hasStoredCredential('bob'));
+        $this->assertFalse($service->hasStoredCredential('carol'));
     }
 
     public function testGetSynaplanUserIdForArbitraryUser(): void

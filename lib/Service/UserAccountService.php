@@ -367,8 +367,10 @@ class UserAccountService
     }
 
     /**
-     * Withdraw consent and forget the cached per-user key. The Synaplan account
-     * itself is not deleted here (an admin can remove it server-side).
+     * Withdraw consent and forget every credential held for the person: the
+     * per-user key and a connected person's grant, which is revoked at
+     * Synaplan. The Synaplan account itself is not deleted here (an admin can
+     * remove it server-side).
      */
     public function revokeConsent(): void
     {
@@ -376,11 +378,40 @@ class UserAccountService
         if (!$user instanceof IUser) {
             return;
         }
+        $uid = $user->getUID();
 
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF);
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_AT_PREF);
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
-        $this->clearLinkPrefsForUid($user->getUID());
+        // The grant is credential resolution's first answer, ahead of any
+        // consent check: it has to go, even when Synaplan cannot be told.
+        if ($this->oauth->isConnected($uid)) {
+            try {
+                $this->oauth->revoke($uid);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Could not revoke the Synaplan grant of {uid} on withdrawn consent: {message}', [
+                    'app' => Application::APP_ID,
+                    'uid' => $uid,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->oauth->forget($uid);
+            }
+        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->clearLinkPrefsForUid($uid);
+    }
+
+    /**
+     * Whether a credential is stored for the person, without renewing an
+     * access token or calling Synaplan: for lists and listeners that only
+     * ask whether one exists.
+     */
+    public function hasStoredCredential(string $uid): bool
+    {
+        if ($this->oauth->isConnected($uid)) {
+            return true;
+        }
+
+        return ($this->keys->getUserKey($uid) ?? '') !== '';
     }
 
     /**
