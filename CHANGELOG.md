@@ -29,6 +29,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A copy whose claim failed** is claimed once more in the background while
   it is still valid. The app answered "still copying" and then never sent
   the result, so Synaplan marked the copy unconfirmed after ten minutes.
+- **A folder read of more than 500 files** lists every file. Synaplan reads
+  500 items per listing call, so the files after the first 500 were left out
+  without a word.
 
 ## 2.0.0 – 2026-11-16
 

@@ -30,6 +30,8 @@ final class FolderReadTest extends TestCase
     private int $etagReads = 0;
     /** @var array<string, array<string, mixed>> */
     private array $stored = [];
+    /** @var list<\OCP\Files\Node> */
+    private array $listing = [];
 
     protected function setUp(): void
     {
@@ -57,7 +59,8 @@ final class FolderReadTest extends TestCase
         $file->method('getPath')->willReturn('/ada/files/Invoices/a.txt');
 
         $invoices = $this->createMock(Folder::class);
-        $invoices->method('getDirectoryListing')->willReturn([$file]);
+        $this->listing = [$file];
+        $invoices->method('getDirectoryListing')->willReturnCallback(fn (): array => $this->listing);
         $invoices->method('getPath')->willReturn('/ada/files/Invoices');
         $invoices->method('getName')->willReturn('Invoices');
 
@@ -145,6 +148,38 @@ final class FolderReadTest extends TestCase
         $this->jobs->expects($this->never())->method('add');
 
         $this->reads->handle('15', 'ada');
+    }
+
+    public function testAFolderOfMoreThanFiveHundredFilesIsListedInFullInCallsOfFiveHundred(): void
+    {
+        $this->listing = [];
+        for ($i = 1; $i <= 1201; $i++) {
+            $file = $this->createStub(File::class);
+            $file->method('getId')->willReturn(1000 + $i);
+            $file->method('getName')->willReturn('f' . $i . '.txt');
+            $file->method('getMTime')->willReturn(time());
+            $file->method('getPath')->willReturn('/ada/files/Invoices/f' . $i . '.txt');
+            $this->listing[] = $file;
+        }
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $sizes = [];
+        $this->links->expects($this->exactly(3))->method('submitPickupListing')->willReturnCallback(
+            function (string $id, string $uid, array $items) use (&$sizes): array {
+                $sizes[] = count($items);
+                $last = $items[count($items) - 1]['id'];
+
+                return ['upload' => [], 'reuse' => [], 'skip' => [['id' => $last, 'reason' => 'over_limit']]];
+            },
+        );
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['listed'] === 1201
+                && array_column($body['skipped'], 'id') === ['1500', '2000', '2201'],
+        ));
+
+        $this->reads->handle('15', 'ada');
+
+        self::assertSame([500, 500, 201], $sizes);
     }
 
     public function testAClaimedReadThatBreaksStillReportsAFailure(): void

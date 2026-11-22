@@ -28,6 +28,7 @@ use Psr\Log\LoggerInterface;
 class FolderRead
 {
     public const BUDGET_SECONDS = 20;
+    private const LISTING_CHUNK = 500;
 
     public function __construct(
         private PlatformLinkService $links,
@@ -161,11 +162,21 @@ class FolderRead
                 'mime' => $file['mime'],
             ];
         }
-        $listing = $this->links->submitPickupListing($id, $uid, $items);
-        if (isset($listing['status_code']) && (int) $listing['status_code'] !== 200) {
-            $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
+        // Synaplan reads at most 500 items of one listing call and keeps
+        // its decisions across calls (`07` §4).
+        $listing = ['upload' => [], 'skip' => []];
+        foreach (array_chunk($items, self::LISTING_CHUNK) ?: [[]] as $chunk) {
+            $answer = $this->links->submitPickupListing($id, $uid, $chunk);
+            if (isset($answer['status_code']) && (int) $answer['status_code'] !== 200) {
+                $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
 
-            return;
+                return;
+            }
+            foreach (['upload', 'skip'] as $key) {
+                if (is_array($answer[$key] ?? null)) {
+                    $listing[$key] = array_merge($listing[$key], array_values($answer[$key]));
+                }
+            }
         }
 
         $byId = [];
@@ -173,7 +184,7 @@ class FolderRead
             $byId[$file['id']] = $file;
         }
         $skipped = [];
-        foreach (is_array($listing['skip'] ?? null) ? $listing['skip'] : [] as $skip) {
+        foreach ($listing['skip'] as $skip) {
             if (!is_array($skip)) {
                 continue;
             }
@@ -188,7 +199,7 @@ class FolderRead
             ];
         }
         $upload = [];
-        foreach (is_array($listing['upload'] ?? null) ? $listing['upload'] : [] as $remoteId) {
+        foreach ($listing['upload'] as $remoteId) {
             if (is_string($remoteId) && isset($byId[$remoteId])) {
                 $upload[] = ['id' => $remoteId, 'version' => $byId[$remoteId]['version']];
             }
