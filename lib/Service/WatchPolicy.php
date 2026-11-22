@@ -11,20 +11,31 @@ use OCP\IConfig;
 use OCP\Share\IManager as IShareManager;
 
 /**
- * The administrator's "Allow watching shared folders". A folder or a file
- * counts as shared when someone shared it with the person, or when it or a
- * folder above it is shared with anyone else. While the setting is off, no
- * watch can start on one, and the watches already on one get no files.
+ * The administrator's "Allow watching folders" and "Allow watching shared
+ * folders". A folder or a file counts as shared when someone shared it with
+ * the person, or when it or a folder above it is shared with anyone else.
+ * While a setting is off, no watch can start where it applies, and the
+ * watches already there get no files.
  */
 class WatchPolicy
 {
+    public const WATCHES_KEY = 'watch_folders';
     public const SHARED_KEY = 'watch_shared_folders';
+    /** Every watch is held: watching folders is turned off. */
+    public const OFF_WATCHES = 'watches';
+    /** The watch is on a shared target and watching those is turned off. */
+    public const OFF_SHARED = 'shared';
 
     public function __construct(
         private IConfig $config,
         private IShareManager $shares,
         private IRootFolder $rootFolder,
     ) {
+    }
+
+    public static function watchingAllowedIn(IConfig $config): bool
+    {
+        return $config->getAppValue(Application::APP_ID, self::WATCHES_KEY, 'yes') !== 'no';
     }
 
     public static function sharedAllowedIn(IConfig $config): bool
@@ -60,6 +71,11 @@ class WatchPolicy
         return self::jobsOnScheduleIn($this->config);
     }
 
+    public function watchingAllowed(): bool
+    {
+        return self::watchingAllowedIn($this->config);
+    }
+
     public function sharedAllowed(): bool
     {
         return self::sharedAllowedIn($this->config);
@@ -67,7 +83,21 @@ class WatchPolicy
 
     public function blocks(Node $node): bool
     {
-        return !$this->sharedAllowed() && $this->isShared($node);
+        return $this->heldBy($node) !== null;
+    }
+
+    /**
+     * Which setting holds watches on this target, if one does.
+     *
+     * @return self::OFF_*|null
+     */
+    public function heldBy(Node $node): ?string
+    {
+        if (!$this->watchingAllowed()) {
+            return self::OFF_WATCHES;
+        }
+
+        return !$this->sharedAllowed() && $this->isShared($node) ? self::OFF_SHARED : null;
     }
 
     public function isShared(Node $node): bool
@@ -89,13 +119,17 @@ class WatchPolicy
     }
 
     /**
-     * Mark the watches the setting has stopped, as their owner sees them.
+     * Mark the watches a setting has stopped, as their owner sees them:
+     * `policy_off` names the setting.
      *
      * @param list<array<string, mixed>> $watches rows with a `target_id`
      * @return list<array<string, mixed>>
      */
     public function markStopped(string $uid, array $watches): array
     {
+        if (!$this->watchingAllowed()) {
+            return array_map(static fn (array $watch): array => ['policy_off' => self::OFF_WATCHES] + $watch, $watches);
+        }
         if ($this->sharedAllowed() || $watches === []) {
             return $watches;
         }
@@ -115,7 +149,7 @@ class WatchPolicy
                 continue;
             }
             if ($node !== null && $this->isShared($node)) {
-                $watches[$i]['policy_off'] = true;
+                $watches[$i]['policy_off'] = self::OFF_SHARED;
             }
         }
 

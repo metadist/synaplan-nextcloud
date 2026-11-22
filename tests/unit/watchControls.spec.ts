@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { controlsFor } from '../../src/watchControls'
+import { controlsFor, policyStopped } from '../../src/watchControls'
 
 describe('the owner controls of a watch', () => {
 	it('offers Pause and Stop while it watches', () => {
@@ -27,12 +27,12 @@ describe('the owner controls of a watch', () => {
 	})
 
 	it('offers only Stop while the administrator turned off watching shared folders', () => {
-		expect(controlsFor('active', true)).toEqual({
+		expect(controlsFor('active', 'shared')).toEqual({
 			pause: false,
 			resume: false,
 			stop: true,
 		})
-		expect(controlsFor('paused', true)).toEqual({
+		expect(controlsFor('paused', 'shared')).toEqual({
 			pause: false,
 			resume: false,
 			stop: true,
@@ -45,5 +45,22 @@ describe('the owner controls of a watch', () => {
 			resume: false,
 			stop: false,
 		})
+	})
+
+	it('offers only Stop while the administrator turned off watching folders', () => {
+		expect(controlsFor('active', 'watches')).toEqual({
+			pause: false,
+			resume: false,
+			stop: true,
+		})
+	})
+
+	it('names the setting that stopped the watch', () => {
+		expect(policyStopped('watches')).toBe(
+			'Stopped — your administrator turned off watching folders',
+		)
+		expect(policyStopped('shared')).toBe(
+			'Stopped — your administrator turned off watching shared folders',
+		)
 	})
 })

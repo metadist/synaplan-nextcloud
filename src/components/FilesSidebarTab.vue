@@ -122,10 +122,7 @@
 					<div class="sp-watch-sentence">
 						{{
 							item.policy_off
-								? t(
-										'synaplan_integration',
-										'Stopped — your administrator turned off watching shared folders',
-									)
+								? policyStopped(item.policy_off)
 								: item.sentence
 						}}
 					</div>
@@ -234,7 +231,7 @@ import {
 	invalidateCloudStatusCache,
 	onCloudStatusInvalidated,
 } from '../cloud_state/statusBatcher'
-import { controlsFor } from '../watchControls'
+import { controlsFor, policyStopped } from '../watchControls'
 import { setWatchState, stopWatch } from '../watches'
 
 const props = defineProps<{

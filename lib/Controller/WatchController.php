@@ -186,7 +186,7 @@ class WatchController extends Controller
      * What the list and the sidebar show of a watch.
      *
      * @param array<mixed> $watch a watch as Synaplan answers it
-     * @return array{id: int, kind: string, targetId: string, name: string, state: string, sentence: string, lastRunAt: ?int, policyOff: bool, openUrl: string}
+     * @return array{id: int, kind: string, targetId: string, name: string, state: string, sentence: string, lastRunAt: ?int, policyOff: ?string, openUrl: string}
      */
     private function listed(array $watch): array
     {
@@ -200,7 +200,7 @@ class WatchController extends Controller
             'state' => is_string($watch['state'] ?? null) ? $watch['state'] : '',
             'sentence' => is_string($watch['sentence'] ?? null) ? $watch['sentence'] : '',
             'lastRunAt' => is_int($watch['last_run_at'] ?? null) ? $watch['last_run_at'] : null,
-            'policyOff' => ($watch['policy_off'] ?? false) === true,
+            'policyOff' => in_array($watch['policy_off'] ?? null, [WatchPolicy::OFF_WATCHES, WatchPolicy::OFF_SHARED], true) ? $watch['policy_off'] : null,
             'openUrl' => ctype_digit($targetId) ? $this->urlGenerator->getAbsoluteURL('/index.php/f/' . $targetId) : '',
         ];
     }

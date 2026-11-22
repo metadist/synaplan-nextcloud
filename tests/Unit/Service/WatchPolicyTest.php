@@ -23,6 +23,27 @@ final class WatchPolicyTest extends TestCase
         self::assertFalse($this->policy('no')->sharedAllowed());
     }
 
+    public function testWatchingFoldersIsAllowedUntilTheAdministratorTurnsItOff(): void
+    {
+        self::assertTrue($this->policy(null)->watchingAllowed());
+        self::assertFalse($this->policy(null, watching: 'no')->watchingAllowed());
+    }
+
+    public function testWithWatchingOffEveryTargetIsHeldAndEveryWatchReadsStopped(): void
+    {
+        $own = $this->folder(received: false, access: ['users' => ['ada']]);
+        $shared = $this->folder(received: true, access: []);
+        $policy = $this->policy('yes', [31 => $own], 'no');
+
+        self::assertSame(WatchPolicy::OFF_WATCHES, $policy->heldBy($own));
+        self::assertSame(WatchPolicy::OFF_WATCHES, $this->policy('no', [], 'no')->heldBy($shared));
+        self::assertTrue($policy->blocks($own));
+        self::assertSame(
+            [['policy_off' => WatchPolicy::OFF_WATCHES, 'id' => 2, 'target_id' => '31'], ['policy_off' => WatchPolicy::OFF_WATCHES, 'id' => 3, 'target_id' => '99']],
+            $policy->markStopped('ada', [['id' => 2, 'target_id' => '31'], ['id' => 3, 'target_id' => '99']]),
+        );
+    }
+
     /**
      * @return iterable<string, array{?string, bool}>
      */
@@ -85,6 +106,8 @@ final class WatchPolicyTest extends TestCase
         self::assertTrue($this->policy('no')->blocks($shared));
         self::assertFalse($this->policy('no')->blocks($own));
         self::assertFalse($this->policy('yes')->blocks($shared));
+        self::assertSame(WatchPolicy::OFF_SHARED, $this->policy('no')->heldBy($shared));
+        self::assertNull($this->policy('no')->heldBy($own));
     }
 
     public function testTheWatchesOnSharedTargetsAreMarkedStopped(): void
@@ -101,7 +124,7 @@ final class WatchPolicyTest extends TestCase
 
         $marked = $this->policy('no', $nodes)->markStopped('ada', $watches);
 
-        self::assertTrue($marked[0]['policy_off'] ?? false);
+        self::assertSame(WatchPolicy::OFF_SHARED, $marked[0]['policy_off'] ?? null);
         self::assertArrayNotHasKey('policy_off', $marked[1]);
         self::assertArrayNotHasKey('policy_off', $marked[2]);
         self::assertSame($watches, $this->policy('yes', $nodes)->markStopped('ada', $watches));
@@ -122,11 +145,15 @@ final class WatchPolicyTest extends TestCase
     /**
      * @param array<int, Folder> $nodes
      */
-    private function policy(?string $value, array $nodes = []): WatchPolicy
+    private function policy(?string $value, array $nodes = [], ?string $watching = null): WatchPolicy
     {
         $config = $this->createStub(IConfig::class);
         $config->method('getAppValue')->willReturnCallback(
-            static fn (string $app, string $key, string $default = ''): string => $value ?? $default,
+            static fn (string $app, string $key, string $default = ''): string => match ($key) {
+                WatchPolicy::SHARED_KEY => $value ?? $default,
+                WatchPolicy::WATCHES_KEY => $watching ?? $default,
+                default => $default,
+            },
         );
         $shares = $this->createStub(IShareManager::class);
         $shares->method('getAccessList')->willReturnCallback(

@@ -98,6 +98,19 @@ final class WatchTargetTest extends TestCase
         }
     }
 
+    public function testNothingCanBeWatchedWhileTheAdministratorTurnedWatchingOff(): void
+    {
+        $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE), 'Notes.md', watchingOff: true);
+
+        try {
+            $target->resolve('file', '7');
+            self::fail('A file was accepted with watching off');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::WATCHES_OFF, $e->failure->code);
+        }
+    }
+
     public function testAKindThatDoesNotMatchTheNodeIsNotFound(): void
     {
         $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE));
@@ -125,7 +138,7 @@ final class WatchTargetTest extends TestCase
         return $file;
     }
 
-    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md', bool $sharedOff = false): WatchTarget
+    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md', bool $sharedOff = false, bool $watchingOff = false): WatchTarget
     {
         $user = $this->createStub(IUser::class);
         $user->method('getUID')->willReturn('ada');
@@ -140,7 +153,7 @@ final class WatchTargetTest extends TestCase
         $root->method('getUserFolder')->willReturn($home);
 
         $policy = $this->createStub(WatchPolicy::class);
-        $policy->method('blocks')->willReturn($sharedOff);
+        $policy->method('heldBy')->willReturn($watchingOff ? WatchPolicy::OFF_WATCHES : ($sharedOff ? WatchPolicy::OFF_SHARED : null));
 
         return new WatchTarget($root, $session, $policy);
     }

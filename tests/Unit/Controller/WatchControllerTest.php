@@ -211,7 +211,7 @@ final class WatchControllerTest extends TestCase
             'state' => 'paused',
             'sentence' => 'Paused by you.',
             'lastRunAt' => 1700000000,
-            'policyOff' => false,
+            'policyOff' => null,
             'openUrl' => 'https://cloud.example/index.php/f/30',
         ]], $data['watches']);
     }

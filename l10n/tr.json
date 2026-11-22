@@ -344,7 +344,11 @@
 		"How to set it up": "Nasıl kurulur",
 		"Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.": "Yöneticiniz bunu ayarlayana kadar Synaplan yeni dosyaları yalnızca biri bu Nextcloud'un bir sayfasını açık tuttuğunda alır.",
 		"Background jobs run only as often as an outside service calls this Nextcloud.": "Arka plan işleri yalnızca harici bir hizmetin bu Nextcloud'u çağırdığı sıklıkta çalışır.",
-		"Watched folders get new files only that often, so have it call every 5 minutes.": "İzlenen klasörler yeni dosyaları yalnızca bu sıklıkta alır, bu yüzden hizmetin her 5 dakikada bir çağırmasını sağlayın."
+		"Watched folders get new files only that often, so have it call every 5 minutes.": "İzlenen klasörler yeni dosyaları yalnızca bu sıklıkta alır, bu yüzden hizmetin her 5 dakikada bir çağırmasını sağlayın.",
+		"Allow watching folders": "Klasör izlemeye izin ver",
+		"When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud.": "Bu kapalıyken kimse bir klasörü veya dosyayı izlemeye başlayamaz, süren izlemeler durur ve Synaplan bu Nextcloud için izleme sunmaz.",
+		"Stopped — your administrator turned off watching folders": "Durduruldu — yöneticiniz klasör izlemeyi kapattı",
+		"Your administrator turned off watching folders.": "Yöneticiniz klasör izlemeyi kapattı."
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

@@ -17,10 +17,7 @@
 					<span class="sp-watched-sentence">
 						{{
 							item.policyOff
-								? t(
-										'synaplan_integration',
-										'Stopped — your administrator turned off watching shared folders',
-									)
+								? policyStopped(item.policyOff)
 								: item.sentence
 						}}
 					</span>
@@ -82,7 +79,7 @@ import type { WatchRow } from '../watchControls'
 
 import { t } from '@nextcloud/l10n'
 import { onMounted, ref } from 'vue'
-import { controlsFor } from '../watchControls'
+import { controlsFor, policyStopped } from '../watchControls'
 import { listWatches, setWatchState, stopWatch } from '../watches'
 
 const watches = ref<WatchRow[]>([])

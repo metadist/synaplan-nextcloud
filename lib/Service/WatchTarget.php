@@ -95,10 +95,11 @@ final class WatchTarget
                 'Watching needs permission to edit the target',
             );
         }
-        if ($this->policy->blocks($node)) {
+        $held = $this->policy->heldBy($node);
+        if ($held !== null) {
             throw new FailureException(
-                new Failure(Http::STATUS_FORBIDDEN, Failure::WATCH_SHARED_OFF),
-                'Watching shared folders is turned off',
+                new Failure(Http::STATUS_FORBIDDEN, $held === WatchPolicy::OFF_WATCHES ? Failure::WATCHES_OFF : Failure::WATCH_SHARED_OFF),
+                $held === WatchPolicy::OFF_WATCHES ? 'Watching folders is turned off' : 'Watching shared folders is turned off',
             );
         }
 

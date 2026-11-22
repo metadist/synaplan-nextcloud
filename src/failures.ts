@@ -193,6 +193,13 @@ export function describeFailure(code?: string, message?: string): Failure {
 					'Only people who may edit a folder or a file can watch it.',
 				),
 			}
+		case 'watches_off':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Your administrator turned off watching folders.',
+				),
+			}
 		case 'watch_shared_off':
 			return {
 				text: t(

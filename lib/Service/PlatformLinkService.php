@@ -480,7 +480,7 @@ class PlatformLinkService
             'client_uri' => $this->urlGenerator->getAbsoluteURL('/'),
             'redirect_uri' => $this->callbackUrl(),
             'delivery_url' => $this->defaultDeliveryUrl(),
-            'capabilities' => self::CAPABILITIES,
+            'capabilities' => $this->capabilities(),
             'server_id' => $this->synaplanConfig->getInstanceId(),
             'version' => $this->appManager->getAppVersion(Application::APP_ID),
         ], $registrationToken);
@@ -548,6 +548,22 @@ class PlatformLinkService
     }
 
     /**
+     * What this app does. Synaplan offers watching only for clouds that
+     * report `watches`, so it is left out while the administrator has
+     * turned watching folders off.
+     *
+     * @return list<string>
+     */
+    public function capabilities(): array
+    {
+        if (WatchPolicy::watchingAllowedIn($this->config)) {
+            return self::CAPABILITIES;
+        }
+
+        return array_values(array_diff(self::CAPABILITIES, ['watches']));
+    }
+
+    /**
      * Tell Synaplan where to call, which server this is, and what this app
      * does (client configuration, RFC 7592).
      */
@@ -559,7 +575,7 @@ class PlatformLinkService
         $this->oauth->updateConfiguration([
             'delivery_url' => $deliveryUrl,
             'server_id' => $this->synaplanConfig->getInstanceId(),
-            'app_capabilities' => self::CAPABILITIES,
+            'app_capabilities' => $this->capabilities(),
             'software_version' => $this->appManager->getAppVersion(Application::APP_ID),
         ]);
     }

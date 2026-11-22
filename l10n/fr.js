@@ -345,6 +345,10 @@ OC.L10N.register(
     "How to set it up" : "Comment le configurer",
     "Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open." : "Tant que votre administrateur ne l'a pas configuré, Synaplan ne reçoit de nouveaux fichiers que lorsque quelqu'un a une page de ce Nextcloud ouverte.",
     "Background jobs run only as often as an outside service calls this Nextcloud." : "Les tâches de fond ne s'exécutent qu'aussi souvent qu'un service externe appelle ce Nextcloud.",
-    "Watched folders get new files only that often, so have it call every 5 minutes." : "Les dossiers surveillés ne reçoivent de nouveaux fichiers qu'à cette fréquence : faites-le appeler toutes les 5 minutes."
+    "Watched folders get new files only that often, so have it call every 5 minutes." : "Les dossiers surveillés ne reçoivent de nouveaux fichiers qu'à cette fréquence : faites-le appeler toutes les 5 minutes.",
+    "Allow watching folders" : "Autoriser la surveillance de dossiers",
+    "When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud." : "Désactivé, personne ne peut commencer à surveiller un dossier ou un fichier, les surveillances en cours s'arrêtent et Synaplan ne propose plus la surveillance pour ce Nextcloud.",
+    "Stopped — your administrator turned off watching folders" : "Arrêtée — votre administrateur a désactivé la surveillance des dossiers",
+    "Your administrator turned off watching folders." : "Votre administrateur a désactivé la surveillance des dossiers."
 },
 "nplurals=2; plural=(n > 1);");

@@ -344,7 +344,11 @@
 		"How to set it up": "Cómo configurarlo",
 		"Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.": "Hasta que tu administrador lo configure, Synaplan solo recibe archivos nuevos mientras alguien tiene abierta una página de este Nextcloud.",
 		"Background jobs run only as often as an outside service calls this Nextcloud.": "Las tareas en segundo plano solo se ejecutan con la frecuencia con la que un servicio externo llama a este Nextcloud.",
-		"Watched folders get new files only that often, so have it call every 5 minutes.": "Las carpetas vigiladas solo reciben archivos nuevos con esa frecuencia, así que haz que llame cada 5 minutos."
+		"Watched folders get new files only that often, so have it call every 5 minutes.": "Las carpetas vigiladas solo reciben archivos nuevos con esa frecuencia, así que haz que llame cada 5 minutos.",
+		"Allow watching folders": "Permitir vigilar carpetas",
+		"When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud.": "Si está desactivado, nadie puede empezar a vigilar una carpeta o un archivo, las vigilancias en curso se detienen y Synaplan deja de ofrecer la vigilancia para este Nextcloud.",
+		"Stopped — your administrator turned off watching folders": "Detenida: tu administrador desactivó la vigilancia de carpetas",
+		"Your administrator turned off watching folders.": "Tu administrador desactivó la vigilancia de carpetas."
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

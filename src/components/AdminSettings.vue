@@ -188,9 +188,24 @@
 				</div>
 
 				<NcCheckboxRadioSwitch
-					v-model="watchSharedFolders"
+					v-model="watchFolders"
 					type="switch"
 					:disabled="saving">
+					{{ t('synaplan_integration', 'Allow watching folders') }}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud.',
+						)
+					}}
+				</p>
+
+				<NcCheckboxRadioSwitch
+					v-model="watchSharedFolders"
+					type="switch"
+					:disabled="saving || !watchFolders">
 					{{ t('synaplan_integration', 'Allow watching shared folders') }}
 				</NcCheckboxRadioSwitch>
 				<p class="sp-hint sp-switch-hint">
@@ -532,6 +547,7 @@ const linkRegistered = ref(false)
 const linkInstanceId = ref('')
 const deliveryUrl = ref('')
 const readFolderCap = ref('20')
+const watchFolders = ref(true)
 const watchSharedFolders = ref(true)
 const jobsMode = ref<'ajax' | 'webcron' | 'cron'>('cron')
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
@@ -714,6 +730,7 @@ async function loadSettings() {
 		linkInstance.value = data.link_instance || null
 		deliveryUrl.value = data.delivery_url || ''
 		readFolderCap.value = String(data.read_folder_cap || 20)
+		watchFolders.value = data.watch_folders !== false
 		watchSharedFolders.value = data.watch_shared_folders !== false
 		jobsMode.value =
 			data.background_jobs_mode === 'ajax'
@@ -747,6 +764,7 @@ async function save() {
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
 			read_folder_cap: Number(readFolderCap.value) || 20,
+			watch_folders: watchFolders.value,
 			watch_shared_folders: watchSharedFolders.value,
 			...(mode.value === 'link' || mode.value === 'provision'
 				? { delivery_url: deliveryUrl.value }

@@ -3,12 +3,13 @@ import { generateUrl } from '@nextcloud/router'
 
 export interface Features {
 	translation: boolean
+	watches: boolean
 	watchShared: boolean
 }
 
 // Until Synaplan has answered, everything counts as offered: the request
 // itself still refuses what Synaplan lacks, with a sentence.
-let features: Features = { translation: true, watchShared: true }
+let features: Features = { translation: true, watches: true, watchShared: true }
 let loading: Promise<void> | null = null
 
 /**
@@ -22,6 +23,7 @@ export function loadFeatures(): Promise<void> {
 			.then(({ data }) => {
 				features = {
 					translation: data?.translation !== false,
+					watches: data?.watches !== false,
 					watchShared: data?.watchShared !== false,
 				}
 			})
@@ -38,6 +40,14 @@ export function translationOffered(): boolean {
 }
 
 /**
+ * Whether the administrator allows watching folders at all, as far as is
+ * known yet.
+ */
+export function watchingAllowed(): boolean {
+	return features.watches
+}
+
+/**
  * Whether the administrator allows watching shared folders, as far as is
  * known yet.
  */
@@ -49,6 +59,6 @@ export function watchSharedAllowed(): boolean {
  * Forget what was read, for tests.
  */
 export function resetFeatures(): void {
-	features = { translation: true, watchShared: true }
+	features = { translation: true, watches: true, watchShared: true }
 	loading = null
 }

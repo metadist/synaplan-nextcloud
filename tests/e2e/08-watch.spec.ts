@@ -28,6 +28,7 @@ const SHARER = 'bob'
 const READ = 1
 const EDIT = 31
 const POLICY_OFF = 'Stopped — your administrator turned off watching shared folders'
+const WATCHES_OFF = 'Stopped — your administrator turned off watching folders'
 const SYNAPLAN_CONTAINER = process.env.SYNAPLAN_APP_CONTAINER ?? 'synaplan-app-test'
 const SYNAPLAN_DB_CONTAINER = process.env.SYNAPLAN_DB_CONTAINER ?? 'synaplan-db-test'
 const NC_PROJECT = process.env.E2E_NC_PROJECT ?? 'synaplan-nextcloud-e2e'
@@ -227,6 +228,103 @@ test('with watching shared folders off, a shared folder offers no watch and its 
 		await person.delete(dav)
 		await person.dispose()
 	}
+})
+
+test('with watching folders off, nothing offers a watch, starts are refused and a running watch reads stopped and gets no files', async ({
+	page,
+}) => {
+	const folder = `Held-${Date.now()}`
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${UID}/${folder}`
+	const instanceId = occ(
+		'config:app:get',
+		'synaplan_integration',
+		'link_instance_id',
+	).trim()
+	const announced = () =>
+		synaplanSql(
+			`SELECT BAPPCAPABILITIES FROM BPLATFORMINSTANCES WHERE BINSTANCEID='${instanceId}'`,
+		)
+	let watchId = ''
+	expect((await person.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	occ('config:app:set', 'synaplan_integration', 'watch_quiet_seconds', '--value=1')
+	try {
+		const folderId = await fileIdOf(person, dav)
+		const started = await person.post(`${APP}/api/v1/watches`, {
+			data: {
+				targetKind: 'folder',
+				targetId: folderId,
+				preset: 'keep_searchable',
+			},
+		})
+		expect(started.ok(), 'starting the watch while watching is allowed').toBe(
+			true,
+		)
+		watchId = String((await started.json()).watch.id)
+		expect(announced()).toContain('"watches"')
+
+		await saveSettings({ watch_folders: false })
+		expect(
+			announced(),
+			'Synaplan is told the app no longer watches',
+		).not.toContain('"watches"')
+		expect(announced()).toContain('"deliveries"')
+
+		await page.goto('/index.php/apps/files/')
+		const row = page.locator(`[data-cy-files-list-row-name="${folder}"]`)
+		await expect(row.getByTestId('synaplan-row-bird')).toHaveAttribute(
+			'title',
+			'Watching stopped — open to see why',
+		)
+		await row.click({ button: 'right' })
+		await expect(page.getByRole('menuitem').first()).toBeVisible()
+		await expect(
+			page.getByRole('menuitem', { name: 'Watch with Synaplan…' }),
+		).toHaveCount(0)
+		await page.keyboard.press('Escape')
+
+		await page.goto(`${APP}/research`)
+		const listed = page
+			.getByTestId('synaplan-watched-row')
+			.filter({ hasText: folder })
+		await expect(listed.getByText(WATCHES_OFF)).toBeVisible()
+		await expect(listed.getByTestId('synaplan-watched-stop')).toBeVisible()
+		await expect(listed.getByTestId('synaplan-watched-pause')).toHaveCount(0)
+
+		expect(
+			(await put(person, `${dav}/held.txt`, 'not for the watch')).ok(),
+		).toBe(true)
+		const heldId = await fileIdOf(person, `${dav}/held.txt`)
+		await new Promise((resolve) => setTimeout(resolve, 1500))
+		runJob('WatchFeedJob')
+		expect(
+			synaplanSql(
+				`SELECT COUNT(*) FROM BCLOUDWATCHITEMS WHERE BWATCHID=${watchId} AND BSOURCEID='${heldId}'`,
+			),
+			'the file stays out while watching is off',
+		).toBe('0')
+
+		const refused = await person.post(`${APP}/api/v1/watches`, {
+			data: {
+				targetKind: 'folder',
+				targetId: folderId,
+				preset: 'keep_searchable',
+			},
+		})
+		expect(refused.status()).toBe(403)
+		expect((await refused.json()).error).toBe('watches_off')
+	} finally {
+		await saveSettings({ watch_folders: true })
+		occ('config:app:delete', 'synaplan_integration', 'watch_quiet_seconds')
+		if (watchId !== '') {
+			synaplanSql(
+				`UPDATE BCLOUDWATCHES SET BSTATE='stopped' WHERE BID=${watchId}`,
+			)
+		}
+		await person.delete(dav)
+		await person.dispose()
+	}
+	expect(announced(), 'watching is announced again').toContain('"watches"')
 })
 
 test('the owner pauses and resumes a watch in the Watched folders list and stops it in the sidebar', async ({

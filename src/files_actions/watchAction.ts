@@ -7,7 +7,7 @@ import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
-import { watchSharedAllowed } from './features'
+import { watchingAllowed, watchSharedAllowed } from './features'
 
 /**
  * Whether a node is a folder.
@@ -49,7 +49,7 @@ export const watchAction: IFileAction = {
 
 	enabled(...args: unknown[]) {
 		const nodes = extractNodesFromEnabled(...args)
-		if (nodes.length !== 1) {
+		if (nodes.length !== 1 || !watchingAllowed()) {
 			return false
 		}
 		// A share's root always carries UPDATE because its mount point can be

@@ -259,6 +259,19 @@ class PlatformLinkServiceTest extends TestCase
         $this->service()->announceDelivery('http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound');
     }
 
+    public function testWithWatchingOffTheAnnouncementLeavesOutWatches(): void
+    {
+        $this->config->method('getAppValue')->willReturnCallback(
+            static fn (string $app, string $key, string $default = ''): string => $key === 'watch_folders' ? 'no' : $default,
+        );
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->expects($this->once())->method('updateConfiguration')->with($this->callback(
+            static fn (array $body): bool => $body['app_capabilities'] === ['deliveries', 'pickups', 'read_scope', 'source_events'],
+        ))->willReturn([]);
+
+        $this->service()->announceDelivery('http://nextcloud/inbound');
+    }
+
     public function testAnnounceWaitsForTheRegistration(): void
     {
         $this->oauth->method('isRegistered')->willReturn(false);

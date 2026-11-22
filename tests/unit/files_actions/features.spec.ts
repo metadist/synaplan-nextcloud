@@ -5,6 +5,7 @@ import {
 	loadFeatures,
 	resetFeatures,
 	translationOffered,
+	watchingAllowed,
 	watchSharedAllowed,
 } from '@/files_actions/features'
 import { translateAction } from '@/files_actions/translateAction'
@@ -93,6 +94,17 @@ describe('watch on a shared folder', () => {
 
 		expect(watchSharedAllowed()).toBe(true)
 		expect(watchOffered({ 'mount-type': 'shared-root' })).toBe(true)
+	})
+
+	it('is hidden everywhere while the administrator turned off watching folders', async () => {
+		get.mockResolvedValue({
+			data: { translation: true, watches: false, watchShared: true },
+		})
+		await loadFeatures()
+
+		expect(watchingAllowed()).toBe(false)
+		expect(watchOffered({ 'mount-type': '' })).toBe(false)
+		expect(watchOffered({ 'mount-type': 'shared-root' })).toBe(false)
 	})
 
 	it('is hidden for a shared folder when the administrator turned it off', async () => {

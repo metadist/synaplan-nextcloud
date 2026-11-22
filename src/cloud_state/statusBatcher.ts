@@ -17,7 +17,7 @@ export interface CloudWatchSummary {
 	sentence: string
 	state: string
 	/** The administrator turned off watching shared folders. */
-	policy_off?: boolean
+	policy_off?: 'watches' | 'shared'
 }
 
 export interface ResolvedRowStatus {
