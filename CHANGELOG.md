@@ -12,6 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
   Synaplan for good, so they could not turn AI on again.
+- **A folder read that names no folder** is refused as "not found", like the
+  OpenCloud app does. With **All my files** allowed, it read the person's
+  whole home folder.
 
 ## 2.0.0 – 2026-11-16
 

@@ -336,9 +336,10 @@ class FolderRead
     }
 
     /**
-     * The folder a selector names. An empty path is the person's files; a
-     * path that cannot be cleaned (`Invoices//2026`, `Invoices/../HR`) is
-     * refused, never read as the whole home folder.
+     * The folder a selector names. A selector naming no folder, or the root,
+     * is refused even when the person lets Synaplan read all their files, and
+     * so is a path that cannot be cleaned (`Invoices//2026`,
+     * `Invoices/../HR`): neither is read as the whole home folder.
      *
      * @param array<string, mixed> $selector
      */
@@ -351,11 +352,7 @@ class FolderRead
 
             return $node instanceof Folder ? $node : null;
         }
-        $raw = trim((string) ($selector['folder_path'] ?? ''));
-        if ($raw === '') {
-            return $userFolder;
-        }
-        $path = ReadScope::clean($raw);
+        $path = ReadScope::clean(trim(is_string($selector['folder_path'] ?? null) ? $selector['folder_path'] : ''));
         if ($path === '') {
             return null;
         }

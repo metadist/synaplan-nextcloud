@@ -15,6 +15,7 @@ use OCP\Files\IRootFolder;
 use OCP\IAppConfig;
 use OCP\IUser;
 use OCP\IUserManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -185,6 +186,36 @@ final class FolderReadTest extends TestCase
     {
         $claim = $this->claim();
         $claim['selector'] = ['folder_path' => 'Invoices/../HR', 'recursive' => false];
+        $this->links->method('claimPickup')->willReturn($claim);
+        $this->links->expects($this->never())->method('submitPickupListing');
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'not_found',
+        ));
+
+        $this->reads->handle('15', 'ada');
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function selectorsNamingNoFolder(): iterable
+    {
+        yield 'nothing' => [['recursive' => true]];
+        yield 'an empty path' => [['folder_path' => '', 'recursive' => true]];
+        yield 'blanks' => [['folder_id' => '', 'folder_path' => '  ', 'recursive' => true]];
+        yield 'the root' => [['folder_path' => '/', 'recursive' => true]];
+    }
+
+    /**
+     * @param array<string, mixed> $selector
+     */
+    #[DataProvider('selectorsNamingNoFolder')]
+    public function testASelectorNamingNoFolderIsRefusedEvenWhenAllFilesMayBeRead(array $selector): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $claim = $this->claim();
+        $claim['selector'] = $selector;
+        $claim['read_scope'] = ['mode' => 'all', 'folders' => []];
         $this->links->method('claimPickup')->willReturn($claim);
         $this->links->expects($this->never())->method('submitPickupListing');
         $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
