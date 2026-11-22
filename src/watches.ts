@@ -21,21 +21,59 @@ export async function listWatches(): Promise<WatchRow[]> {
  *
  * @param id Synaplan watch id
  * @param state The state the owner asked for
+ * @param handleWaiting On resume: also the files that arrived while paused
  * @return The watch as it is now, or null when it failed
  */
 export async function setWatchState(
 	id: number,
 	state: 'paused' | 'active',
+	handleWaiting = true,
 ): Promise<WatchRow | null> {
 	try {
-		const { data } = await axios.patch(`${baseUrl}/api/v1/watches/${id}`, {
-			state,
-		})
+		const { data } = await axios.patch(
+			`${baseUrl}/api/v1/watches/${id}`,
+			state === 'active' ? { state, handleWaiting } : { state },
+		)
 		return data?.watch ?? null
 	} catch (error) {
 		showError(failureFromError(error).text)
 		return null
 	}
+}
+
+/**
+ * Resume a watch. A task watch first asks whether the files that arrived
+ * while it was paused go too; a Keep searchable watch takes them.
+ *
+ * @param id Synaplan watch id
+ * @return The watch as it is now, or null when it failed or the owner closed the question
+ */
+export async function resumeWatch(id: number): Promise<WatchRow | null> {
+	let handleWaiting = true
+	let waiting: { waiting?: number; ask?: boolean } = {}
+	try {
+		const { data } = await axios.get(`${baseUrl}/api/v1/watches/${id}/waiting`)
+		waiting = data ?? {}
+	} catch {
+		// Resuming still works; the next pass takes the waiting files.
+	}
+	if (waiting?.ask === true && (waiting.waiting ?? 0) > 0) {
+		try {
+			handleWaiting = await showConfirmation({
+				name: t('synaplan_integration', 'Resume watching'),
+				text: t(
+					'synaplan_integration',
+					'Also handle the files that arrived while paused ({count})?',
+					{ count: String(waiting.waiting) },
+				),
+				labelConfirm: t('synaplan_integration', 'Handle them too'),
+				labelReject: t('synaplan_integration', 'Only new files'),
+			})
+		} catch {
+			return null
+		}
+	}
+	return setWatchState(id, 'active', handleWaiting)
 }
 
 /**

@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCA\SynaplanIntegration\Service\WatchPolicy;
+use OCA\SynaplanIntegration\Service\WatchReconcile;
 use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Constants;
@@ -32,6 +33,7 @@ final class WatchControllerTest extends TestCase
     private WatchIndex&MockObject $index;
     private PlatformLinkService&MockObject $links;
     private WatchPolicy&MockObject $policy;
+    private WatchReconcile&MockObject $reconcile;
     private WatchController $controller;
 
     protected function setUp(): void
@@ -51,6 +53,7 @@ final class WatchControllerTest extends TestCase
         $this->links = $this->createMock(PlatformLinkService::class);
         $this->policy = $this->createMock(WatchPolicy::class);
         $this->policy->method('markStopped')->willReturnArgument(1);
+        $this->reconcile = $this->createMock(WatchReconcile::class);
         $urls = $this->createStub(IURLGenerator::class);
         $urls->method('getAbsoluteURL')->willReturnCallback(static fn (string $path): string => 'https://cloud.example' . $path);
         $this->controller = new WatchController(
@@ -64,6 +67,7 @@ final class WatchControllerTest extends TestCase
             $this->links,
             $this->policy,
             $urls,
+            $this->reconcile,
         );
     }
 
@@ -235,6 +239,58 @@ final class WatchControllerTest extends TestCase
 
         $this->assertSame(200, $response->getStatus());
         $this->assertSame('paused', $response->getData()['watch']['state']);
+    }
+
+    public function testResumingWithTheWaitingFilesKeepsWhereTheWatchStarted(): void
+    {
+        $watch = ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active'];
+        $this->client->expects($this->once())->method('updateWatch')->with(5, 'active')->willReturn($watch);
+        $this->index->expects($this->once())->method('update')->with('ada', $watch, 1700000000);
+        $this->index->expects($this->never())->method('restartFrom');
+
+        $this->assertSame(200, $this->controller->update(5, 'active')->getStatus());
+    }
+
+    public function testResumingWithoutTheWaitingFilesCountsOnlyFilesFromNowOn(): void
+    {
+        $watch = ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active'];
+        $this->client->method('updateWatch')->willReturn($watch);
+        $this->index->expects($this->once())->method('update');
+        $this->index->expects($this->once())->method('restartFrom')->with(5, 1700000000);
+
+        $this->assertSame(200, $this->controller->update(5, 'active', false)->getStatus());
+    }
+
+    /**
+     * @return iterable<string, array{string, int, bool}>
+     */
+    public static function waitingFiles(): iterable
+    {
+        yield 'a task watch asks' => ['task', 2, true];
+        yield 'a Keep searchable watch takes them' => ['keep_searchable', 2, false];
+        yield 'nothing waiting asks nothing' => ['task', 0, false];
+    }
+
+    #[DataProvider('waitingFiles')]
+    public function testResumeAsksAboutTheWaitingFilesOnlyForATaskWatch(string $preset, int $waiting, bool $ask): void
+    {
+        $row = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'since' => 1, 'reconciled' => 1];
+        $this->index->method('find')->with(5)->willReturn($row);
+        $this->reconcile->expects($this->once())->method('waiting')->with($row)->willReturn($waiting);
+        $this->links->method('listWatches')->willReturn([['id' => 5, 'preset' => $preset]]);
+
+        $data = $this->controller->waiting(5)->getData();
+
+        $this->assertSame($waiting, $data['waiting']);
+        $this->assertSame($ask, $data['ask']);
+    }
+
+    public function testSomeoneElsesWatchHasNothingWaiting(): void
+    {
+        $this->index->method('find')->willReturn(['id' => 5, 'uid' => 'bob', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'since' => 1, 'reconciled' => 1]);
+        $this->reconcile->expects($this->never())->method('waiting');
+
+        $this->assertSame(0, $this->controller->waiting(5)->getData()['waiting']);
     }
 
     public function testStoppingTellsSynaplanAndDropsTheWatchHere(): void

@@ -408,6 +408,86 @@ test('the owner pauses and resumes a watch in the Watched folders list and stops
 	}
 })
 
+test('resuming a task watch asks about the files that arrived while paused and sends them only when the owner says so', async ({
+	page,
+}) => {
+	const folder = `Paused-${Date.now()}`
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${UID}/${folder}`
+	let watchId = ''
+	expect((await person.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	occ('config:app:set', 'synaplan_integration', 'watch_quiet_seconds', '--value=1')
+	try {
+		const folderId = await fileIdOf(person, dav)
+		const started = await person.post(`${APP}/api/v1/watches`, {
+			data: {
+				targetKind: 'folder',
+				targetId: folderId,
+				preset: 'keep_searchable',
+			},
+		})
+		expect(started.ok(), 'starting the watch').toBe(true)
+		watchId = String((await started.json()).watch.id)
+		// Synaplan's upload does not look at the preset; a translate watch asks.
+		synaplanSql(
+			`UPDATE BCLOUDWATCHES SET BPRESET='translate' WHERE BID=${watchId}`,
+		)
+		const itemsOf = (fileId: string) =>
+			synaplanSql(
+				`SELECT COUNT(*) FROM BCLOUDWATCHITEMS WHERE BWATCHID=${watchId} AND BSOURCEID='${fileId}'`,
+			)
+		const dropWhilePaused = async (name: string) => {
+			// Reconcile counts files changed after the second the watch started or resumed.
+			await new Promise((resolve) => setTimeout(resolve, 1100))
+			expect((await put(person, `${dav}/${name}`, name)).ok()).toBe(true)
+			const id = await fileIdOf(person, `${dav}/${name}`)
+			await new Promise((resolve) => setTimeout(resolve, 1500))
+			runJob('WatchFeedJob')
+			expect(itemsOf(id), `${name} waits while paused`).toBe('0')
+			return id
+		}
+
+		await page.goto(`${APP}/research`)
+		const row = page
+			.getByTestId('synaplan-watched-row')
+			.filter({ hasText: folder })
+		const ask = page.getByRole('dialog', { name: 'Resume watching' })
+		const question = ask.getByText(
+			'Also handle the files that arrived while paused (1)?',
+		)
+
+		await row.getByTestId('synaplan-watched-pause').click()
+		await expect(row.getByTestId('synaplan-watched-resume')).toBeVisible()
+		const skipped = await dropWhilePaused('while-paused-1.txt')
+		await row.getByTestId('synaplan-watched-resume').click()
+		await expect(question).toBeVisible()
+		await ask.getByRole('button', { name: 'Only new files' }).click()
+		await expect(row.getByTestId('synaplan-watched-pause')).toBeVisible()
+		runJob('WatchFeedJob')
+		expect(itemsOf(skipped), 'left out on resume').toBe('0')
+
+		await row.getByTestId('synaplan-watched-pause').click()
+		await expect(row.getByTestId('synaplan-watched-resume')).toBeVisible()
+		const kept = await dropWhilePaused('while-paused-2.txt')
+		await row.getByTestId('synaplan-watched-resume').click()
+		await expect(question).toBeVisible()
+		await ask.getByRole('button', { name: 'Handle them too' }).click()
+		await expect(row.getByTestId('synaplan-watched-pause')).toBeVisible()
+		runJob('WatchFeedJob')
+		expect(itemsOf(kept), 'sent after resume').toBe('1')
+		expect(itemsOf(skipped), 'the first one stays out').toBe('0')
+	} finally {
+		occ('config:app:delete', 'synaplan_integration', 'watch_quiet_seconds')
+		if (watchId !== '') {
+			synaplanSql(
+				`UPDATE BCLOUDWATCHES SET BSTATE='stopped' WHERE BID=${watchId}`,
+			)
+		}
+		await person.delete(dav)
+		await person.dispose()
+	}
+})
+
 test('with background jobs in AJAX or webcron mode, the admin screen says what watches need', async ({
 	browser,
 	page,

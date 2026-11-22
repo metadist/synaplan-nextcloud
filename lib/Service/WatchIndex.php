@@ -94,6 +94,19 @@ class WatchIndex
     }
 
     /**
+     * Count only files that change from now on: the owner resumed the watch
+     * without the files that arrived while it was paused.
+     */
+    public function restartFrom(int $watchId, int $since): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('since', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT))
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
+        $qb->executeStatement();
+    }
+
+    /**
      * The owner stopped a watch here; its waiting files go too.
      */
     public function stop(int $watchId): void

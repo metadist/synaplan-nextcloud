@@ -348,7 +348,11 @@
 		"Allow watching folders": "Permitir vigilar carpetas",
 		"When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud.": "Si está desactivado, nadie puede empezar a vigilar una carpeta o un archivo, las vigilancias en curso se detienen y Synaplan deja de ofrecer la vigilancia para este Nextcloud.",
 		"Stopped — your administrator turned off watching folders": "Detenida: tu administrador desactivó la vigilancia de carpetas",
-		"Your administrator turned off watching folders.": "Tu administrador desactivó la vigilancia de carpetas."
+		"Your administrator turned off watching folders.": "Tu administrador desactivó la vigilancia de carpetas.",
+		"Resume watching": "Reanudar la vigilancia",
+		"Also handle the files that arrived while paused ({count})?": "¿Procesar también los archivos que llegaron durante la pausa ({count})?",
+		"Handle them too": "Sí, también esos",
+		"Only new files": "Solo archivos nuevos"
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

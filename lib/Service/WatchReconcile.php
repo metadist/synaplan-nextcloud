@@ -72,28 +72,31 @@ class WatchReconcile
     }
 
     /**
+     * How many files the next pass would send: on a paused watch, the files
+     * that arrived while it was paused. Synaplan's answer changes nothing.
+     *
+     * @param WatchRow $watch
+     */
+    public function waiting(array $watch): int
+    {
+        $count = 0;
+        foreach (array_chunk($this->candidates($watch), self::BATCH, true) as $batch) {
+            $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
+            $count += count(array_filter($answer['process'], static fn (string $id): bool => isset($batch[$id])));
+        }
+
+        return $count;
+    }
+
+    /**
      * @param WatchRow $watch
      * @return bool false when the pass has to be tried again
      */
     private function watch(array $watch, int $now, float $deadline): bool
     {
-        $target = $this->sender->ownerNode($watch['uid'], $watch['target']);
-        if ($target === null || $this->policy->blocks($target)) {
-            return true;
-        }
-        $versions = [];
-        foreach ($this->files($target) as $file) {
-            if ($watch['since'] === 0 || $file->getMTime() > $watch['since']) {
-                $versions[(string) $file->getId()] = WatchSender::version($file);
-            }
-        }
-        foreach (array_chunk($versions, self::BATCH, true) as $batch) {
-            $items = [];
-            foreach ($batch as $id => $version) {
-                $items[] = ['id' => (string) $id, 'version' => $version];
-            }
+        foreach (array_chunk($this->candidates($watch), self::BATCH, true) as $batch) {
             try {
-                $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], $items);
+                $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
             } catch (\Throwable $e) {
                 $this->logger->warning('Could not reconcile Synaplan watch {watch}: {message}', [
                     'app' => Application::APP_ID,
@@ -125,6 +128,44 @@ class WatchReconcile
         }
 
         return true;
+    }
+
+    /**
+     * The target's files that changed after the app started feeding the
+     * watch, by id, with their versions. None while the target is gone or a
+     * setting holds it.
+     *
+     * @param WatchRow $watch
+     * @return array<int, string>
+     */
+    private function candidates(array $watch): array
+    {
+        $target = $this->sender->ownerNode($watch['uid'], $watch['target']);
+        if ($target === null || $this->policy->blocks($target)) {
+            return [];
+        }
+        $versions = [];
+        foreach ($this->files($target) as $file) {
+            if ($watch['since'] === 0 || $file->getMTime() > $watch['since']) {
+                $versions[$file->getId()] = WatchSender::version($file);
+            }
+        }
+
+        return $versions;
+    }
+
+    /**
+     * @param array<int, string> $batch
+     * @return list<array{id: string, version: string}>
+     */
+    private static function items(array $batch): array
+    {
+        $items = [];
+        foreach ($batch as $id => $version) {
+            $items[] = ['id' => (string) $id, 'version' => $version];
+        }
+
+        return $items;
     }
 
     /**

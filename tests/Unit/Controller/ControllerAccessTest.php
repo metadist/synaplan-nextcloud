@@ -64,6 +64,7 @@ final class ControllerAccessTest extends TestCase
         'watch#options' => ['NoAdminRequired'],
         'watch#start' => ['NoAdminRequired'],
         'watch#index' => ['NoAdminRequired'],
+        'watch#waiting' => ['NoAdminRequired'],
         'watch#update' => ['NoAdminRequired'],
         'watch#stop' => ['NoAdminRequired'],
     ];

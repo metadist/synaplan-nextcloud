@@ -349,6 +349,10 @@ OC.L10N.register(
     "Allow watching folders" : "Klasör izlemeye izin ver",
     "When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud." : "Bu kapalıyken kimse bir klasörü veya dosyayı izlemeye başlayamaz, süren izlemeler durur ve Synaplan bu Nextcloud için izleme sunmaz.",
     "Stopped — your administrator turned off watching folders" : "Durduruldu — yöneticiniz klasör izlemeyi kapattı",
-    "Your administrator turned off watching folders." : "Yöneticiniz klasör izlemeyi kapattı."
+    "Your administrator turned off watching folders." : "Yöneticiniz klasör izlemeyi kapattı.",
+    "Resume watching" : "İzlemeye devam et",
+    "Also handle the files that arrived while paused ({count})?" : "Duraklatılmışken gelen dosyalar da işlensin mi ({count})?",
+    "Handle them too" : "Evet, onlar da",
+    "Only new files" : "Yalnızca yeni dosyalar"
 },
 "nplurals=2; plural=(n > 1);");

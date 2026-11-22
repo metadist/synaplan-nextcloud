@@ -80,7 +80,7 @@ import type { WatchRow } from '../watchControls'
 import { t } from '@nextcloud/l10n'
 import { onMounted, ref } from 'vue'
 import { controlsFor, policyStopped } from '../watchControls'
-import { listWatches, setWatchState, stopWatch } from '../watches'
+import { listWatches, resumeWatch, setWatchState, stopWatch } from '../watches'
 
 const watches = ref<WatchRow[]>([])
 const busy = ref<number | null>(null)
@@ -114,7 +114,10 @@ function formatted(seconds: number): string {
 async function change(item: WatchRow, next: 'paused' | 'active'): Promise<void> {
 	busy.value = item.id
 	try {
-		const now = await setWatchState(item.id, next)
+		const now =
+			next === 'active'
+				? await resumeWatch(item.id)
+				: await setWatchState(item.id, next)
 		if (now) {
 			watches.value = watches.value.map((row) =>
 				row.id === item.id

@@ -349,6 +349,10 @@ OC.L10N.register(
     "Allow watching folders" : "Beobachten von Ordnern erlauben",
     "When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud." : "Wenn dies ausgeschaltet ist, kann niemand einen Ordner oder eine Datei beobachten, laufende Beobachtungen stoppen und Synaplan bietet für diese Nextcloud kein Beobachten mehr an.",
     "Stopped — your administrator turned off watching folders" : "Angehalten – Ihre Administration hat das Beobachten von Ordnern ausgeschaltet",
-    "Your administrator turned off watching folders." : "Ihre Administration hat das Beobachten von Ordnern ausgeschaltet."
+    "Your administrator turned off watching folders." : "Ihre Administration hat das Beobachten von Ordnern ausgeschaltet.",
+    "Resume watching" : "Beobachten fortsetzen",
+    "Also handle the files that arrived while paused ({count})?" : "Auch die Dateien bearbeiten, die während der Pause dazugekommen sind ({count})?",
+    "Handle them too" : "Ja, diese auch",
+    "Only new files" : "Nur neue Dateien"
 },
 "nplurals=2; plural=(n != 1);");

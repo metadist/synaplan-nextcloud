@@ -232,7 +232,7 @@ import {
 	onCloudStatusInvalidated,
 } from '../cloud_state/statusBatcher'
 import { controlsFor, policyStopped } from '../watchControls'
-import { setWatchState, stopWatch } from '../watches'
+import { resumeWatch, setWatchState, stopWatch } from '../watches'
 
 const props = defineProps<{
 	fileIdRef: Ref<number>
@@ -380,7 +380,9 @@ async function removeFromSynaplan(): Promise<void> {
 async function changeWatch(id: number, next: 'paused' | 'active'): Promise<void> {
 	busyWatch.value = id
 	try {
-		if (await setWatchState(id, next)) {
+		const now =
+			next === 'active' ? await resumeWatch(id) : await setWatchState(id, next)
+		if (now) {
 			invalidateCloudStatusCache()
 		}
 	} finally {

@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCA\SynaplanIntegration\Service\WatchPolicy;
+use OCA\SynaplanIntegration\Service\WatchReconcile;
 use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -42,6 +43,7 @@ class WatchController extends Controller
         private PlatformLinkService $links,
         private WatchPolicy $policy,
         private IURLGenerator $urlGenerator,
+        private WatchReconcile $reconcile,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -143,12 +145,50 @@ class WatchController extends Controller
     }
 
     /**
-     * Pause or resume one of this person's watches.
+     * Before Resume: how many files arrived while the watch was paused, and
+     * whether to ask about them. A Keep searchable watch takes them without
+     * asking; a task watch asks first.
      *
      * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
-    public function update(int $id, string $state): JSONResponse
+    public function waiting(int $id): JSONResponse
+    {
+        $user = $this->userSession->getUser();
+        if (!$user instanceof IUser) {
+            return (new Failure(Http::STATUS_UNAUTHORIZED, Failure::NOT_CONNECTED))->toResponse();
+        }
+        try {
+            $row = $this->index->find($id);
+            $waiting = $row !== null && $row['uid'] === $user->getUID() ? $this->reconcile->waiting($row) : 0;
+            $preset = '';
+            if ($waiting > 0) {
+                foreach ($this->links->listWatches($user->getUID()) as $watch) {
+                    if (is_array($watch) && is_numeric($watch['id'] ?? null) && (int) $watch['id'] === $id && is_string($watch['preset'] ?? null)) {
+                        $preset = $watch['preset'];
+                    }
+                }
+            }
+
+            return new JSONResponse([
+                'success' => true,
+                'waiting' => $waiting,
+                'ask' => $waiting > 0 && $preset !== 'keep_searchable',
+            ]);
+        } catch (\Throwable $e) {
+            return $this->failed($e, 'Counting the files that arrived while paused failed');
+        }
+    }
+
+    /**
+     * Pause or resume one of this person's watches. Resumed without the
+     * files that arrived while it was paused, the watch counts only files
+     * that change from now on.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
+    #[NoAdminRequired]
+    public function update(int $id, string $state, bool $handleWaiting = true): JSONResponse
     {
         $user = $this->userSession->getUser();
         if (!$user instanceof IUser || !in_array($state, ['paused', 'active'], true)) {
@@ -156,7 +196,13 @@ class WatchController extends Controller
         }
         try {
             $watch = $this->synaplanClient->updateWatch($id, $state);
-            $this->note(fn () => $this->index->update($user->getUID(), $watch, $this->time->getTime()));
+            $now = $this->time->getTime();
+            $this->note(function () use ($user, $watch, $now, $state, $handleWaiting, $id): void {
+                $this->index->update($user->getUID(), $watch, $now);
+                if ($state === 'active' && !$handleWaiting) {
+                    $this->index->restartFrom($id, $now);
+                }
+            });
 
             return new JSONResponse(['success' => true, 'watch' => $this->listed($watch)]);
         } catch (\Throwable $e) {

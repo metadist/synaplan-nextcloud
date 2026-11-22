@@ -31,6 +31,7 @@ return [
         ['name' => 'watch#options', 'url' => '/api/v1/watches/options', 'verb' => 'GET'],
         ['name' => 'watch#start', 'url' => '/api/v1/watches', 'verb' => 'POST'],
         ['name' => 'watch#index', 'url' => '/api/v1/watches', 'verb' => 'GET'],
+        ['name' => 'watch#waiting', 'url' => '/api/v1/watches/{id}/waiting', 'verb' => 'GET', 'requirements' => ['id' => '\d+']],
         ['name' => 'watch#update', 'url' => '/api/v1/watches/{id}', 'verb' => 'PATCH', 'requirements' => ['id' => '\d+']],
         ['name' => 'watch#stop', 'url' => '/api/v1/watches/{id}', 'verb' => 'DELETE', 'requirements' => ['id' => '\d+']],
 

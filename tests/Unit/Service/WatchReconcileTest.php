@@ -76,6 +76,32 @@ final class WatchReconcileTest extends TestCase
         $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
     }
 
+    public function testThePausedWatchCountsTheFilesSynaplanStillLacksAndSendsNothing(): void
+    {
+        $paused = ['state' => 'paused', 'since' => self::NOW - 600] + self::WATCH;
+        $this->watching($paused, $this->folder([
+            $this->file(7, 'e7', self::NOW - 7200),
+            $this->file(8, 'e8', self::NOW - 60),
+            $this->file(9, 'e9', self::NOW - 30),
+        ]));
+        $this->links->expects($this->once())->method('reconcileWatch')
+            ->with('ada', 5, [['id' => '8', 'version' => 'e8'], ['id' => '9', 'version' => 'e9']])
+            ->willReturn(['process' => ['9', '99'], 'forget' => ['8']]);
+        $this->sender->expects($this->never())->method('file');
+        $this->index->expects($this->never())->method('markReconciled');
+
+        self::assertSame(1, $this->reconcile()->waiting($paused));
+    }
+
+    public function testAHeldTargetHasNothingWaiting(): void
+    {
+        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW)]));
+        $this->sharedOff = true;
+        $this->links->expects($this->never())->method('reconcileWatch');
+
+        self::assertSame(0, $this->reconcile()->waiting(self::WATCH));
+    }
+
     public function testAnEmptyFolderAsksNothingAndIsStillReconciled(): void
     {
         $this->watching(self::WATCH, $this->folder([]));
