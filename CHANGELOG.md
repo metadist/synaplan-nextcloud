@@ -15,6 +15,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A folder read that names no folder** is refused as "not found", like the
   OpenCloud app does. With **All my files** allowed, it read the person's
   whole home folder.
+- **A folder a person let Synaplan read** stays readable when it is renamed
+  or moved, and a new folder created under its old name is not readable.
+  The permission followed the name only.
 
 ## 2.0.0 – 2026-11-16
 
