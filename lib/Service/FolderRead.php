@@ -11,6 +11,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\IAppConfig;
 use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
@@ -19,9 +20,10 @@ use Psr\Log\LoggerInterface;
  * list the folder, send what was asked for, and report.
  *
  * The whole answer has {@see self::BUDGET_SECONDS} inside the notification
- * request, claim and listing included. What is left goes to
- * {@see PickupJob} with everything it needs in its own arguments, so the
- * read finishes even when nothing else remembers it.
+ * request, claim and listing included. What is left is kept in app config
+ * under the read's id and finished by {@see PickupJob}: a job argument is
+ * capped (4000 characters on Nextcloud 33, 32000 later), and a large folder
+ * leaves more than that.
  */
 class FolderRead
 {
@@ -34,6 +36,7 @@ class FolderRead
         private IUserManager $users,
         private IJobList $jobs,
         private LoggerInterface $logger,
+        private IAppConfig $appConfig,
     ) {
     }
 
@@ -50,13 +53,21 @@ class FolderRead
     }
 
     /**
-     * Uploads left over from a read that did not finish in the request. The
-     * job carries them; there is no other copy.
+     * Uploads left over from a read that did not finish in the request, from
+     * app config, or from the arguments of a job queued by an older version.
      *
-     * @param array<string, mixed> $pending
+     * @param array<string, mixed>|null $pending
      */
-    public function finish(string $id, array $pending): void
+    public function finish(string $id, ?array $pending = null): void
     {
+        if ($pending === null) {
+            $key = self::pendingKey($id);
+            $pending = $this->appConfig->getValueArray(Application::APP_ID, $key, [], true);
+            $this->appConfig->deleteKey(Application::APP_ID, $key);
+            if ($pending === []) {
+                return;
+            }
+        }
         $uid = (string) ($pending['uid'] ?? '');
         $left = is_array($pending['left'] ?? null) ? $pending['left'] : [];
         $sent = (int) ($pending['sent'] ?? 0);
@@ -199,14 +210,14 @@ class FolderRead
             }
         }
         if ($left !== []) {
-            $this->jobs->add(PickupJob::class, [
-                'id' => $id,
+            $this->appConfig->setValueArray(Application::APP_ID, self::pendingKey($id), [
                 'uid' => $uid,
                 'left' => $left,
                 'sent' => $sent,
                 'listed' => count($items),
                 'skipped' => $skipped,
-            ]);
+            ], true);
+            $this->jobs->add(PickupJob::class, ['id' => $id]);
 
             return;
         }
@@ -307,6 +318,11 @@ class FolderRead
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    private static function pendingKey(string $id): string
+    {
+        return 'pickup_pending_' . md5($id);
     }
 
     private function uid(string $externalId): ?string

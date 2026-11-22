@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\BackgroundJob\PickupJob;
 use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
@@ -11,6 +12,7 @@ use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IAppConfig;
 use OCP\IUser;
 use OCP\IUserManager;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -25,6 +27,8 @@ final class FolderReadTest extends TestCase
     private FolderRead $reads;
     private string $etag = 'etag-1';
     private int $etagReads = 0;
+    /** @var array<string, array<string, mixed>> */
+    private array $stored = [];
 
     protected function setUp(): void
     {
@@ -69,6 +73,19 @@ final class FolderReadTest extends TestCase
         $root = $this->createMock(IRootFolder::class);
         $root->method('getUserFolder')->with('ada')->willReturn($home);
 
+        $appConfig = $this->createStub(IAppConfig::class);
+        $appConfig->method('setValueArray')->willReturnCallback(function (string $app, string $key, array $value): bool {
+            $this->stored[$key] = $value;
+
+            return true;
+        });
+        $appConfig->method('getValueArray')->willReturnCallback(
+            fn (string $app, string $key, array $default): array => $this->stored[$key] ?? $default,
+        );
+        $appConfig->method('deleteKey')->willReturnCallback(function (string $app, string $key): void {
+            unset($this->stored[$key]);
+        });
+
         $this->reads = new FolderRead(
             $this->links,
             $this->scope,
@@ -76,6 +93,7 @@ final class FolderReadTest extends TestCase
             $users,
             $this->jobs,
             new NullLogger(),
+            $appConfig,
         );
     }
 
@@ -192,6 +210,26 @@ final class FolderReadTest extends TestCase
             'listed' => 1,
             'skipped' => [],
         ]);
+    }
+
+    public function testUploadsLeftOverAreKeptOutOfTheJobArgumentAndFinishedLater(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $this->links->expects($this->once())->method('uploadPickupFile')->willReturn(['status_code' => 200]);
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'done' && $body['sent'] === 1 && $body['listed'] === 1,
+        ));
+
+        $this->reads->handle('15', 'ada', 1);
+        $this->assertCount(1, $this->stored);
+
+        $this->reads->finish('15');
+        $this->assertSame([], $this->stored);
+
+        $this->reads->finish('15');
     }
 
     public function testAFailedUploadClosesTheReadAsPartial(): void

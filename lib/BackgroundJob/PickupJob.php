@@ -9,8 +9,9 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 
 /**
- * Finishes a folder read that did not fit in the notification request. The
- * uploads still owed travel in this job's arguments.
+ * Finishes a folder read that did not fit in the notification request.
+ * FolderRead keeps the uploads still owed; a job queued by an older version
+ * carries them in its arguments.
  */
 class PickupJob extends QueuedJob
 {
@@ -29,7 +30,7 @@ class PickupJob extends QueuedJob
         $id = (string) ($argument['id'] ?? '');
         unset($argument['id']);
         if ($id !== '') {
-            $this->reads->finish($id, $argument);
+            $this->reads->finish($id, isset($argument['uid']) ? $argument : null);
         }
     }
 }
