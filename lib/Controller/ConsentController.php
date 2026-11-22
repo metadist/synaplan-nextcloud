@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -88,10 +89,7 @@ class ConsentController extends Controller
                             ]);
                         }
 
-                        return new JSONResponse([
-                            'success' => false,
-                            'error' => $e->getMessage(),
-                        ]);
+                        return (new Failure(Http::STATUS_CONFLICT, Failure::EMAIL_ALREADY_USED))->toResponse();
                     } catch (\Throwable $e) {
                         $failure = Failure::fromThrowable($e);
                         $this->logger?->error('Creating a Synaplan account failed: {message}', [

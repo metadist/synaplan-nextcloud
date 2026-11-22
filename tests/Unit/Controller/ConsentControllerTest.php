@@ -62,6 +62,23 @@ class ConsentControllerTest extends TestCase
         $this->assertTrue($data['conflict']);
     }
 
+    public function testAConflictWithoutLinkingNamesTheCodeNotTheException(): void
+    {
+        $user = $this->createMock(IUser::class);
+        $this->userSession->method('getUser')->willReturn($user);
+        $this->synaplanConfig->method('isAutoProvisionEnabled')->willReturn(true);
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(false);
+        $this->userAccounts->method('provisionForLinkMode')
+            ->willThrowException(new EmailConflictException('A Synaplan account already exists for ada@example.org'));
+        $this->userAccounts->expects($this->never())->method('grantConsent');
+
+        $response = $this->controller()->setConsent(true, true);
+
+        $this->assertSame(409, $response->getStatus());
+        $this->assertSame('email_already_used', $response->getData()['error']);
+        $this->assertStringNotContainsString('ada@example.org', (string) json_encode($response->getData()));
+    }
+
     public function testCreateAccountSuccessGrantsConsentAfterProvision(): void
     {
         $user = $this->createMock(IUser::class);
