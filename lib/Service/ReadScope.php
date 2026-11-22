@@ -30,6 +30,7 @@ class ReadScope
     public function __construct(
         private IConfig $config,
         private PlatformLinkService $links,
+        private WatchIndex $watches,
         private IRootFolder $rootFolder,
     ) {
     }
@@ -129,11 +130,9 @@ class ReadScope
      * The person's own rule, not the copy Synaplan stored. A person who
      * chose nothing allowed nothing.
      *
-     * "Only what I watch" names the folders a watch brings. This app has no
-     * watches yet (they are a later step), so that choice allows nothing for
-     * now: it fails closed and never falls back to the named folders. Naming
-     * a folder — here or through the folder's own menu — is what opens a
-     * folder in the meantime.
+     * "Only what I watch" allows the folders the person's own watches look
+     * at (that folder, not its sub-folders: a watch looks at that folder
+     * only), and never falls back to the named folders.
      */
     public function mayRead(string $uid, string $folder): bool
     {
@@ -141,10 +140,13 @@ class ReadScope
         if ($scope['mode'] === self::MODE_ALL) {
             return true;
         }
+        $folder = self::clean($folder);
+        if ($scope['mode'] === self::MODE_WATCHED) {
+            return $folder !== '' && in_array($folder, $this->watchedFolders($uid), true);
+        }
         if ($scope['mode'] !== self::MODE_ALLOWED) {
             return false;
         }
-        $folder = self::clean($folder);
         foreach ($scope['folders'] as $allowed) {
             $path = $this->currentPath($uid, $allowed);
             if ($path === null) {
@@ -156,6 +158,34 @@ class ReadScope
         }
 
         return false;
+    }
+
+    /**
+     * Where the person sees the folders their watches look at.
+     *
+     * @return list<string>
+     */
+    private function watchedFolders(string $uid): array
+    {
+        $paths = [];
+        try {
+            $home = $this->rootFolder->getUserFolder($uid);
+            foreach ($this->watches->rowsOf($uid) as $watch) {
+                if ($watch['kind'] !== 'folder') {
+                    continue;
+                }
+                $node = $home->getFirstNodeById($watch['target']);
+                $relative = $node instanceof Folder ? $home->getRelativePath($node->getPath()) : null;
+                $path = is_string($relative) ? self::clean($relative) : '';
+                if ($path !== '') {
+                    $paths[] = $path;
+                }
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return $paths;
     }
 
     public static function clean(string $path): string

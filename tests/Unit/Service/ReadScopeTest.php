@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
+use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
@@ -23,6 +24,25 @@ final class ReadScopeTest extends TestCase
 
     /** @var list<list<array{id: string, path: string}>> what Synaplan was told */
     private array $reports = [];
+
+    /** @var list<array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}> */
+    private array $watches = [];
+
+    public function testWatchedAllowsTheFoldersThePersonWatchesAndNothingBelowOrBeside(): void
+    {
+        $this->folders = ['Incoming-DE' => 30, 'HR' => 9];
+        $this->watches = [
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+            ['id' => 6, 'uid' => 'ada', 'kind' => 'file', 'target' => 31, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+        ];
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '9', 'path' => 'HR']]);
+
+        self::assertTrue($scope->mayRead('ada', 'Incoming-DE'));
+        self::assertFalse($scope->mayRead('ada', 'Incoming-DE/2026'));
+        self::assertFalse($scope->mayRead('ada', 'HR'));
+        self::assertFalse($scope->mayRead('ada', 'Specs/brief.pdf'));
+    }
 
     public function testNothingAllowedMeansNothingMayBeRead(): void
     {
@@ -195,13 +215,21 @@ final class ReadScopeTest extends TestCase
 
             return $path === false ? [] : [$this->folder($id, $path)];
         });
+        $userFolder->method('getFirstNodeById')->willReturnCallback(function (int $id): ?Folder {
+            $path = array_search($id, $this->folders, true);
+
+            return $path === false ? null : $this->folder($id, $path);
+        });
         $userFolder->method('getRelativePath')->willReturnCallback(
             fn (string $path): string => substr($path, strlen('/ada/files')),
         );
         $root = $this->createMock(IRootFolder::class);
         $root->method('getUserFolder')->willReturn($userFolder);
 
-        return new ReadScope($config, $links, $root);
+        $watches = $this->createStub(WatchIndex::class);
+        $watches->method('rowsOf')->willReturnCallback(fn (): array => $this->watches);
+
+        return new ReadScope($config, $links, $watches, $root);
     }
 
     private function folder(int $id, string $path): Folder
