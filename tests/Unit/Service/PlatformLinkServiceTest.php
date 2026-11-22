@@ -81,7 +81,7 @@ class PlatformLinkServiceTest extends TestCase
                 'client_uri' => 'https://files.example.org/',
                 'redirect_uri' => 'https://files.example.org/apps/synaplan_integration/link/callback',
                 'delivery_url' => 'https://files.example.org/inbound',
-                'capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
+                'capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events', 'watches'],
                 'server_id' => 'oc0abc',
                 'version' => '2.0.0',
             ], 'reg-token')
@@ -251,7 +251,7 @@ class PlatformLinkServiceTest extends TestCase
         $this->oauth->expects($this->once())->method('updateConfiguration')->with([
             'delivery_url' => 'http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound',
             'server_id' => 'oc0abc',
-            'app_capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events'],
+            'app_capabilities' => ['deliveries', 'pickups', 'read_scope', 'source_events', 'watches'],
             'software_version' => '2.0.0',
         ])->willReturn([]);
         $this->httpClient->expects($this->never())->method($this->anything());
@@ -339,6 +339,65 @@ class PlatformLinkServiceTest extends TestCase
 
             $this->service()->claimDelivery('9', 'ada');
         }
+    }
+
+    public function testWatchesAreListedWithThePersonsOwnCredential(): void
+    {
+        $this->userAccounts->method('credentialFor')->with('ada')->willReturn('sk_ada');
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('https://synaplan.example/api/v1/cloud/watches', $this->callback(
+                static fn (array $options): bool => ($options['headers']['X-API-Key'] ?? '') === 'sk_ada',
+            ))
+            ->willReturn($this->answer(200, '{"items":[{"id":5,"target_kind":"folder","target_id":"30","state":"active"}],"paused_count":0}'));
+
+        self::assertSame(
+            [['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active']],
+            $this->service()->listWatches('ada'),
+        );
+    }
+
+    public function testReconcileSendsIdsAndVersionsAndKeepsOnlyIds(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('sk_ada');
+        $this->httpClient->expects($this->once())->method('post')
+            ->with('https://synaplan.example/api/v1/cloud/watches/5/reconcile', $this->callback(
+                static fn (array $options): bool => $options['body'] === '{"items":[{"id":"7","version":"e1"},{"id":"8","version":"e2"}]}',
+            ))
+            ->willReturn($this->answer(200, '{"process":["7",9],"forget":["8"]}'));
+
+        self::assertSame(
+            ['process' => ['7'], 'forget' => ['8']],
+            $this->service()->reconcileWatch('ada', 5, [['id' => '7', 'version' => 'e1'], ['id' => '8', 'version' => 'e2']]),
+        );
+    }
+
+    public function testAWatchFileGoesAsMultipartAndARefusalComesBackWithItsStatus(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('sk_ada');
+        $this->httpClient->expects($this->once())->method('post')
+            ->with('https://synaplan.example/api/v1/cloud/watches/5/files', $this->callback(
+                static fn (array $options): bool => $options['http_errors'] === false
+                    && $options['multipart'] === [
+                        ['name' => 'id', 'contents' => '7'],
+                        ['name' => 'version', 'contents' => 'e1'],
+                        ['name' => 'file', 'contents' => 'hello', 'filename' => 'a.txt', 'headers' => ['Content-Type' => 'text/plain']],
+                    ],
+            ))
+            ->willReturn($this->answer(409, '{"error":"invalid_watch","message":"This watch is not running."}'));
+
+        $answer = $this->service()->sendWatchFile('ada', 5, ['id' => '7', 'version' => 'e1'], ['bytes' => 'hello', 'name' => 'a.txt', 'mime' => 'text/plain']);
+
+        self::assertSame(409, $answer['status_code']);
+        self::assertSame('invalid_watch', $answer['error']);
+    }
+
+    private function answer(int $status, string $body): IResponse
+    {
+        $response = $this->createStub(IResponse::class);
+        $response->method('getStatusCode')->willReturn($status);
+        $response->method('getBody')->willReturn($body);
+
+        return $response;
     }
 
     public function testDisconnectUidClearsEvenWhenRevokeFails(): void

@@ -9,6 +9,10 @@ occ() { php /var/www/html/occ "$@"; }
 # appinfo/info.xml may stop below the running server version; a dev stack
 # enables the app anyway.
 occ app:enable synaplan_integration >/dev/null 2>&1 || occ app:enable --force synaplan_integration
+# The mounted code may carry a migration its version number does not announce yet.
+# occ only offers migrations:migrate in debug mode.
+php -r 'require "/var/www/html/lib/base.php";
+  (new \OC\DB\MigrationService("synaplan_integration", \OCP\Server::get(\OC\DB\Connection::class)))->migrate();'
 
 ADA=ada:ada-dev-pass
 DAV=http://localhost/remote.php/dav/files/ada

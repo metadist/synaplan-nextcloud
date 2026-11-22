@@ -82,6 +82,12 @@ final class OpenApiContract
             if ($method === 'POST' && $template === '/api/v1/cloud/watches') {
                 return $this->watchCreateViolations($method, $template, $body);
             }
+            if ($method === 'POST' && preg_match('#^/api/v1/cloud/watches/\{[^}/]+\}/reconcile$#', $template) === 1) {
+                return $this->watchReconcileViolations($method, $template, $body);
+            }
+            if ($method === 'POST' && $multipart && preg_match('#^/api/v1/cloud/watches/\{[^}/]+\}/files$#', $template) === 1) {
+                return $this->watchFileViolations($method, $template, $body);
+            }
 
             return ["$method $template: sends a $contentType body the spec does not describe"];
         }
@@ -229,6 +235,70 @@ final class OpenApiContract
         }
         if (($body['preset'] ?? null) === 'task' && (!isset($body['task_id']) || !is_int($body['task_id']))) {
             $violations[] = "$method $template: required field 'task_id' is not sent";
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Synaplan's CloudWatchController::reconcile reads items[].id and
+     * items[].version, 1 to 500 of them; the spec does not describe it.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function watchReconcileViolations(string $method, string $template, array $body): array
+    {
+        $violations = [];
+        foreach (array_keys($body) as $field) {
+            if ($field !== 'items') {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        $items = $body['items'] ?? null;
+        if (!is_array($items) || $items === [] || count($items) > 500) {
+            return [...$violations, "$method $template: 'items' must hold 1 to 500 files"];
+        }
+        foreach ($items as $index => $item) {
+            if (!is_array($item) || array_keys($item) !== ['id', 'version'] || !is_string($item['id']) || !is_string($item['version'])) {
+                $violations[] = "$method $template: 'items[$index]' is not {id, version} as strings";
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * Synaplan's WatchUpload::receive reads id, version, name, event and
+     * own_write, and the file part; the spec does not describe it.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function watchFileViolations(string $method, string $template, array $body): array
+    {
+        $violations = [];
+        $allowed = ['id', 'version', 'name', 'path', 'event', 'own_write', 'file'];
+        foreach (array_keys($body) as $field) {
+            if (!in_array($field, $allowed, true)) {
+                $violations[] = "$method $template: sends '$field', which the spec does not declare";
+            }
+        }
+        foreach (['id', 'version'] as $field) {
+            if (!is_string($body[$field] ?? null) || $body[$field] === '' || strlen($body[$field]) > 255) {
+                $violations[] = "$method $template: required field '$field' is not sent";
+            }
+        }
+        if (isset($body['event']) && !in_array($body['event'], ['deleted', 'restored'], true)) {
+            $violations[] = "$method $template: 'event' is not one of deleted, restored";
+        }
+        if (isset($body['own_write']) && $body['own_write'] !== '1') {
+            $violations[] = "$method $template: 'own_write' is not '1'";
+        }
+        if (!isset($body['event']) && !isset($body['own_write']) && !isset($body['file'])) {
+            $violations[] = "$method $template: a new file is sent without its 'file' part";
         }
 
         return $violations;

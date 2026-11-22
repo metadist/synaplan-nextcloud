@@ -22,7 +22,8 @@
 			"OCA\\SynaplanIntegration\\Tests\\": "tests/",
 			"OCP\\": "vendor/nextcloud/ocp/OCP/",
 			"NCU\\": "vendor/nextcloud/ocp/NCU/",
-			"OC\\": "tests/stubs/OC/"
+			"OC\\": "tests/stubs/OC/",
+			"Doctrine\\DBAL\\": "tests/stubs/Doctrine/DBAL/"
 		},
 		"classmap": [
 			"tests/stubs/OC.php"
