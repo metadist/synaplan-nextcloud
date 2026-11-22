@@ -126,12 +126,15 @@ class SynaplanConfig
     }
 
     /**
-     * This Nextcloud is registered as Synaplan's OAuth2 client.
+     * This Nextcloud is registered as Synaplan's OAuth2 client and can still
+     * sign as it: a client key that is missing or no longer decrypts makes
+     * every signed call fail, so it counts as not registered.
      */
     public function isRegistered(): bool
     {
         return $this->getLinkInstanceId() !== ''
-            && (string) $this->config->getAppValue(Application::APP_ID, 'oauth_kid', '') !== '';
+            && (string) $this->config->getAppValue(Application::APP_ID, 'oauth_kid', '') !== ''
+            && $this->keys->getAppKey(KeyStorage::CLIENT_KEY) !== '';
     }
 
     /**

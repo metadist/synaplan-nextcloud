@@ -58,7 +58,15 @@ class OAuthClient
 
     public function isRegistered(): bool
     {
-        return $this->clientId() !== '' && $this->appConfig->getValueString(Application::APP_ID, self::KEY) !== '';
+        if ($this->clientId() === '') {
+            return false;
+        }
+        try {
+            return $this->appConfig->getValueString(Application::APP_ID, self::KEY) !== '';
+        } catch (\Exception) {
+            // A key that no longer decrypts (a changed secret) cannot sign.
+            return false;
+        }
     }
 
     /**
