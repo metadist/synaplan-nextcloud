@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ApiController;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\App\IAppManager;
@@ -30,6 +31,7 @@ class ApiControllerTest extends TestCase
     private IConfig&MockObject $config;
     private IAppManager&MockObject $appManager;
     private LoggerInterface&MockObject $logger;
+    private bool $readsFolders = true;
     private ApiController $controller;
 
     protected function setUp(): void
@@ -49,6 +51,9 @@ class ApiControllerTest extends TestCase
         $this->languageService->method('getLanguageName')->willReturn('English');
         $this->appManager->method('getAppVersion')->willReturn('1.2.1');
 
+        $links = $this->createStub(PlatformLinkService::class);
+        $links->method('readsFolders')->willReturnCallback(fn (): bool => $this->readsFolders);
+
         $this->controller = new ApiController(
             $this->request,
             $this->synaplanClient,
@@ -58,6 +63,7 @@ class ApiControllerTest extends TestCase
             $this->config,
             $this->appManager,
             $this->logger,
+            $links,
         );
     }
 
@@ -478,6 +484,13 @@ class ApiControllerTest extends TestCase
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = ''): string => $key === ReadScope::CEILING ? ReadScope::MODE_WATCHED : $default,
         );
+
+        $this->assertFalse($this->controller->features()->getData()['readFolders']);
+    }
+
+    public function testTheFolderMenuOffersReadingOnlyWhereSynaplanReadsFolders(): void
+    {
+        $this->readsFolders = false;
 
         $this->assertFalse($this->controller->features()->getData()['readFolders']);
     }

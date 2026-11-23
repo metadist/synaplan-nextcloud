@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCP\App\IAppManager;
 use OCP\Http\Client\IClientService;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
@@ -27,8 +28,14 @@ class PlatformLinkService
     public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events', 'watches'];
     private const REGISTRATION_STATUS = 'link_registration_status';
     private const DOWNLOAD_TIMEOUT = 300;
+    private const OFFERS_TIMEOUT = 10;
+    /** Synaplan's configuration may be kept this long (its max-age). */
+    private const OFFERS_TTL = 300;
+    private const OFFERS_RETRY_TTL = 60;
     /** Synaplan no longer accepts this registration; its own statuses are pending and active. */
     public const STATUS_REFUSED = 'refused';
+
+    private ?bool $readsFolders = null;
 
     public function __construct(
         private IClientService $clientService,
@@ -39,6 +46,7 @@ class PlatformLinkService
         private SynaplanConfig $synaplanConfig,
         private UserAccountService $userAccounts,
         private LoggerInterface $logger,
+        private ICacheFactory $cacheFactory,
     ) {
     }
 
@@ -157,6 +165,49 @@ class PlatformLinkService
             'issuer' => is_string($configuration['issuer'] ?? null) ? $configuration['issuer'] : '',
             'keys' => $keys,
         ];
+    }
+
+    /**
+     * Whether this Synaplan reads folders: its configuration offers both
+     * folder reads and the read setting. With platform links off, or with no
+     * answer, it offers neither; no answer is asked again after a minute.
+     */
+    public function readsFolders(): bool
+    {
+        if ($this->readsFolders !== null) {
+            return $this->readsFolders;
+        }
+        $cache = $this->cacheFactory->createDistributed(Application::APP_ID);
+        $key = 'offered/' . md5($this->synaplanConfig->getBaseUrl());
+        $cached = $cache->get($key);
+        if ($cached === '1' || $cached === '0') {
+            return $this->readsFolders = $cached === '1';
+        }
+        $answered = false;
+        $offered = false;
+        try {
+            $configuration = $this->request(
+                'GET',
+                '/.well-known/synaplan-configuration',
+                null,
+                ['Accept' => 'application/json'],
+                false,
+                true,
+                self::OFFERS_TIMEOUT,
+            );
+            $status = (int) ($configuration['status_code'] ?? 200);
+            $answered = $status === 200 || $status === 404;
+            $capabilities = $status === 200 && is_array($configuration['capabilities'] ?? null) ? $configuration['capabilities'] : [];
+            $offered = in_array('pickups', $capabilities, true) && in_array('read_scope', $capabilities, true);
+        } catch (\Throwable $e) {
+            $this->logger->warning('Synaplan\'s configuration could not be read: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+        }
+        $cache->set($key, $offered ? '1' : '0', $answered ? self::OFFERS_TTL : self::OFFERS_RETRY_TTL);
+
+        return $this->readsFolders = $offered;
     }
 
     /**
@@ -659,15 +710,16 @@ class PlatformLinkService
      * @param array<string, string> $headers
      * @param bool $keepErrors return the decoded body of a 4xx instead of throwing,
      *                         with `status_code` set, so a refused claim can be told apart
+     * @param int $timeout seconds the whole call may take
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false): array
+    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false, int $timeout = 30): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
         $options = [
             'headers' => $headers,
-            'timeout' => 30,
+            'timeout' => $timeout,
             // Docker / localhost Synaplan is a private address. The integration
             // is supposed to reach it; Nextcloud's SSRF guard would otherwise
             // reject the exchange after the user already confirmed.

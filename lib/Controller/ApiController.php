@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -77,6 +78,7 @@ class ApiController extends Controller
         private IConfig $config,
         private IAppManager $appManager,
         private LoggerInterface $logger,
+        private PlatformLinkService $links,
         private ?UserAccountService $userAccounts = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
@@ -128,7 +130,8 @@ class ApiController extends Controller
             'translation' => $this->synaplanClient->offersSummaryType('translation'),
             'watches' => WatchPolicy::watchingAllowedIn($this->config),
             'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
-            'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED,
+            'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED
+                && $this->links->readsFolders(),
         ]);
     }
 

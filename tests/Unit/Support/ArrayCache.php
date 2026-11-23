@@ -15,6 +15,9 @@ final class ArrayCache implements ICache
     /** @var array<string, mixed> */
     public array $values = [];
 
+    /** @var array<string, int> the TTL each entry was set with */
+    public array $ttls = [];
+
     // Keys stay untyped in the signatures: Nextcloud 33's ICache declares none,
     // Nextcloud 35's declares string.
 
@@ -33,6 +36,7 @@ final class ArrayCache implements ICache
     public function set($key, $value, $ttl = 0)
     {
         $this->values[(string) $key] = $value;
+        $this->ttls[(string) $key] = (int) $ttl;
 
         return true;
     }

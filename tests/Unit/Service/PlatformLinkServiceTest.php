@@ -10,6 +10,8 @@ use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCache;
+use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCacheFactory;
 use OCP\App\IAppManager;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -33,9 +35,11 @@ class PlatformLinkServiceTest extends TestCase
     private SynaplanConfig&MockObject $synaplanConfig;
     private UserAccountService&MockObject $userAccounts;
     private LoggerInterface&MockObject $logger;
+    private ArrayCache $cache;
 
     protected function setUp(): void
     {
+        $this->cache = new ArrayCache();
         $this->clientService = $this->createMock(IClientService::class);
         $this->httpClient = $this->createMock(IClient::class);
         $this->config = $this->createMock(IConfig::class);
@@ -64,7 +68,53 @@ class PlatformLinkServiceTest extends TestCase
             $this->synaplanConfig,
             $this->userAccounts,
             $this->logger,
+            new ArrayCacheFactory($this->cache),
         );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, bool}>
+     */
+    public static function configurations(): iterable
+    {
+        yield 'folder reads and the read setting' => [['capabilities' => ['deliveries', 'pickups', 'read_scope']], true];
+        yield 'no read setting' => [['capabilities' => ['deliveries', 'pickups']], false];
+        yield 'no folder reads' => [['capabilities' => ['deliveries', 'read_scope']], false];
+        yield 'a configuration without capabilities' => [[], false];
+    }
+
+    /**
+     * @param array<string, mixed> $offers
+     */
+    #[DataProvider('configurations')]
+    public function testSynaplanReadsFoldersOnlyWhenItOffersFolderReadsAndTheReadSetting(array $offers, bool $reads): void
+    {
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('https://synaplan.example/.well-known/synaplan-configuration', $this->callback(
+                static fn (array $options): bool => $options['timeout'] === 10,
+            ))
+            ->willReturn($this->answer(200, (string) json_encode(['issuer' => 'https://synaplan.example'] + $offers)));
+
+        self::assertSame([$reads, $reads], [$this->service()->readsFolders(), $this->service()->readsFolders()]);
+        self::assertSame([300], array_values($this->cache->ttls));
+    }
+
+    public function testASynaplanWithPlatformLinksOffReadsNoFolders(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')->willReturn($this->answer(404, ''));
+
+        self::assertFalse($this->service()->readsFolders());
+        self::assertFalse($this->service()->readsFolders());
+        self::assertSame([300], array_values($this->cache->ttls));
+    }
+
+    public function testASynaplanThatDoesNotAnswerIsAskedAgainAfterAMinute(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')->willThrowException(new \RuntimeException('cURL error 28'));
+
+        self::assertFalse($this->service()->readsFolders());
+        self::assertFalse($this->service()->readsFolders());
+        self::assertSame([60], array_values($this->cache->ttls));
     }
 
     public function testRegisterSendsThisServerAndWhatTheAppDoes(): void

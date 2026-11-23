@@ -370,6 +370,7 @@ OC.L10N.register(
     "You do not have access to this folder or file." : "Bu klasöre veya dosyaya erişiminiz yok.",
     "You need permission to edit this folder or file before you can watch it." : "Bunu izleyebilmek için önce bu klasörü veya dosyayı düzenleme izniniz olmalı.",
     "Your administrator lets Synaplan read only the folders you watch." : "Yöneticiniz Synaplan'ın yalnızca izlediğiniz klasörleri okumasına izin veriyor.",
+    "This Synaplan does not read folders from Nextcloud." : "Bu Synaplan, Nextcloud'daki klasörleri okumuyor.",
     "Synaplan may read at most" : "Synaplan en fazla şunları okuyabilir",
     "People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody." : "Kişiler kişisel ayarlarında en fazla bunu seçebilir. Düşürmek daha fazlasını seçen herkesi daraltır; yükseltmek kimseyi genişletmez.",
     "Folders people allow" : "Kişilerin izin verdiği klasörler",

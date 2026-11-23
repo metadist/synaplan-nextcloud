@@ -369,6 +369,7 @@
 		"You do not have access to this folder or file.": "No tienes acceso a esta carpeta o a este archivo.",
 		"You need permission to edit this folder or file before you can watch it.": "Necesitas permiso para editar esta carpeta o este archivo antes de poder vigilarlos.",
 		"Your administrator lets Synaplan read only the folders you watch.": "Tu administrador solo deja que Synaplan lea las carpetas que vigilas.",
+		"This Synaplan does not read folders from Nextcloud.": "Este Synaplan no lee carpetas de Nextcloud.",
 		"Synaplan may read at most": "Synaplan puede leer como máximo",
 		"People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody.": "Cada persona elige hasta aquí en su configuración personal. Bajarlo limita a quien eligió más; subirlo no amplía a nadie.",
 		"Folders people allow": "Carpetas que las personas permiten",

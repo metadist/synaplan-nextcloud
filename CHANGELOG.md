@@ -102,6 +102,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   folder's name, after that folder was deleted or moved away. It said
   "Synaplan may read this folder." and changed nothing, so every read of the
   new folder was refused.
+- **Folder reads are offered only where Synaplan reads folders.** The read
+  setting, **Let Synaplan read this folder** and its menu entry appear when
+  Synaplan's configuration offers both folder reads and the read setting.
+  Against an older Synaplan, or one with platform links off, they saved a
+  setting nothing would use; now they are hidden, and a direct request is
+  refused without changing the saved setting.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again.

@@ -85,6 +85,7 @@
 		</NcSettingsSection>
 
 		<NcSettingsSection
+			v-if="readsFolders"
 			:name="
 				t(
 					'synaplan_integration',
@@ -220,6 +221,7 @@ const readMode = ref<ReadMode>('watched')
 const readFolders = ref<ReadFolder[]>([])
 const readFolderCap = ref(20)
 const readCeiling = ref<ReadMode>('allowed')
+const readsFolders = ref(false)
 const status = ref<LinkStatus>({})
 const banner = ref('')
 const bannerType = ref<'success' | 'error' | 'warning'>('success')
@@ -312,6 +314,7 @@ async function loadFolder() {
 		if (READ_MODES.includes(data.read_scope_ceiling)) {
 			readCeiling.value = data.read_scope_ceiling
 		}
+		readsFolders.value = data.reads_folders === true
 	} catch (error: unknown) {
 		banner.value = failureOr(
 			error,

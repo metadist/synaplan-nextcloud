@@ -370,6 +370,7 @@ OC.L10N.register(
     "You do not have access to this folder or file." : "Vous n’avez pas accès à ce dossier ou à ce fichier.",
     "You need permission to edit this folder or file before you can watch it." : "Vous devez avoir le droit de modifier ce dossier ou ce fichier avant de pouvoir le surveiller.",
     "Your administrator lets Synaplan read only the folders you watch." : "Votre administrateur ne laisse Synaplan lire que les dossiers que vous surveillez.",
+    "This Synaplan does not read folders from Nextcloud." : "Ce Synaplan ne lit pas de dossiers dans Nextcloud.",
     "Synaplan may read at most" : "Synaplan peut lire au plus",
     "People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody." : "Chacun choisit jusqu’à ce niveau dans ses paramètres personnels. L’abaisser restreint tous ceux qui ont choisi plus ; le relever n’élargit personne.",
     "Folders people allow" : "Dossiers que les personnes autorisent",
