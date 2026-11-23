@@ -75,8 +75,31 @@ final class WatchSyncTest extends TestCase
         $this->links->method('canActFor')->willReturn(true);
         $this->links->method('listWatches')->willThrowException(new \RuntimeException('down'));
         $this->index->expects($this->never())->method('replace');
+        $this->index->method('rowsOf')->willReturn([self::row('ada')]);
+        $this->config->expects($this->never())->method('setUserValue');
 
         self::assertFalse($this->sync()->person('ada', self::NOW));
+    }
+
+    public function testAFailedListForSomeoneWithoutRowsMarksThemForTheNextRun(): void
+    {
+        $this->links->method('canActFor')->willReturn(true);
+        $this->links->method('listWatches')->willThrowException(new \RuntimeException('down'));
+        $this->index->method('rowsOf')->willReturn([]);
+        $this->config->expects($this->once())->method('deleteUserValue')
+            ->with('ada', Application::APP_ID, WatchSync::PENDING);
+        $this->config->expects($this->once())->method('setUserValue')
+            ->with('ada', Application::APP_ID, WatchSync::PENDING, '1');
+
+        self::assertFalse($this->sync()->person('ada', self::NOW));
+    }
+
+    /**
+     * @return array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}
+     */
+    private static function row(string $uid): array
+    {
+        return ['id' => 5, 'uid' => $uid, 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
     }
 
     public function testARunSyncsMarkedPeopleEveryTimeAndEveryoneEveryTenMinutesAndDaily(): void
