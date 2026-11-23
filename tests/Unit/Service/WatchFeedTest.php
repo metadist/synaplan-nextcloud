@@ -31,7 +31,7 @@ final class WatchFeedTest extends TestCase
 
     public function testAQuietFileIsSentAndLeavesTheQueue(): void
     {
-        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => 0], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
         $this->sender->expects($this->once())->method('file')->with(self::WATCH, 7)->willReturn(WatchSender::SENT);
         $this->index->expects($this->once())->method('done')->with(self::row(7));
 
@@ -40,7 +40,7 @@ final class WatchFeedTest extends TestCase
 
     public function testAFileForAPausedWatchWaitsForTheNextPassInstead(): void
     {
-        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => 0], ['state' => 'paused'] + self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0], ['state' => 'paused'] + self::WATCH);
         $this->sender->expects($this->never())->method('file');
         $this->index->expects($this->once())->method('done')->with(self::row(7));
 
@@ -49,7 +49,7 @@ final class WatchFeedTest extends TestCase
 
     public function testAFailedSendIsRetriedLaterWithABackoffAndThenGivenUp(): void
     {
-        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => 2], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 2], self::WATCH);
         $this->sender->method('file')->willReturn(WatchSender::RETRY);
         $this->index->expects($this->once())->method('retryLater')->with(self::row(7, 2), self::NOW + 240, 3);
         $this->index->expects($this->never())->method('done');
@@ -57,7 +57,7 @@ final class WatchFeedTest extends TestCase
         $this->feed()->run(self::NOW, microtime(true) + 60);
 
         $this->setUp();
-        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => 4], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 4], self::WATCH);
         $this->sender->method('file')->willReturn(WatchSender::RETRY);
         $this->index->expects($this->never())->method('retryLater');
         $this->index->expects($this->once())->method('done')->with(self::row(7, 4));
@@ -67,7 +67,7 @@ final class WatchFeedTest extends TestCase
 
     public function testAWatchSynaplanNoLongerRunsSyncsItsOwner(): void
     {
-        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => 0], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
         $this->sender->method('file')->willReturn(WatchSender::NOT_RUNNING);
         $this->index->expects($this->once())->method('done')->with(self::row(7));
         $this->sync->expects($this->once())->method('request')->with('ada');
@@ -78,7 +78,7 @@ final class WatchFeedTest extends TestCase
     public function testARestoredTargetIsReportedWhileItsWatchSaysItIsGone(): void
     {
         $watch = ['state' => 'attention'] + self::WATCH;
-        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'restored', 'changed' => self::NOW, 'attempts' => 0], $watch);
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'restored', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0], $watch);
         $this->sender->expects($this->once())->method('targetEvent')->with($watch, 'restored', self::NOW)->willReturn(WatchSender::SENT);
         $this->sync->expects($this->once())->method('request')->with('ada');
 
@@ -87,7 +87,7 @@ final class WatchFeedTest extends TestCase
 
     public function testATargetRestoredWhileItsDeletionWasOnItsWayIsReportedRestored(): void
     {
-        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'attempts' => 0], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
         $this->sender->method('ownerNode')->with('ada', 30)->willReturn($this->createStub(Folder::class));
         $events = [];
         $this->sender->method('targetEvent')->willReturnCallback(function (array $watch, string $event) use (&$events): string {
@@ -103,7 +103,7 @@ final class WatchFeedTest extends TestCase
 
     public function testADeletedTargetThatStaysGoneIsOnlyReportedDeleted(): void
     {
-        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'attempts' => 0], self::WATCH);
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
         $this->sender->method('ownerNode')->willReturn(null);
         $this->sender->expects($this->once())->method('targetEvent')->with(self::WATCH, 'deleted', self::NOW)->willReturn(WatchSender::SENT);
 
@@ -132,7 +132,7 @@ final class WatchFeedTest extends TestCase
      */
     private static function row(int $file, int $attempts = 0): array
     {
-        return ['watch' => 5, 'file' => $file, 'event' => '', 'changed' => self::NOW - 90, 'attempts' => $attempts];
+        return ['watch' => 5, 'file' => $file, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => $attempts];
     }
 
     private function feed(?string $quiet = null): WatchFeed

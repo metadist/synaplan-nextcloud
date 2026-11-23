@@ -18,7 +18,7 @@ use OCP\IDBConnection;
  * files already there (0).
  *
  * @phpstan-type WatchRow array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}
- * @phpstan-type QueueRow array{watch: int, file: int, event: string, changed: int, attempts: int}
+ * @phpstan-type QueueRow array{watch: int, file: int, event: string, changed: int, generation: string, attempts: int}
  */
 class WatchIndex
 {
@@ -212,12 +212,14 @@ class WatchIndex
      */
     public function enqueue(int $watchId, int $fileId, string $event, int $changed, int $due = 0): void
     {
+        $generation = bin2hex(random_bytes(16));
         $insert = $this->db->getQueryBuilder();
         $insert->insert(self::QUEUE)->values([
             'watch_id' => $insert->createNamedParameter($watchId, IQueryBuilder::PARAM_INT),
             'file_id' => $insert->createNamedParameter($fileId, IQueryBuilder::PARAM_INT),
             'event' => $insert->createNamedParameter($event !== '' ? $event : null),
             'changed' => $insert->createNamedParameter($changed, IQueryBuilder::PARAM_INT),
+            'generation' => $insert->createNamedParameter($generation),
             'due' => $insert->createNamedParameter($due, IQueryBuilder::PARAM_INT),
             'attempts' => $insert->createNamedParameter(0, IQueryBuilder::PARAM_INT),
         ]);
@@ -234,6 +236,7 @@ class WatchIndex
         $update->update(self::QUEUE)
             ->set('event', $update->createNamedParameter($event !== '' ? $event : null))
             ->set('changed', $update->createNamedParameter($changed, IQueryBuilder::PARAM_INT))
+            ->set('generation', $update->createNamedParameter($generation))
             ->set('due', $update->createNamedParameter($due, IQueryBuilder::PARAM_INT))
             ->set('attempts', $update->createNamedParameter(0, IQueryBuilder::PARAM_INT))
             ->where($update->expr()->eq('watch_id', $update->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
@@ -277,6 +280,7 @@ class WatchIndex
                 'file' => (int) ($row['file_id'] ?? 0),
                 'event' => is_string($row['event'] ?? null) ? $row['event'] : '',
                 'changed' => (int) ($row['changed'] ?? 0),
+                'generation' => is_string($row['generation'] ?? null) ? $row['generation'] : '',
                 'attempts' => (int) ($row['attempts'] ?? 0),
             ];
         }
@@ -337,14 +341,22 @@ class WatchIndex
     }
 
     /**
-     * The row as due() read it: enqueue() rewrites `changed` and `event`.
+     * The row as due() read it: each enqueue() gives the row a new
+     * generation. A row queued before generations existed has none and is
+     * told by `changed` and `event`.
      *
      * @param QueueRow $row
      */
     private function whereUnchanged(IQueryBuilder $qb, array $row): void
     {
         $qb->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($row['watch'], IQueryBuilder::PARAM_INT)))
-            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($row['file'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($row['file'], IQueryBuilder::PARAM_INT)));
+        if ($row['generation'] !== '') {
+            $qb->andWhere($qb->expr()->eq('generation', $qb->createNamedParameter($row['generation'])));
+
+            return;
+        }
+        $qb->andWhere($qb->expr()->isNull('generation'))
             ->andWhere($qb->expr()->eq('changed', $qb->createNamedParameter($row['changed'], IQueryBuilder::PARAM_INT)))
             ->andWhere($row['event'] === ''
                 ? $qb->expr()->isNull('event')
