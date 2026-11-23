@@ -1,5 +1,6 @@
 import type { IFileAction, IFolder, INode } from '@nextcloud/files'
 import type { CloudFileStateCode } from '../cloud_state/glyphs'
+import type { ResolvedRowStatus } from '../cloud_state/statusBatcher'
 
 import { DefaultType, getSidebar, registerFileListHeader } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
@@ -7,6 +8,7 @@ import { badgeForState, glyphMarkup, labelForState } from '../cloud_state/glyphs
 import {
 	isCloudStatusEnabled,
 	onCloudStatusInvalidated,
+	refreshDelay,
 	requestRowStatus,
 	watchForTarget,
 } from '../cloud_state/statusBatcher'
@@ -85,13 +87,13 @@ export const birdRowAction: IFileAction = {
 		slot.className = 'synaplan-row-bird-slot'
 		slot.style.display = 'none'
 
-		const renderIntoSlot = async (): Promise<void> => {
+		const renderIntoSlot = async (): Promise<ResolvedRowStatus> => {
 			const version = extractNodeVersion(node)
 			const resolved = await requestRowStatus(id, version)
 			if (!resolved.enabled || resolved.unreachable) {
 				slot.innerHTML = ''
 				slot.style.display = 'none'
-				return
+				return resolved
 			}
 
 			const state: CloudFileStateCode = resolved.item?.state ?? 'none'
@@ -99,7 +101,7 @@ export const birdRowAction: IFileAction = {
 			if (state === 'none' && !watch) {
 				slot.innerHTML = ''
 				slot.style.display = 'none'
-				return
+				return resolved
 			}
 
 			const folderName =
@@ -158,15 +160,37 @@ export const birdRowAction: IFileAction = {
 			slot.innerHTML = ''
 			slot.style.display = 'inline-flex'
 			slot.appendChild(el)
+			return resolved
 		}
 
-		await renderIntoSlot()
-		const unsubscribe = onCloudStatusInvalidated(() => {
+		let attempt = 0
+		let refreshTimer: ReturnType<typeof setTimeout> | null = null
+		const follow = (resolved: ResolvedRowStatus): void => {
+			if (refreshTimer !== null) {
+				clearTimeout(refreshTimer)
+				refreshTimer = null
+			}
+			const delay = refreshDelay(resolved, attempt)
+			if (delay === null) {
+				return
+			}
+			attempt++
+			refreshTimer = setTimeout(async () => {
+				refreshTimer = null
+				if (slot.isConnected) {
+					follow(await renderIntoSlot())
+				}
+			}, delay)
+		}
+
+		follow(await renderIntoSlot())
+		const unsubscribe = onCloudStatusInvalidated(async () => {
 			if (!slot.isConnected) {
 				unsubscribe()
 				return
 			}
-			renderIntoSlot()
+			attempt = 0
+			follow(await renderIntoSlot())
 		})
 
 		return slot

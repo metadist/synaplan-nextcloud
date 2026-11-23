@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **A bird that is adding or updating turns green on its own.** Files asks
+  Synaplan again after 10 seconds, then after longer waits, up to five
+  times, while the row is shown, and also when Synaplan gave no answer. It
+  used to show "updating" until the page was reloaded.
 - **A new version Synaplan asks for is sent again when sending it failed for
   now.** Synaplan asks once; with Synaplan unreachable or busy, or your
   connection not renewable just then, the copy stayed old and its bird

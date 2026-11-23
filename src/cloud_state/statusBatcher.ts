@@ -35,6 +35,8 @@ interface CacheEntry {
 }
 
 const CACHE_TTL_MS = 60_000
+/** How long a row waits each time before asking again while Synaplan is still at work on its file, or gave no answer. */
+export const REFRESH_DELAYS_MS = [10_000, 30_000, 60_000, 120_000, 300_000]
 const BATCH_WINDOW_MS = 50
 const MAX_BATCH = 500
 
@@ -62,6 +64,36 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null
  */
 function cacheKey(id: string, version: string): string {
 	return `${id}:${version}`
+}
+
+/**
+ * Whether a row's answer will not change on its own: Synaplan answered and
+ * is not adding or updating the file.
+ *
+ * @param res the row's answer
+ */
+function settled(res: ResolvedRowStatus): boolean {
+	if (res.unreachable) {
+		return false
+	}
+	if (!res.enabled) {
+		return true
+	}
+	return res.item?.state !== 'adding' && res.item?.state !== 'updating'
+}
+
+/**
+ * How long a row shown with this answer waits before asking again, or null
+ * when it need not ask.
+ *
+ * @param res the row's answer
+ * @param attempt how often the row asked again since it settled last
+ */
+export function refreshDelay(
+	res: ResolvedRowStatus,
+	attempt: number,
+): number | null {
+	return settled(res) ? null : (REFRESH_DELAYS_MS[attempt] ?? null)
 }
 
 /**
@@ -195,7 +227,7 @@ async function flushBatch(): Promise<void> {
 					glyphs: lastGlyphs,
 					openSynaplanUrl: lastOpenSynaplanUrl,
 				}
-				if (enabled && !unreachable) {
+				if (enabled && settled(resolved)) {
 					cache.set(cacheKey(entry.id, entry.version), {
 						expiresAt,
 						value: resolved,
