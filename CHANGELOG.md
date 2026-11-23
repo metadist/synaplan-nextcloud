@@ -94,6 +94,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   migrations, like its other tables. It was created at the first
   notification with SQL that Oracle does not accept, so no copy arrived
   there.
+- **The address Synaplan uses to reach this Nextcloud** defaults to this
+  server's own address, also when that is `localhost`. It was the dev
+  stack's `http://nextcloud`, which Synaplan was then told to call; the dev
+  and test stacks now set that address themselves.
 
 ## 2.0.0 – 2026-11-16
 
