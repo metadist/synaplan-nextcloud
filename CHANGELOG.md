@@ -36,6 +36,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Withdrawing consent while a token refresh is under way** no longer lets
   the refresh's answer store the grant again. Revoking waits for the
   refresh and ends the token it rotated to.
+- **Renewing a provisioned key** keeps the old key when no new one could be
+  minted, for example while the administrator's key is missing. It used to
+  revoke the person's only working key.
 - **Deactivate** in the admin's AI Users panel pauses a person whose account
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
