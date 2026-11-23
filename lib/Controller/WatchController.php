@@ -198,10 +198,10 @@ class WatchController extends Controller
             $watch = $this->synaplanClient->updateWatch($id, $state);
             $now = $this->time->getTime();
             $this->note(function () use ($user, $watch, $now, $state, $handleWaiting, $id): void {
-                $this->index->update($user->getUID(), $watch, $now);
                 if ($state === 'active' && !$handleWaiting) {
                     $this->index->restartFrom($id, $now);
                 }
+                $this->index->update($user->getUID(), $watch, $now);
             });
 
             return new JSONResponse(['success' => true, 'watch' => $this->listed($watch)]);

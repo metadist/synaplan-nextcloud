@@ -52,6 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **"Only new files" leaves out every file from before the resume.** Files
+  queued before a watch was resumed with "Only new files" could still be
+  sent.
 - **Resuming a watch asks first, or stays paused.** When the number of files
   that arrived while it was paused could not be read, the watch resumed and
   took them all without asking. It now stays paused and says why.

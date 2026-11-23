@@ -106,6 +106,13 @@ class WatchIndex
             ->set('since', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
+
+        $waiting = $this->db->getQueryBuilder();
+        $waiting->delete(self::QUEUE)
+            ->where($waiting->expr()->eq('watch_id', $waiting->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($waiting->expr()->isNull('event'))
+            ->andWhere($waiting->expr()->lt('changed', $waiting->createNamedParameter($since, IQueryBuilder::PARAM_INT)));
+        $waiting->executeStatement();
     }
 
     /**

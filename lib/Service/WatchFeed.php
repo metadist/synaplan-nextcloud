@@ -65,7 +65,9 @@ class WatchFeed
                 if ($result === WatchSender::SENT) {
                     $this->sync->request($watch['uid']);
                 }
-            } elseif ($watch['state'] !== WatchIndex::ACTIVE) {
+            } elseif ($watch['state'] !== WatchIndex::ACTIVE || $row['changed'] < $watch['since']) {
+                // Older than `since`: the owner resumed the watch without
+                // the files that arrived while it was paused.
                 $result = WatchSender::DROP;
             } else {
                 $result = $this->sender->file($watch, $row['file']);

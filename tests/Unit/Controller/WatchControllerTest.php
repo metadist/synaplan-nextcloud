@@ -255,10 +255,17 @@ final class WatchControllerTest extends TestCase
     {
         $watch = ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active'];
         $this->client->method('updateWatch')->willReturn($watch);
-        $this->index->expects($this->once())->method('update');
-        $this->index->expects($this->once())->method('restartFrom')->with(5, 1700000000);
+        $calls = [];
+        $this->index->expects($this->once())->method('update')->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'update';
+        });
+        $this->index->expects($this->once())->method('restartFrom')->with(5, 1700000000)->willReturnCallback(function () use (&$calls): void {
+            $calls[] = 'restartFrom';
+        });
 
         $this->assertSame(200, $this->controller->update(5, 'active', false)->getStatus());
+        // Marked active only once the files queued before are gone, or the feed could send them.
+        $this->assertSame(['restartFrom', 'update'], $calls);
     }
 
     /**

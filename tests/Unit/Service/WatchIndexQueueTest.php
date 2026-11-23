@@ -97,6 +97,14 @@ final class WatchIndexQueueTest extends TestCase
         self::assertSame(['update synaplan_watches', 'set state="active"', 'set reason=""', 'where watch_id=5'], $this->last());
     }
 
+    public function testResumingWithOnlyNewFilesLetsGoOfTheFilesQueuedBefore(): void
+    {
+        $this->index()->restartFrom(5, 200);
+
+        self::assertSame(['update synaplan_watches', 'set since=200', 'where watch_id=5'], $this->statements[0]);
+        self::assertSame(['delete synaplan_watch_queue', 'where watch_id=5', 'where event IS NULL', 'where changed<200'], $this->last());
+    }
+
     private function index(): WatchIndex
     {
         $db = $this->createStub(IDBConnection::class);
@@ -115,6 +123,7 @@ final class WatchIndexQueueTest extends TestCase
         $qb = $this->createStub(IQueryBuilder::class);
         $expr = $this->createStub(IExpressionBuilder::class);
         $expr->method('eq')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '=' . $y);
+        $expr->method('lt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<' . $y);
         $expr->method('isNull')->willReturnCallback(static fn (mixed $x): string => $x . ' IS NULL');
         $qb->method('expr')->willReturn($expr);
         $qb->method('createNamedParameter')->willReturnCallback(function (mixed $value): IParameter {
