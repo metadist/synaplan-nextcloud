@@ -21,6 +21,9 @@ use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\IConfig;
 use OCP\IUser;
+use OCP\IUserSession;
+use OCP\Share\Events\ShareDeletedFromSelfEvent;
+use OCP\Share\IShare;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -33,6 +36,11 @@ class SourceEventListenerTest extends TestCase
     private ArraySourceEventQueue $queue;
     /** @var array<int, list<string>> who else holds each file id, with a credential */
     private array $sharedWith = [];
+    /** @var array<int, list<string>> who has no way left to each file id */
+    private array $lostBy = [];
+    private string $signedIn = '';
+    /** @var array<string, list<string>> the file cache paths below a share each person still has mounted */
+    private array $kept = [];
     /** @var list<array{string, mixed}> */
     private array $jobsAdded = [];
 
@@ -61,8 +69,16 @@ class SourceEventListenerTest extends TestCase
     {
         $recipients = $this->createStub(ShareRecipients::class);
         $recipients->method('of')->willReturnCallback(fn (Node $node): array => $this->sharedWith[(int) $node->getId()] ?? []);
+        $recipients->method('lost')->willReturnCallback(fn (Node $node, string $uid): bool => in_array($uid, $this->lostBy[(int) $node->getId()] ?? [], true));
+        $recipients->method('keptBelow')->willReturnCallback(fn (string $uid): array => $this->kept[$uid] ?? []);
+        $session = $this->createStub(IUserSession::class);
+        if ($this->signedIn !== '') {
+            $user = $this->createStub(IUser::class);
+            $user->method('getUID')->willReturn($this->signedIn);
+            $session->method('getUser')->willReturn($user);
+        }
 
-        return new SourceEventListener($this->synaplanConfig, $this->config, $this->jobs, $this->rootFolder, $this->queue, $recipients);
+        return new SourceEventListener($this->synaplanConfig, $this->config, $this->jobs, $this->rootFolder, $this->queue, $recipients, $session);
     }
 
     private function fileNode(int $id, string $path, string $etag = 'etag-1', ?string $owner = null): Node&MockObject
@@ -325,5 +341,59 @@ class SourceEventListenerTest extends TestCase
 
         self::assertSame([], $this->queue->rows);
         self::assertSame([], $this->jobsAdded);
+    }
+
+    private function share(int $type, string $with, Node $node): IShare
+    {
+        $share = $this->createStub(IShare::class);
+        $share->method('getShareType')->willReturn($type);
+        $share->method('getSharedWith')->willReturn($with);
+        $share->method('getNode')->willReturn($node);
+
+        return $share;
+    }
+
+    public function testARecipientWhoRemovesASharedFolderHasTheirCopiesOfItsFilesDeleted(): void
+    {
+        $this->lostBy[50] = ['bob'];
+
+        $this->listener()->handle(new ShareDeletedFromSelfEvent($this->share(IShare::TYPE_USER, 'bob', $this->specsFolder())));
+
+        self::assertSame(['bob send 51', 'bob send 52', 'bob send 50'], $this->queue->steps());
+        self::assertSame(['deleted'], array_values(array_unique(array_column($this->queue->rows, 'event'))));
+        self::assertSame([[SourceEventsJob::class, ['uid' => 'bob']]], $this->jobsAdded);
+    }
+
+    public function testWhoLeftAGroupShareIsThePersonSignedIn(): void
+    {
+        $this->lostBy[42] = ['carol'];
+        $this->signedIn = 'carol';
+
+        $this->listener()->handle(new ShareDeletedFromSelfEvent($this->share(IShare::TYPE_GROUP, 'staff', $this->fileNode(42, '/ada/files/a.pdf', 'e42'))));
+
+        self::assertSame(['carol send 42'], $this->queue->steps());
+        self::assertSame([['uid' => 'carol', 'id' => '42', 'event' => 'deleted', 'version' => 'e42', 'path' => '']], $this->queue->events());
+    }
+
+    public function testARecipientWhoStillReachesTheFilesKeepsTheirCopies(): void
+    {
+        $this->lostBy[50] = [];
+
+        $this->listener()->handle(new ShareDeletedFromSelfEvent($this->share(IShare::TYPE_USER, 'bob', $this->specsFolder())));
+
+        self::assertSame([], $this->queue->steps());
+        self::assertSame([], $this->jobsAdded);
+    }
+
+    public function testARecipientKeepsTheirCopiesOfAFolderTheyStillHaveASharedOfTheirOwn(): void
+    {
+        $this->lostBy[50] = ['bob'];
+        $this->kept['bob'] = ['files/Specs/Old'];
+        $folder = $this->specsFolder();
+        $this->queue->cache(3, 'files/Specs/Old', 53, 'eo');
+
+        $this->listener()->handle(new ShareDeletedFromSelfEvent($this->share(IShare::TYPE_USER, 'bob', $folder)));
+
+        self::assertSame(['bob send 51', 'bob send 50'], $this->queue->steps(), 'Old and b.pdf in it stay Bob\'s through his share of Old');
     }
 }

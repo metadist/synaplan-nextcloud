@@ -103,8 +103,10 @@ class SourceEventQueue
      * Queue every file and folder below a folder for one person, in one
      * statement from the file cache: the request reads no node. The path is
      * left out, as Synaplan reads it for moves only.
+     *
+     * @param list<string> $except file cache paths whose subtrees stay out
      */
-    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0): void
+    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0, array $except = []): void
     {
         $folder = $this->location($folderId);
         if ($folder === null) {
@@ -125,6 +127,10 @@ class SourceEventQueue
             ->from('filecache')
             ->where($expr->eq('storage', $select->createNamedParameter($folder['storage'], IQueryBuilder::PARAM_INT)))
             ->andWhere($this->below($select, $folder['path']));
+        foreach ($except as $path) {
+            $select->andWhere($expr->neq('path_hash', $select->createNamedParameter(md5($path))))
+                ->andWhere($expr->notLike('path', $select->createNamedParameter($this->db->escapeLikeParameter($path) . '/%')));
+        }
 
         $columns = array_map(
             static fn (string $column): string => $select->getColumnName($column),
@@ -174,7 +180,7 @@ class SourceEventQueue
      *
      * @return array{storage: int, path: string}|null
      */
-    private function location(int $fileId): ?array
+    public function location(int $fileId): ?array
     {
         $qb = $this->db->getQueryBuilder();
         $result = $qb->select('storage', 'path')

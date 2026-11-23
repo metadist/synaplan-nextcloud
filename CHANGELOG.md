@@ -147,6 +147,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   path they see; for a deletion they are noted before the shares go. Only
   the person who acted and the owner were told, so a copy someone made of a
   file shared with them stayed old, and stayed after the file was deleted.
+- **Removing a share from your files deletes your Synaplan copies of it.**
+  Removing a share someone gave you, or leaving a group share, deleted
+  nothing in Nextcloud, so your copies of its files stayed in Synaplan.
+  What you still reach through another share stays.
 - **Renaming a folder shared with you tells Synaplan of your copies only.**
   The folder keeps its name for its owner and everyone else it is shared
   with, but the owner was sent a move of every file in it to the path it

@@ -22,12 +22,16 @@ use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\IConfig;
+use OCP\IUserSession;
+use OCP\Share\Events\ShareDeletedFromSelfEvent;
+use OCP\Share\IShare;
 
 /**
  * When a file or folder changes, moves, is deleted to the trash, or is
- * restored from the trash, queue source events for Synaplan (including
- * descendant files inside a moved, deleted, or restored folder), in each
- * person's queue in the order they happen.
+ * restored from the trash, or a recipient removes a share from their files,
+ * queue source events for Synaplan (including descendant files inside a
+ * moved, deleted, or restored folder), in each person's queue in the order
+ * they happen.
  * Respects dev_mute_events.
  *
  * @implements IEventListener<Event>
@@ -43,6 +47,7 @@ class SourceEventListener implements IEventListener
         private IRootFolder $rootFolder,
         private SourceEventQueue $queue,
         private ShareRecipients $recipients,
+        private IUserSession $session,
     ) {
     }
 
@@ -58,6 +63,11 @@ class SourceEventListener implements IEventListener
         $ord = SourceEventQueue::now();
         if ($event instanceof BeforeNodeDeletedEvent) {
             $this->holdDeletion($event->getNode(), $ord);
+
+            return;
+        }
+        if ($event instanceof ShareDeletedFromSelfEvent) {
+            $this->leftShare($event->getShare(), $ord);
 
             return;
         }
@@ -112,6 +122,34 @@ class SourceEventListener implements IEventListener
         }
         foreach ($recipients as $uid) {
             $this->queue->add($uid, ['id' => $mapped['id'], 'event' => 'deleted', 'version' => $mapped['version'], 'path' => ''], $ord, SourceEventQueue::STEP_HELD, $id);
+        }
+    }
+
+    /**
+     * A recipient who removes a share from their files deletes nothing in
+     * Nextcloud, but their copies of what it holds are gone for them as for
+     * a deletion, but for what they still reach through a share of their
+     * own further down. Nextcloud does not say who left a group share; it is
+     * the person signed in.
+     */
+    private function leftShare(IShare $share, int $ord): void
+    {
+        try {
+            $uid = $share->getShareType() === IShare::TYPE_USER
+                ? $share->getSharedWith()
+                : ($this->session->getUser()?->getUID() ?? '');
+            $node = $share->getNode();
+            if (!$this->recipients->lost($node, $uid)) {
+                return;
+            }
+            $folder = $node instanceof Folder ? $this->queue->location((int) $node->getId()) : null;
+            if ($folder !== null) {
+                $this->queue->addDescendants($uid, (int) $node->getId(), 'deleted', $ord, SourceEventQueue::STEP_SEND, 0, $this->recipients->keptBelow($uid, $folder));
+            }
+            $this->queue->add($uid, ['id' => (string) $node->getId(), 'event' => 'deleted', 'version' => $node->getEtag(), 'path' => ''], $ord);
+            $this->jobs->add(SourceEventsJob::class, ['uid' => $uid]);
+        } catch (\Throwable) {
+            // Best effort: the share is gone either way.
         }
     }
 

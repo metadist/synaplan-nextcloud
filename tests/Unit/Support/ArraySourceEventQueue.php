@@ -73,10 +73,17 @@ final class ArraySourceEventQueue extends SourceEventQueue
     /** Statements that read the file cache. */
     public int $cacheReads = 0;
 
-    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0): void
+    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0, array $except = []): void
     {
         ++$this->cacheReads;
+        $prefix = ($this->location($folderId)['path'] ?? '') . '/';
         foreach ($this->below($folderId) as $entry) {
+            $path = ltrim($prefix . $entry['path'], '/');
+            foreach ($except as $kept) {
+                if ($path === $kept || str_starts_with($path, $kept . '/')) {
+                    continue 2;
+                }
+            }
             $this->add($uid, ['id' => (string) $entry['id'], 'event' => $event, 'version' => $entry['etag'], 'path' => ''], $ord, $step, $walked);
         }
     }
@@ -91,6 +98,17 @@ final class ArraySourceEventQueue extends SourceEventQueue
             static fn (array $entry): array => ['id' => $entry['id'], 'path' => $entry['path'], 'etag' => $entry['etag']],
             array_slice($page, 0, $limit),
         );
+    }
+
+    public function location(int $fileId): ?array
+    {
+        foreach ($this->fileCache as $entry) {
+            if ($entry['id'] === $fileId) {
+                return ['storage' => $entry['storage'], 'path' => $entry['path']];
+            }
+        }
+
+        return null;
     }
 
     /**

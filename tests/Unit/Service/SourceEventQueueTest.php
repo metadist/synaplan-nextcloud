@@ -89,6 +89,21 @@ final class SourceEventQueueTest extends TestCase
         self::assertSame(['select filecache', 'where fileid=50'], $this->statements[0]);
     }
 
+    public function testTheSubtreesSomeoneKeepsStayOutOfTheirFoldersFiles(): void
+    {
+        $this->folderPath = 'files/Specs';
+        $this->queue()->addDescendants('bob', 50, 'deleted', 1_700, SourceEventQueue::STEP_SEND, 0, ['files/Specs/Old_1']);
+
+        self::assertSame([
+            'select 1700,"bob",fileid,"deleted",etag,"","send",0',
+            'select filecache',
+            'where storage=3',
+            'where path LIKE "files/Specs/%"',
+            'where path_hash<>"' . md5('files/Specs/Old_1') . '"',
+            'where path NOT LIKE "files/Specs/Old\\\\_1/%"',
+        ], $this->statements[1]);
+    }
+
     public function testAMovedFolderIsReadAPageAtATimeByFileIdWithPathsBelowIt(): void
     {
         $this->folderPath = 'files/Specs';
@@ -143,6 +158,8 @@ final class SourceEventQueueTest extends TestCase
         $expr->method('eq')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '=' . $y);
         $expr->method('in')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' IN ' . $y);
         $expr->method('like')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' LIKE ' . $y);
+        $expr->method('notLike')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' NOT LIKE ' . $y);
+        $expr->method('neq')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<>' . $y);
         $expr->method('gt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' > ' . $y);
         $expr->method('literal')->willReturnCallback(function (mixed $value): ILiteral {
             $literal = $this->createStub(ILiteral::class);
