@@ -6,18 +6,19 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCP\DB\Exception as DBException;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\Files\File;
 use OCP\IDBConnection;
 
 /**
  * The files this app wrote for Synaplan: copies, saved media, imported
  * library files. A watch must not get them back, or a translation saved into
- * a watched folder is translated again. Events for them are ignored for ten
- * minutes; a later pass that still finds one unchanged tells Synaplan it is
- * an own write, so its ledger keeps it for good.
+ * a watched folder is translated again. The version the app wrote is kept:
+ * while the file still has it, a watch is told it is an own write, so its
+ * ledger keeps it for good; once a person changed it, it is a file like any
+ * other.
  */
 class OwnWrites
 {
-    public const IGNORE_SECONDS = 600;
     private const TABLE = 'synaplan_own_writes';
     private const KEEP_SECONDS = 7 * 86400;
 
@@ -28,15 +29,21 @@ class OwnWrites
     ) {
     }
 
-    public function note(int $fileId, int $now): void
+    /**
+     * Call after the write: the node then reports the version it wrote.
+     */
+    public function note(File $file, int $now): void
     {
+        $fileId = (int) $file->getId();
         if ($fileId <= 0 || !$this->ready()) {
             return;
         }
+        $version = WatchSender::version($file);
         $insert = $this->db->getQueryBuilder();
         $insert->insert(self::TABLE)->values([
             'file_id' => $insert->createNamedParameter($fileId, IQueryBuilder::PARAM_INT),
             'written' => $insert->createNamedParameter($now, IQueryBuilder::PARAM_INT),
+            'version' => $insert->createNamedParameter($version),
         ]);
         try {
             $insert->executeStatement();
@@ -50,46 +57,27 @@ class OwnWrites
         $update = $this->db->getQueryBuilder();
         $update->update(self::TABLE)
             ->set('written', $update->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('version', $update->createNamedParameter($version))
             ->where($update->expr()->eq('file_id', $update->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
         $update->executeStatement();
     }
 
     /**
-     * When this app last wrote the file, or null.
+     * The file still has the version this app wrote.
      */
-    public function writtenAt(int $fileId): ?int
+    public function isOwnVersion(int $fileId, string $version): bool
     {
-        if ($fileId <= 0 || !$this->ready()) {
-            return null;
+        if ($fileId <= 0 || $version === '' || !$this->ready()) {
+            return false;
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->select('written')->from(self::TABLE)
+        $qb->select('version')->from(self::TABLE)
             ->where($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
         $result = $qb->executeQuery();
         $written = $result->fetchOne();
         $result->closeCursor();
 
-        return $written === false || $written === null ? null : (int) $written;
-    }
-
-    /**
-     * An event for this file is the app's own write.
-     */
-    public function isRecent(int $fileId, int $now): bool
-    {
-        $written = $this->writtenAt($fileId);
-
-        return $written !== null && $now - $written <= self::IGNORE_SECONDS;
-    }
-
-    /**
-     * The file is still as this app wrote it: not changed by a person since.
-     */
-    public function isUnchanged(int $fileId, int $mtime): bool
-    {
-        $written = $this->writtenAt($fileId);
-
-        return $written !== null && $mtime <= $written + self::IGNORE_SECONDS;
+        return is_string($written) && $written === $version;
     }
 
     public function prune(int $now): void

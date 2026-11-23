@@ -171,7 +171,7 @@ class MediaController extends Controller
 
             $file = $targetFolder->newFile($targetName);
             $file->putContent($content);
-            $this->ownWrites->note((int) $file->getId(), time());
+            $this->ownWrites->note($file, time());
 
             $savedPath = $targetFolderPath . '/' . $targetName;
 
