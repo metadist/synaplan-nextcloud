@@ -81,3 +81,49 @@ describe('an answer asked for before Remove', () => {
 		})
 	})
 })
+
+describe('a watch', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+		vi.resetModules()
+		post.mockReset()
+	})
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	const watched = {
+		data: {
+			...answer('indexed').data,
+			watches: [{ id: 5, target_id: '42', state: 'active' }],
+		},
+	}
+
+	it('stopped elsewhere loses its eyes at the next answer', async () => {
+		const { requestRowStatus } = await import('@/cloud_state/statusBatcher')
+		post.mockResolvedValueOnce(watched).mockResolvedValue(answer('indexed'))
+
+		const first = requestRowStatus('42', 'e1')
+		await vi.advanceTimersByTimeAsync(50)
+		expect((await first).watch).toMatchObject({ target_id: '42' })
+
+		const later = requestRowStatus('42', 'e2')
+		await vi.advanceTimersByTimeAsync(50)
+		expect((await later).watch).toBeNull()
+	})
+
+	it('keeps its eyes while Synaplan gives no answer', async () => {
+		const { requestRowStatus } = await import('@/cloud_state/statusBatcher')
+		post.mockResolvedValueOnce(watched).mockResolvedValue({
+			data: { enabled: true, unreachable: true, items: [], watches: [] },
+		})
+
+		const first = requestRowStatus('42', 'e1')
+		await vi.advanceTimersByTimeAsync(50)
+		await first
+
+		const later = requestRowStatus('42', 'e2')
+		await vi.advanceTimersByTimeAsync(50)
+		expect((await later).watch).toMatchObject({ target_id: '42' })
+	})
+})

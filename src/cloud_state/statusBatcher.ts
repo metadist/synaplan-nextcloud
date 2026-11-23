@@ -217,6 +217,11 @@ async function flushBatch(): Promise<void> {
 					}
 				}
 			}
+			// Synaplan lists the watches on the asked ids, so an asked id it
+			// leaves out has none any more. A failed answer lists none either.
+			if (enabled && !unreachable) {
+				slice.forEach((entry) => folderWatches.delete(entry.id))
+			}
 			if (Array.isArray(data?.watches)) {
 				for (const watch of data.watches as CloudWatchSummary[]) {
 					if (watch && typeof watch.target_id === 'string') {

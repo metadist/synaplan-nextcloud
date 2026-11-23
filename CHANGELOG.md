@@ -52,6 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **A watch stopped elsewhere loses its eyes.** A folder whose watch was
+  stopped in Synaplan or in another tab kept its eyes until the page was
+  reloaded. They now go with the next answer from Synaplan.
 - **Watch… shows only where Synaplan takes watches.** It showed whenever the
   admin screen allowed watching, also while Synaplan's cloud files were off,
   and starting a watch then failed.
