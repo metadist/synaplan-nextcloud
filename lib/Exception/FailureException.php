@@ -13,9 +13,14 @@ use OCP\AppFramework\Http;
  */
 final class FailureException extends \RuntimeException
 {
+    /**
+     * @param bool $passing whether trying again later may succeed, as for
+     *                      an answer Synaplan sent that could not be read
+     */
     public function __construct(
         public readonly Failure $failure,
         string $logMessage,
+        public readonly bool $passing = false,
     ) {
         parent::__construct($logMessage);
     }
@@ -100,6 +105,6 @@ final class FailureException extends \RuntimeException
 
     public static function invalidSynaplanAnswer(): self
     {
-        return new self(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_ERROR), 'Invalid JSON response from Synaplan API');
+        return new self(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_ERROR), 'Invalid JSON response from Synaplan API', true);
     }
 }

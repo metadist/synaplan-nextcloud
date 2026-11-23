@@ -14,6 +14,8 @@ use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCP\AppFramework\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -130,6 +132,11 @@ final class ReuploadJobTest extends TestCase
         yield 'failing' => [new \RuntimeException('Bad Gateway', 502), true];
         yield 'file refused' => [new \RuntimeException('Payload Too Large', 413), false];
         yield 'key refused' => [FailureException::notConnected(), false];
+        yield 'answer unreadable' => [FailureException::invalidSynaplanAnswer(), true];
+        yield 'key refused for a provisioned account' => [
+            new FailureException(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_ERROR), 'Synaplan refused the key'),
+            false,
+        ];
     }
 
     #[DataProvider('uploadFailures')]

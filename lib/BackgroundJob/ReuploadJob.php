@@ -107,13 +107,13 @@ class ReuploadJob extends QueuedJob
     }
 
     /**
-     * No answer, a busy or failing Synaplan; not a refusal of the file or
-     * the key.
+     * No answer, a busy or failing Synaplan, or an answer it sent that
+     * could not be read; not a refusal of the file or the key.
      */
     private static function passing(\Throwable $e): bool
     {
         if ($e instanceof FailureException) {
-            return false;
+            return $e->passing;
         }
         $status = (int) $e->getCode();
 

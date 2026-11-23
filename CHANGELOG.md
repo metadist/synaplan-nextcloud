@@ -64,8 +64,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   times, while the row is shown, and also when Synaplan gave no answer. It
   used to show "updating" until the page was reloaded.
 - **A new version Synaplan asks for is sent again when sending it failed for
-  now.** Synaplan asks once; with Synaplan unreachable or busy, or your
-  connection not renewable just then, the copy stayed old and its bird
+  now.** Synaplan asks once; with Synaplan unreachable, busy or answering
+  something unreadable, or your connection not renewable just then, the
+  copy stayed old and its bird
   showed "updating" until the next edit. It is now tried again after 1, 5,
   15 and 60 minutes.
 - **A file change made while your connection cannot be renewed** reaches
