@@ -94,6 +94,33 @@ describe('a bird Synaplan is still at work on', () => {
 		expect(birdState(slot)).toBe('indexed')
 	})
 
+	it('starts its waits over when the cache is cleared while it asks again', async () => {
+		let answerFollowUp: (value: unknown) => void = () => {}
+		post.mockResolvedValueOnce(answer('updating'))
+			.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						answerFollowUp = resolve
+					}),
+			)
+			.mockResolvedValue(answer('updating'))
+		const slot = await drawnRow()
+		const { invalidateCloudStatusCache } =
+			await import('@/cloud_state/statusBatcher')
+
+		await vi.advanceTimersByTimeAsync(10_050)
+		expect(post).toHaveBeenCalledTimes(2)
+		invalidateCloudStatusCache()
+		await vi.advanceTimersByTimeAsync(50)
+		answerFollowUp(answer('updating'))
+		await vi.advanceTimersByTimeAsync(50)
+		expect(birdState(slot)).toBe('updating')
+		const asked = post.mock.calls.length
+
+		await vi.advanceTimersByTimeAsync(10_000)
+		expect(post.mock.calls.length).toBe(asked + 1)
+	})
+
 	it('stops asking after the last wait', async () => {
 		post.mockResolvedValue(answer('adding'))
 		await drawnRow()

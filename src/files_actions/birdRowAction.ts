@@ -165,7 +165,24 @@ export const birdRowAction: IFileAction = {
 
 		let attempt = 0
 		let refreshTimer: ReturnType<typeof setTimeout> | null = null
-		const follow = (resolved: ResolvedRowStatus): void => {
+		let drawings = 0
+		/**
+		 * Draw the row again. A clear can come while a follow-up waits for
+		 * its answer: only the latest drawing sets the next wait.
+		 */
+		async function draw(): Promise<void> {
+			const drawing = ++drawings
+			const resolved = await renderIntoSlot()
+			if (drawing === drawings) {
+				follow(resolved)
+			}
+		}
+		/**
+		 * Ask again later while Synaplan is still at work on the file.
+		 *
+		 * @param resolved the status the row shows
+		 */
+		function follow(resolved: ResolvedRowStatus): void {
 			if (refreshTimer !== null) {
 				clearTimeout(refreshTimer)
 				refreshTimer = null
@@ -175,22 +192,22 @@ export const birdRowAction: IFileAction = {
 				return
 			}
 			attempt++
-			refreshTimer = setTimeout(async () => {
+			refreshTimer = setTimeout(() => {
 				refreshTimer = null
 				if (slot.isConnected) {
-					follow(await renderIntoSlot())
+					void draw()
 				}
 			}, delay)
 		}
 
-		follow(await renderIntoSlot())
+		await draw()
 		const unsubscribe = onCloudStatusInvalidated(async () => {
 			if (!slot.isConnected) {
 				unsubscribe()
 				return
 			}
 			attempt = 0
-			follow(await renderIntoSlot())
+			await draw()
 		})
 
 		return slot
