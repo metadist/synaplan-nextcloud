@@ -39,6 +39,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Renewing a provisioned key** keeps the old key when no new one could be
   minted, for example while the administrator's key is missing. It used to
   revoke the person's only working key.
+- **Notifications signed with a new key** make Synaplan's keys be read at most
+  once a minute also when several arrive at once. Each used to read the old
+  check time and fetch the keys itself.
 - **Deactivate** in the admin's AI Users panel pauses a person whose account
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
