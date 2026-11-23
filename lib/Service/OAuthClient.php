@@ -248,8 +248,16 @@ class OAuthClient
                 $tokens = $this->refresh($refresh);
             } catch (PlatformLinkException $e) {
                 if ($e->getErrorCode() === PlatformLinkException::CODE_GRANT_ENDED) {
-                    $this->forget($uid);
+                    $this->drop($uid);
                 }
+
+                return '';
+            }
+            // A withdrawal that could not wait for this refresh forgot the
+            // grant while Synaplan answered: the answer must not bring it back.
+            $this->userConfig->clearCache($uid);
+            if ($this->secret($uid, self::REFRESH) !== $refresh) {
+                $this->revokeQuietly($uid, (string) ($tokens['refresh_token'] ?? ''));
 
                 return '';
             }
@@ -320,29 +328,75 @@ class OAuthClient
      */
     public function revoke(string $uid): void
     {
-        $refresh = $this->secret($uid, self::REFRESH);
-        if ($refresh !== '' && $this->isRegistered()) {
-            try {
-                $this->form('/oauth/revoke', ['token' => $refresh] + $this->assertionFields());
-            } catch (PlatformLinkException $e) {
-                if (!in_array($e->getErrorCode(), [PlatformLinkException::CODE_GRANT_ENDED, PlatformLinkException::CODE_CLIENT_REFUSED], true)) {
-                    $this->logger->warning('Could not revoke the Synaplan grant of {uid}: {message}', [
-                        'app' => Application::APP_ID,
-                        'uid' => $uid,
-                        'message' => $e->getMessage(),
-                    ]);
+        // Wait for a refresh under way, or the token revoked here is the one
+        // it is rotating away from.
+        $this->whileRefreshing($uid, function () use ($uid): void {
+            $this->userConfig->clearCache($uid);
+            $refresh = $this->secret($uid, self::REFRESH);
+            if ($refresh !== '' && $this->isRegistered()) {
+                try {
+                    $this->form('/oauth/revoke', ['token' => $refresh] + $this->assertionFields());
+                } catch (PlatformLinkException $e) {
+                    if (!in_array($e->getErrorCode(), [PlatformLinkException::CODE_GRANT_ENDED, PlatformLinkException::CODE_CLIENT_REFUSED], true)) {
+                        $this->logger->warning('Could not revoke the Synaplan grant of {uid}: {message}', [
+                            'app' => Application::APP_ID,
+                            'uid' => $uid,
+                            'message' => $e->getMessage(),
+                        ]);
 
-                    throw $e;
+                        throw $e;
+                    }
                 }
             }
-        }
-        $this->forget($uid);
+            $this->drop($uid);
+        });
     }
 
     public function forget(string $uid): void
     {
+        $this->whileRefreshing($uid, fn () => $this->drop($uid));
+    }
+
+    /**
+     * Run while no refresh of this person's grant is under way. A refresh
+     * that outlasts the wait finds the grant gone and does not keep its
+     * answer.
+     *
+     * @param \Closure(): void $work
+     */
+    private function whileRefreshing(string $uid, \Closure $work): void
+    {
+        $lock = Application::APP_ID . '/oauth-refresh/' . $uid;
+        $locked = $this->acquire($lock);
+        try {
+            $work();
+        } finally {
+            if ($locked) {
+                $this->locks->releaseLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
+            }
+        }
+    }
+
+    private function drop(string $uid): void
+    {
         foreach ([self::REFRESH, self::ACCESS, self::EXPIRES, self::GRANT_CLIENT] as $key) {
             $this->userConfig->deleteUserConfig($uid, Application::APP_ID, $key);
+        }
+    }
+
+    private function revokeQuietly(string $uid, string $refresh): void
+    {
+        if ($refresh === '') {
+            return;
+        }
+        try {
+            $this->form('/oauth/revoke', ['token' => $refresh] + $this->assertionFields());
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not revoke a Synaplan grant of {uid} that was withdrawn during a refresh: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 

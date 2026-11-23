@@ -590,6 +590,63 @@ class OAuthClientTest extends TestCase
         $this->assertSame([], $this->requests);
     }
 
+    public function testAGrantWithdrawnDuringARefreshIsNotBroughtBackByItsAnswer(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = function (string $method, string $url): array {
+            if (str_ends_with($url, '/oauth/token')) {
+                // A withdrawal that could not wait forgets the grant meanwhile.
+                $this->user = [];
+
+                return [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]];
+            }
+
+            return [200, []];
+        };
+        $client = $this->client();
+
+        $this->assertSame('', $client->accessToken('ada'));
+
+        $this->assertSame([], $this->user);
+        $this->assertFalse($client->isConnected('ada'));
+        $this->assertCount(2, $this->requests);
+        $this->assertSame('https://synaplan.example/oauth/revoke', $this->requests[1]['url']);
+        $this->assertSame('rt-new', $this->form(1)['token'], 'the grant the answer carried is ended too');
+    }
+
+    public function testForgettingAndRevokingWaitForARefreshUnderWay(): void
+    {
+        $this->registered();
+        $this->connected();
+        $locked = [];
+        $this->onLock = function (string $path) use (&$locked): void {
+            $locked[] = $path;
+        };
+        $client = $this->client();
+
+        $client->forget('ada');
+        $this->connected();
+        $client->revoke('ada');
+
+        $this->assertSame(['synaplan_integration/oauth-refresh/ada', 'synaplan_integration/oauth-refresh/ada'], $locked);
+        $this->assertSame([], $this->user);
+    }
+
+    public function testRevokeTakesTheTokenARefreshUnderWayRotatedTo(): void
+    {
+        $this->registered();
+        $this->connected('rt-old');
+        $this->onLock = function (): void {
+            // The refresh holding the lock finishes before it is released.
+            $this->connected('rt-new', 'at-new', time() + 300);
+        };
+
+        $this->client()->revoke('ada');
+
+        $this->assertSame('rt-new', $this->form(0)['token']);
+    }
+
     public function testAGrantOfAnEarlierRegistrationIsNone(): void
     {
         $this->registered();
