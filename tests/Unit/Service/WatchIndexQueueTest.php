@@ -104,7 +104,8 @@ final class WatchIndexQueueTest extends TestCase
         $this->index()->restartFrom(5, 200);
 
         self::assertSame(['update synaplan_watches', 'set since=200', 'where watch_id=5'], $this->statements[0]);
-        self::assertSame(['delete synaplan_watch_queue', 'where watch_id=5', 'where event IS NULL', 'where changed<200'], $this->last());
+        // A file queued in the resume's own second goes too.
+        self::assertSame(['delete synaplan_watch_queue', 'where watch_id=5', 'where event IS NULL'], $this->last());
     }
 
     public function testThePausedWatchesFilesWaitOutsideTheFeedsBatch(): void
@@ -183,7 +184,6 @@ final class WatchIndexQueueTest extends TestCase
                 return '(' . implode(' OR ', $this->parts) . ')';
             }
         });
-        $expr->method('lt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<' . $y);
         $expr->method('isNull')->willReturnCallback(static fn (mixed $x): string => $x . ' IS NULL');
         $qb->method('expr')->willReturn($expr);
         $qb->method('createNamedParameter')->willReturnCallback(function (mixed $value): IParameter {

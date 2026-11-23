@@ -97,8 +97,10 @@ class WatchIndex
     }
 
     /**
-     * Count only files that change from now on: the owner resumed the watch
-     * without the files that arrived while it was paused.
+     * Count only files that change from now on: the owner resumes the watch
+     * without the files that arrived while it was paused. Call it while the
+     * watch is still paused, before Synaplan resumes it: every file queued
+     * then arrived before the resume, whatever second it was queued in.
      */
     public function restartFrom(int $watchId, int $since): void
     {
@@ -111,8 +113,7 @@ class WatchIndex
         $waiting = $this->db->getQueryBuilder();
         $waiting->delete(self::QUEUE)
             ->where($waiting->expr()->eq('watch_id', $waiting->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
-            ->andWhere($waiting->expr()->isNull('event'))
-            ->andWhere($waiting->expr()->lt('changed', $waiting->createNamedParameter($since, IQueryBuilder::PARAM_INT)));
+            ->andWhere($waiting->expr()->isNull('event'));
         $waiting->executeStatement();
     }
 
