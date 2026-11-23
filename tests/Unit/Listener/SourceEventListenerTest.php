@@ -121,6 +121,64 @@ class SourceEventListenerTest extends TestCase
         self::assertSame(1, $this->queue->cacheReads);
     }
 
+    /**
+     * Ada's `Specs/Old` (id 53), as Bob sees it through the share of `Specs`:
+     * its internal path is below the share, the file cache keeps Ada's.
+     */
+    private function oldFolderSeenByBob(): Folder&MockObject
+    {
+        $this->specsFolder();
+        $this->queue->cache(3, 'files/Specs/Old', 53, 'eo');
+        $folder = $this->createMock(Folder::class);
+        $folder->method('getType')->willReturn(FileInfo::TYPE_FOLDER);
+        $folder->method('getId')->willReturn(53);
+        $folder->method('getPath')->willReturn('/bob/files/Specs/Old');
+        $folder->method('getInternalPath')->willReturn('Old');
+        $folder->method('getEtag')->willReturn('eo');
+        $folder->expects($this->never())->method('getDirectoryListing');
+
+        return $folder;
+    }
+
+    public function testASharedFolderTheRecipientDeletesQueuesItsFilesAndNoOthers(): void
+    {
+        $folder = $this->specsFolder('/bob/files/Specs', '');
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame(['bob send 51', 'bob send 52', 'bob send 50'], $this->queue->steps());
+    }
+
+    public function testAFolderInsideAShareTheRecipientDeletesQueuesItsFiles(): void
+    {
+        $folder = $this->oldFolderSeenByBob();
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame(['bob send 52', 'bob send 53'], $this->queue->steps());
+    }
+
+    public function testASharedFolderTheRecipientRenamesIsWalkedFromItsOwnPath(): void
+    {
+        $source = $this->createStub(Node::class);
+        $source->method('getPath')->willReturn('/bob/files/Specs');
+        $this->listener()->handle(new NodeRenamedEvent($source, $this->specsFolder('/bob/files/Specs 2026', '')));
+
+        self::assertSame(['bob share 50', 'bob send 50', 'bob walk 50'], $this->queue->steps());
+        self::assertSame('Specs 2026', array_values($this->queue->rows)[2]['path']);
+        self::assertSame(0, $this->queue->cacheReads);
+    }
+
+    public function testAFolderInsideAShareTheRecipientMovesIsWalkedFromItsOwnPath(): void
+    {
+        $source = $this->createStub(Node::class);
+        $source->method('getPath')->willReturn('/bob/files/Drafts/Old');
+        $this->listener()->handle(new NodeRenamedEvent($source, $this->oldFolderSeenByBob()));
+
+        self::assertSame(['bob share 53', 'bob send 53', 'bob walk 53'], $this->queue->steps());
+        self::assertSame('Specs/Old', array_values($this->queue->rows)[2]['path']);
+    }
+
     public function testAMovedFolderLeavesItsFilesToTheJob(): void
     {
         $source = $this->createStub(Node::class);

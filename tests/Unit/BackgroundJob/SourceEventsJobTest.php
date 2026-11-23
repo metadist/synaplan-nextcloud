@@ -198,6 +198,65 @@ class SourceEventsJobTest extends TestCase
         self::assertSame([], $this->queue->rows);
     }
 
+    /**
+     * Ada's storage 3: `Specs` (50) with `a.pdf` and `Old/b.pdf`, next to
+     * files outside it.
+     */
+    private function adasStorage(): void
+    {
+        $this->queue->cache(3, 'files', 1);
+        $this->queue->cache(3, 'files/Specs', 50);
+        $this->queue->cache(3, 'files/Specs/a.pdf', 51);
+        $this->queue->cache(3, 'files/Specs/Old', 53);
+        $this->queue->cache(3, 'files/Specs/Old/b.pdf', 52);
+        $this->queue->cache(3, 'files/Specsheet.pdf', 60);
+        $this->queue->cache(3, 'files/Private/c.pdf', 61);
+    }
+
+    /**
+     * @return list<string> each event sent, as `uid event id path`
+     */
+    private function sentWithPaths(): array
+    {
+        $out = [];
+        foreach ($this->sent as [$uid, $events]) {
+            foreach ($events as $event) {
+                $out[] = $uid . ' ' . $event['event'] . ' ' . $event['id'] . ' ' . $event['path'];
+            }
+        }
+
+        return $out;
+    }
+
+    public function testASharedFolderTheRecipientRenamedSendsItsFilesAtTheRecipientsPaths(): void
+    {
+        $this->adasStorage();
+        $this->queue('bob', '50', 'moved', 10, 'Specs 2026');
+        $this->queue->add('bob', ['id' => '50', 'event' => 'moved', 'version' => 'e1', 'path' => 'Specs 2026'], 10, SourceEventQueue::STEP_WALK);
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'bob']);
+
+        self::assertSame([
+            'bob moved 50 Specs 2026',
+            'bob moved 51 Specs 2026/a.pdf',
+            'bob moved 52 Specs 2026/Old/b.pdf',
+            'bob moved 53 Specs 2026/Old',
+        ], $this->sentWithPaths());
+    }
+
+    public function testAFolderInsideAShareTheRecipientMovedSendsOnlyItsFiles(): void
+    {
+        $this->adasStorage();
+        $this->queue('bob', '53', 'moved', 10, 'Specs/Archive/Old');
+        $this->queue->add('bob', ['id' => '53', 'event' => 'moved', 'version' => 'e1', 'path' => 'Specs/Archive/Old'], 10, SourceEventQueue::STEP_WALK);
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'bob']);
+
+        self::assertSame(['bob moved 53 Specs/Archive/Old', 'bob moved 52 Specs/Archive/Old/b.pdf'], $this->sentWithPaths());
+    }
+
     public function testRowsOfADeletionUnderWayWaitAndAreDroppedWhenItNeverHappens(): void
     {
         $this->now = 10_000;
