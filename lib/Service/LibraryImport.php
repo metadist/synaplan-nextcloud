@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
-use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
-use OCP\Files\NotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -19,7 +17,7 @@ class LibraryImport
         private SynaplanClient $client,
         private IRootFolder $rootFolder,
         private LoggerInterface $logger,
-        private OwnWrites $ownWrites,
+        private SynaplanFolders $folders,
     ) {
     }
 
@@ -68,7 +66,7 @@ class LibraryImport
             throw new \InvalidArgumentException('Missing file.');
         }
         $destination = SynaplanFolders::cleanFolder($folder);
-        $bytes = $this->client->downloadStoredFile($fileId);
+        $bytes = $this->client->downloadStoredFile($fileId, SynaplanFolders::MAX_BYTES);
         $name = basename(str_replace('\\', '/', trim($name)));
         if ($name === '' || $name === '.' || $name === '..') {
             $name = 'file';
@@ -76,8 +74,8 @@ class LibraryImport
 
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
-            $target = $destination === '' ? $userFolder : $this->ensure($userFolder, $destination);
-            $file = $this->place($target, $name, $bytes);
+            $target = $destination === '' ? $userFolder : $this->folders->ensure($userFolder, $destination);
+            $file = $this->folders->write($target, $name, $bytes);
         } catch (\Throwable $e) {
             $this->logger->warning('Could not copy a Synaplan file for {uid}: {message}', [
                 'app' => Application::APP_ID,
@@ -106,41 +104,5 @@ class LibraryImport
         $base = basename(str_replace('\\', '/', $display !== '' ? $display : $filename));
 
         return $base === '.' || $base === '..' ? '' : $base;
-    }
-
-    private function place(Folder $folder, string $name, string $bytes): \OCP\Files\File
-    {
-        $name = $name !== '' ? $name : 'file';
-        $stem = pathinfo($name, PATHINFO_FILENAME);
-        $ext = pathinfo($name, PATHINFO_EXTENSION);
-        $target = $name;
-        $n = 2;
-        while ($folder->nodeExists($target)) {
-            $target = $stem . ' (' . $n . ')' . ($ext !== '' ? '.' . $ext : '');
-            $n++;
-        }
-        $file = $folder->newFile($target);
-        $file->putContent($bytes);
-        $this->ownWrites->note($file, time());
-
-        return $file;
-    }
-
-    private function ensure(Folder $root, string $path): Folder
-    {
-        $current = $root;
-        foreach (explode('/', $path) as $segment) {
-            if ($current->nodeExists($segment)) {
-                $node = $current->get($segment);
-                if (!$node instanceof Folder) {
-                    throw new NotFoundException('A file is where a folder should be.');
-                }
-                $current = $node;
-            } else {
-                $current = $current->newFolder($segment);
-            }
-        }
-
-        return $current;
     }
 }

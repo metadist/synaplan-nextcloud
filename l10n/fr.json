@@ -357,7 +357,10 @@
 		"Synaplan may read at most": "Synaplan peut lire au plus",
 		"People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody.": "Chacun choisit jusqu’à ce niveau dans ses paramètres personnels. L’abaisser restreint tous ceux qui ont choisi plus ; le relever n’élargit personne.",
 		"Folders people allow": "Dossiers que les personnes autorisent",
-		"All their files": "Tous leurs fichiers"
+		"All their files": "Tous leurs fichiers",
+		"This file is larger than 100 MB, more than Synaplan copies into your files.": "Ce fichier dépasse 100 Mo, plus que ce que Synaplan copie dans vos fichiers.",
+		"This file does not fit into your storage. Make room and try again.": "Ce fichier ne tient pas dans votre espace de stockage. Libérez de la place et réessayez.",
+		"Twenty files with this name are already in that folder. Rename or remove one and try again.": "Ce dossier contient déjà vingt fichiers portant ce nom. Renommez-en ou supprimez-en un et réessayez."
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

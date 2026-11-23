@@ -358,6 +358,9 @@ OC.L10N.register(
     "Synaplan may read at most" : "Synaplan puede leer como máximo",
     "People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody." : "Cada persona elige hasta aquí en su configuración personal. Bajarlo limita a quien eligió más; subirlo no amplía a nadie.",
     "Folders people allow" : "Carpetas que las personas permiten",
-    "All their files" : "Todos sus archivos"
+    "All their files" : "Todos sus archivos",
+    "This file is larger than 100 MB, more than Synaplan copies into your files." : "Este archivo supera los 100 MB, más de lo que Synaplan copia en tus archivos.",
+    "This file does not fit into your storage. Make room and try again." : "Este archivo no cabe en tu almacenamiento. Libera espacio e inténtalo de nuevo.",
+    "Twenty files with this name are already in that folder. Rename or remove one and try again." : "Esa carpeta ya tiene veinte archivos con este nombre. Cambia el nombre de uno o elimina uno e inténtalo de nuevo."
 },
 "nplurals=2; plural=(n != 1);");

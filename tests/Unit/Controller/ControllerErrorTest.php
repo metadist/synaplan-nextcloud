@@ -79,7 +79,7 @@ final class ControllerErrorTest extends TestCase
             $logger,
         );
         $this->chat = new ChatController($request, $this->client, $root, $session, $language, $logger);
-        $this->media = new MediaController($request, $this->client, $root, $session, $logger, $this->createStub(OwnWrites::class), $this->createStub(SynaplanFolders::class));
+        $this->media = new MediaController($request, $this->client, $root, $session, $logger, $this->createStub(SynaplanFolders::class));
     }
 
     /**

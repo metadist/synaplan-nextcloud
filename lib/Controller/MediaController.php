@@ -6,7 +6,6 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
-use OCA\SynaplanIntegration\Service\OwnWrites;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCP\AppFramework\Controller;
@@ -33,7 +32,6 @@ class MediaController extends Controller
         private IRootFolder $rootFolder,
         private IUserSession $userSession,
         private LoggerInterface $logger,
-        private OwnWrites $ownWrites,
         private SynaplanFolders $folders,
     ) {
         parent::__construct(Application::APP_ID, $request);
@@ -115,26 +113,14 @@ class MediaController extends Controller
         $filename = basename($filename);
 
         try {
-            $content = $this->synaplanClient->downloadFile($mediaUrl);
+            $content = $this->synaplanClient->downloadFile($mediaUrl, SynaplanFolders::MAX_BYTES);
 
             $userFolder = $this->rootFolder->getUserFolder($user->getUID());
             $targetFolder = $this->folders->kindFolder($userFolder, $user->getUID(), $filename);
 
-            $counter = 1;
-            $ext = pathinfo($filename, PATHINFO_EXTENSION);
-            $base = pathinfo($filename, PATHINFO_FILENAME);
-            $targetName = $filename;
+            $file = $this->folders->write($targetFolder, $filename, $content);
 
-            while ($targetFolder->nodeExists($targetName)) {
-                $targetName = $base . ' (' . $counter . ')' . ($ext !== '' ? '.' . $ext : '');
-                $counter++;
-            }
-
-            $file = $targetFolder->newFile($targetName);
-            $file->putContent($content);
-            $this->ownWrites->note($file, time());
-
-            $savedPath = ltrim((string) ($userFolder->getRelativePath($file->getPath()) ?? $targetName), '/');
+            $savedPath = ltrim((string) ($userFolder->getRelativePath($file->getPath()) ?? $file->getName()), '/');
             $targetFolderPath = dirname($savedPath) === '.' ? '' : dirname($savedPath);
 
             return new JSONResponse([

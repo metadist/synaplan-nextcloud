@@ -105,6 +105,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Save in the chat** puts the file into the folder you chose under "Save
   files from Synaplan to", in its kind folder, like a copy Synaplan sends.
   It always used `Synaplan/`.
+- **From Synaplan and Save in the chat** have the limits of a copy: a file
+  over 100 MB is refused before it is read, a full storage and twenty files
+  of one name say so, and a write that fails leaves no empty file behind. A
+  large file ended the request when PHP ran out of memory.
 
 ## 2.0.0 – 2026-11-16
 

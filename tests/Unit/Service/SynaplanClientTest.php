@@ -216,6 +216,51 @@ class SynaplanClientTest extends TestCase
         $this->synaplanClient->downloadFile('/api/v1/files/uploads/01/a@b cat.png');
     }
 
+    public function testAFileLargerThanACopyMayBeIsRefusedFromItsAnnouncedLength(): void
+    {
+        $response = $this->createMock(IResponse::class);
+        $response->method('getHeader')->willReturnMap([['Content-Length', '101']]);
+        $response->expects($this->never())->method('getBody');
+        $this->httpClient->expects($this->once())->method('get')
+            ->with($this->anything(), $this->callback(fn (array $options): bool => ($options['stream'] ?? false) === true))
+            ->willReturn($response);
+
+        try {
+            $this->synaplanClient->downloadStoredFile(7, 100);
+            self::fail('A file over the limit must be refused before it is read.');
+        } catch (FailureException $e) {
+            self::assertSame([413, 'copy_too_large'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testAFileToSaveLargerThanTheLimitIsRefusedAndOneToShowIsNotLimited(): void
+    {
+        $this->httpClient->method('get')->willReturnCallback(function (string $url, array $options): IResponse {
+            $response = $this->createMock(IResponse::class);
+            $response->method('getHeader')->willReturn('');
+            if ($options['stream'] ?? false) {
+                $body = fopen('php://memory', 'r+');
+                $this->assertNotFalse($body);
+                fwrite($body, str_repeat('x', 101));
+                rewind($body);
+                $response->method('getBody')->willReturn($body);
+            } else {
+                $response->method('getBody')->willReturn(str_repeat('x', 101));
+            }
+
+            return $response;
+        });
+
+        self::assertSame(101, strlen($this->synaplanClient->downloadFile('/api/v1/files/uploads/7/cat.png')));
+        self::assertSame(101, strlen($this->synaplanClient->downloadFile('/api/v1/files/uploads/7/cat.png', 101)));
+        try {
+            $this->synaplanClient->downloadFile('/api/v1/files/uploads/7/cat.png', 100);
+            self::fail('A file over the limit must be refused.');
+        } catch (FailureException $e) {
+            self::assertSame('copy_too_large', $e->failure->code);
+        }
+    }
+
     public function testOffersTranslationOnlyWhenSynaplanListsIt(): void
     {
         $this->httpClient->method('get')->willReturnOnConsecutiveCalls(

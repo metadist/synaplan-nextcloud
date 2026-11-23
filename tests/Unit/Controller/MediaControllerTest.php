@@ -24,6 +24,8 @@ final class MediaControllerTest extends TestCase
     private array $folders = [];
 
     private string $copyFolder = '';
+    private int $free = -3;
+    private ?int $asked = null;
 
     public function testTheChatSavesIntoTheFolderThePersonChoseForFilesFromSynaplan(): void
     {
@@ -45,14 +47,35 @@ final class MediaControllerTest extends TestCase
         self::assertSame('Synaplan/Images/cat.png', $response->getData()['path'] ?? null);
     }
 
+    public function testTheChatSaveReadsAtMostWhatACopyMayBe(): void
+    {
+        $this->controller()->save('/api/v1/files/uploads/7/cat.png', 'cat.png');
+
+        self::assertSame(SynaplanFolders::MAX_BYTES, $this->asked);
+    }
+
+    public function testTheChatSaveSaysWhenTheStorageIsFull(): void
+    {
+        $this->free = 2;
+
+        $response = $this->controller()->save('/api/v1/files/uploads/7/cat.png', 'cat.png');
+
+        self::assertSame(409, $response->getStatus());
+        self::assertSame('storage_full', $response->getData()['error'] ?? null);
+    }
+
     private function controller(): MediaController
     {
         $user = $this->createStub(IUser::class);
         $user->method('getUID')->willReturn('ada');
         $session = $this->createStub(IUserSession::class);
         $session->method('getUser')->willReturn($user);
-        $client = $this->createStub(SynaplanClient::class);
-        $client->method('downloadFile')->willReturn('png bytes');
+        $client = $this->createMock(SynaplanClient::class);
+        $client->method('downloadFile')->willReturnCallback(function (string $path, ?int $maxBytes = null): string {
+            $this->asked = $maxBytes;
+
+            return 'png bytes';
+        });
         $root = $this->createStub(IRootFolder::class);
         $root->method('getUserFolder')->willReturn($this->folder(''));
         $config = $this->createStub(IConfig::class);
@@ -66,7 +89,6 @@ final class MediaControllerTest extends TestCase
             $root,
             $session,
             new NullLogger(),
-            $this->createStub(OwnWrites::class),
             new SynaplanFolders($config, $this->createStub(OwnWrites::class)),
         );
     }
@@ -78,7 +100,7 @@ final class MediaControllerTest extends TestCase
         }
         $folder = $this->createStub(Folder::class);
         $folder->method('nodeExists')->willReturn(false);
-        $folder->method('getFreeSpace')->willReturn(-3);
+        $folder->method('getFreeSpace')->willReturnCallback(fn (): int => $this->free);
         $folder->method('newFolder')->willReturnCallback(
             fn (string $name): Folder => $this->folder(ltrim($path . '/' . $name, '/')),
         );

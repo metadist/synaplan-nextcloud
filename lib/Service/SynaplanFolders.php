@@ -121,7 +121,8 @@ class SynaplanFolders
     }
 
     /**
-     * Write a new file, numbered when the name is taken.
+     * Write a new file, numbered when the name is taken. A write that fails
+     * leaves no empty file behind.
      *
      * @throws AlreadyExistsException when twenty files have the name
      */
@@ -129,7 +130,15 @@ class SynaplanFolders
     {
         $this->assertFits($folder, strlen($bytes));
         $file = $folder->newFile($this->freeName($folder, $name));
-        $file->putContent($bytes);
+        try {
+            $file->putContent($bytes);
+        } catch (\Throwable $e) {
+            try {
+                $file->delete();
+            } catch (\Throwable) {
+            }
+            throw $e;
+        }
         $this->ownWrites->note($file, time());
 
         return $file;
