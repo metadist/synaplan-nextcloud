@@ -52,6 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **Resuming a watch asks first, or stays paused.** When the number of files
+  that arrived while it was paused could not be read, the watch resumed and
+  took them all without asking. It now stays paused and says why.
 - **Watch… shows only where a watch gets files.** With one shared Synaplan
   key, or on a server not registered with Synaplan, a watch could be started
   but no file ever reached it. Watch… is now hidden there.
