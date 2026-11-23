@@ -1,4 +1,4 @@
-.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi l10n build dev clean package sign appstore dev-up dev-down dev-reset dev-occ dev-logs dev-shell e2e-up test-e2e e2e-down help
+.PHONY: ci-local lint lint-php lint-js format format-check lint-fix stan typecheck test test-php test-unit-js test-contract openapi l10n build dev clean package sign appstore dev-up dev-down dev-reset dev-migrate dev-occ dev-logs dev-shell e2e-up test-e2e e2e-down help
 
 app_name := synaplan_integration
 cert_dir := $(HOME)/.nextcloud/certificates
@@ -112,6 +112,9 @@ appstore: sign ## Build, sign, and prepare for App Store upload
 DEV_SYNAPLAN ?= dev
 COMPOSE_DEV := docker compose -f docker-compose.dev.yml $(if $(filter test,$(DEV_SYNAPLAN)),-f docker/dev-test-backend.yml)
 NC_EXEC := $(COMPOSE_DEV) exec -T -u www-data nextcloud
+# Nextcloud keeps the app's routes in APCu under its version for an hour, so
+# routes added since the last release stay unknown until Apache restarts.
+APACHE_RELOAD := sh -c 'apachectl -k graceful 2>/dev/null'
 
 # A Windows docker.exe called from WSL sees only the variables WSLENV names.
 export WSLENV := $(if $(WSLENV),$(WSLENV):)NC_IMAGE:NC_OIDC
@@ -135,6 +138,7 @@ dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron an
 	fi
 	$(COMPOSE_DEV) up -d --wait
 	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
+	$(COMPOSE_DEV) exec -T nextcloud $(APACHE_RELOAD)
 	@echo ""
 	@echo "Nextcloud:  http://localhost:8081  (admin / admin; ada, bob, carol / <name>-dev-pass)"
 	@echo "Synaplan:   $(if $(filter test,$(DEV_SYNAPLAN)),$(E2E_SYNAPLAN_URL)  (the test stack; from the Nextcloud containers: http://host.docker.internal:$(E2E_SYNAPLAN_PORT)),http://localhost:5173  (from the Nextcloud containers: http://backend))"
@@ -144,6 +148,10 @@ dev-down: docker-compose.dev.yml ## Stop local Nextcloud (keeps the volumes)
 
 dev-reset: docker-compose.dev.yml ## Remove the Nextcloud and database volumes — destroys local data; needed to change the major version
 	$(COMPOSE_DEV) down -v
+
+dev-migrate: docker-compose.dev.yml ## Apply the mounted app's pending migrations, background jobs and routes without a version bump (dev-up does it too)
+	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-migrate.sh
+	$(COMPOSE_DEV) exec -T nextcloud $(APACHE_RELOAD)
 
 dev-occ: docker-compose.dev.yml ## Run occ in the dev container, e.g. make dev-occ CMD="user:list"
 	$(NC_EXEC) php occ $(CMD)
@@ -191,6 +199,7 @@ e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001 (or reuse a 
 	fi
 	$(COMPOSE_E2E) up -d --wait
 	$(COMPOSE_E2E) exec -T -u www-data nextcloud sh /mnt/synaplan_integration/docker/dev-seed.sh
+	$(COMPOSE_E2E) exec -T nextcloud $(APACHE_RELOAD)
 
 test-e2e: ## Run the e2e journeys against the stacks of e2e-up
 	NC_URL=http://localhost:$(E2E_NC_PORT) E2E_SYNAPLAN_URL=$(E2E_SYNAPLAN_URL) npx playwright test

@@ -121,7 +121,7 @@ class LibraryImport
         }
         $file = $folder->newFile($target);
         $file->putContent($bytes);
-        $this->ownWrites->note((int) $file->getId(), time());
+        $this->ownWrites->note($file, time());
 
         return $file;
     }

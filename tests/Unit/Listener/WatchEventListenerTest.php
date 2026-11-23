@@ -63,9 +63,18 @@ final class WatchEventListenerTest extends TestCase
 
     public function testTheAppsOwnWriteIsIgnored(): void
     {
-        $this->ownWrites->method('isRecent')->willReturn(true);
+        $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $id === 7 && $version === 'e7');
         $this->index->expects($this->never())->method('activeOn');
         $this->index->expects($this->never())->method('enqueue');
+
+        $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
+    }
+
+    public function testAPersonsEditOfAFileThisAppWroteIsQueued(): void
+    {
+        $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $version === 'e6');
+        $this->index->method('activeOn')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
+        $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW);
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
     }
@@ -86,6 +95,17 @@ final class WatchEventListenerTest extends TestCase
         $folder->method('getId')->willReturn(30);
         $this->index->method('on')->with([30])->willReturn([self::FOLDER_WATCH, ['id' => 8, 'state' => 'attention'] + self::FOLDER_WATCH]);
         $this->index->expects($this->once())->method('enqueue')->with(8, 30, 'restored', self::NOW);
+
+        $this->listener()->handle(new NodeRenamedEvent($folder, $folder));
+    }
+
+    public function testAFolderRestoredBeforeItsDeletionWentOutTakesTheDeletionBack(): void
+    {
+        $folder = $this->createStub(Folder::class);
+        $folder->method('getId')->willReturn(30);
+        $this->index->method('on')->with([30])->willReturn([self::FOLDER_WATCH]);
+        $this->index->expects($this->never())->method('enqueue');
+        $this->index->expects($this->once())->method('cancelEvent')->with(5, 30, 'deleted');
 
         $this->listener()->handle(new NodeRenamedEvent($folder, $folder));
     }
@@ -114,6 +134,7 @@ final class WatchEventListenerTest extends TestCase
         $parent->method('getId')->willReturn($parentId);
         $file = $this->createStub(File::class);
         $file->method('getId')->willReturn($id);
+        $file->method('getEtag')->willReturn('e' . $id);
         $file->method('getParent')->willReturn($parent);
 
         return $file;

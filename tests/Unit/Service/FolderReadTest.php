@@ -70,6 +70,7 @@ final class FolderReadTest extends TestCase
         $home->method('getById')->with(7)->willReturn([$file]);
         $home->method('getRelativePath')->willReturnCallback(static fn (string $path): string => match ($path) {
             '/ada/files/Invoices' => '/Invoices',
+            '/ada/files/Invoices/Private' => '/Invoices/Private',
             '/ada/files/Invoices/a.txt' => '/Invoices/a.txt',
             default => '/',
         });
@@ -146,6 +147,24 @@ final class FolderReadTest extends TestCase
             static fn (array $body): bool => $body['status'] === 'done' && $body['sent'] === 1 && $body['listed'] === 1,
         ));
         $this->jobs->expects($this->never())->method('add');
+
+        $this->reads->handle('15', 'ada');
+    }
+
+    public function testARecursiveReadListsNothingFromASubFolderTheSettingDoesNotAllow(): void
+    {
+        $private = $this->createMock(Folder::class);
+        $private->method('getPath')->willReturn('/ada/files/Invoices/Private');
+        $private->method('getName')->willReturn('Private');
+        $private->expects($this->never())->method('getDirectoryListing');
+        $this->listing[] = $private;
+        $this->scope->method('mayRead')->willReturnCallback(static fn (string $uid, string $folder): bool => $folder === 'Invoices');
+        $claim = $this->claim();
+        $claim['selector'] = ['folder_path' => 'Invoices', 'recursive' => true];
+        $this->links->method('claimPickup')->willReturn($claim);
+        $this->links->expects($this->once())->method('submitPickupListing')->with('15', 'ada', $this->callback(
+            static fn (array $items): bool => array_column($items, 'id') === ['7'],
+        ))->willReturn(['upload' => [], 'reuse' => [], 'skip' => []]);
 
         $this->reads->handle('15', 'ada');
     }

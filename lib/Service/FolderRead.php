@@ -150,7 +150,7 @@ class FolderRead
 
         $since = self::since($selector['changed_since'] ?? null);
         $recursive = ($selector['recursive'] ?? false) === true;
-        $files = $this->filesIn($userFolder, $folder, $recursive, $since);
+        $files = $this->filesIn($uid, $userFolder, $folder, $recursive, $since);
         $items = [];
         foreach ($files as $file) {
             $items[] = [
@@ -387,15 +387,19 @@ class FolderRead
     }
 
     /**
+     * A recursive read only enters the sub-folders the person's setting
+     * allows: "Only what I watch" allows a watched folder, not the folders in
+     * it, and a listing already tells Synaplan names, paths and sizes.
+     *
      * @return list<array{id: string, version: string, name: string, folder: string, size: int, mime: string}>
      */
-    private function filesIn(Folder $userFolder, Folder $folder, bool $recursive, int $since): array
+    private function filesIn(string $uid, Folder $userFolder, Folder $folder, bool $recursive, int $since): array
     {
         $found = [];
         foreach ($folder->getDirectoryListing() as $node) {
             if ($node instanceof Folder) {
-                if ($recursive) {
-                    $found = array_merge($found, $this->filesIn($userFolder, $node, true, $since));
+                if ($recursive && $this->scope->mayRead($uid, $this->relativeFolder($userFolder, $node))) {
+                    $found = array_merge($found, $this->filesIn($uid, $userFolder, $node, true, $since));
                 }
                 continue;
             }

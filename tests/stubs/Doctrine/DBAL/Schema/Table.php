@@ -18,6 +18,11 @@ class Table
         return new Column();
     }
 
+    public function hasColumn(string $name): bool
+    {
+        return false;
+    }
+
     /**
      * @param list<string> $columnNames
      */
