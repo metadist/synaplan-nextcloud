@@ -18,7 +18,7 @@ use OCP\IDBConnection;
  * files already there (0).
  *
  * @phpstan-type WatchRow array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}
- * @phpstan-type QueueRow array{watch: int, file: int, event: string, attempts: int}
+ * @phpstan-type QueueRow array{watch: int, file: int, event: string, changed: int, attempts: int}
  */
 class WatchIndex
 {
@@ -262,6 +262,7 @@ class WatchIndex
                 'watch' => (int) ($row['watch_id'] ?? 0),
                 'file' => (int) ($row['file_id'] ?? 0),
                 'event' => is_string($row['event'] ?? null) ? $row['event'] : '',
+                'changed' => (int) ($row['changed'] ?? 0),
                 'attempts' => (int) ($row['attempts'] ?? 0),
             ];
         }
@@ -279,15 +280,48 @@ class WatchIndex
         $qb->executeStatement();
     }
 
-    public function retryLater(int $watchId, int $fileId, int $due, int $attempts): void
+    /**
+     * A row from due() was handled. A change queued while it was being sent
+     * replaced the row and stays.
+     *
+     * @param QueueRow $row
+     */
+    public function done(array $row): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete(self::QUEUE);
+        $this->whereUnchanged($qb, $row);
+        $qb->executeStatement();
+    }
+
+    /**
+     * Try a row from due() again at $due, unless a newer change replaced it.
+     *
+     * @param QueueRow $row
+     */
+    public function retryLater(array $row, int $due, int $attempts): void
     {
         $qb = $this->db->getQueryBuilder();
         $qb->update(self::QUEUE)
             ->set('due', $qb->createNamedParameter($due, IQueryBuilder::PARAM_INT))
-            ->set('attempts', $qb->createNamedParameter($attempts, IQueryBuilder::PARAM_INT))
-            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
-            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
+            ->set('attempts', $qb->createNamedParameter($attempts, IQueryBuilder::PARAM_INT));
+        $this->whereUnchanged($qb, $row);
         $qb->executeStatement();
+    }
+
+    /**
+     * The row as due() read it: enqueue() rewrites `changed` and `event`.
+     *
+     * @param QueueRow $row
+     */
+    private function whereUnchanged(IQueryBuilder $qb, array $row): void
+    {
+        $qb->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($row['watch'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($row['file'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('changed', $qb->createNamedParameter($row['changed'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($row['event'] === ''
+                ? $qb->expr()->isNull('event')
+                : $qb->expr()->eq('event', $qb->createNamedParameter($row['event'])));
     }
 
     /**

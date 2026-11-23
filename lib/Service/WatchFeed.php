@@ -11,6 +11,8 @@ use OCP\IConfig;
  * Sends the files that have been quiet long enough to their watch. A file
  * that keeps changing is pushed back by each change (the listener), so a
  * desktop client saving five times makes one run.
+ *
+ * @phpstan-import-type QueueRow from WatchIndex
  */
 class WatchFeed
 {
@@ -62,16 +64,16 @@ class WatchFeed
 
     /**
      * @param array{id: int, uid: string} $watch
-     * @param array{watch: int, file: int, event: string, attempts: int} $row
+     * @param QueueRow $row
      */
     private function settle(array $watch, array $row, string $result, int $now): void
     {
         if ($result === WatchSender::RETRY && $row['attempts'] + 1 < self::MAX_ATTEMPTS) {
-            $this->index->retryLater($row['watch'], $row['file'], $now + 60 * (2 ** $row['attempts']), $row['attempts'] + 1);
+            $this->index->retryLater($row, $now + 60 * (2 ** $row['attempts']), $row['attempts'] + 1);
 
             return;
         }
-        $this->index->dequeue($row['watch'], $row['file']);
+        $this->index->done($row);
         if ($result === WatchSender::NOT_RUNNING) {
             $this->sync->request($watch['uid']);
         }
