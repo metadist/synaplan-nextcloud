@@ -57,7 +57,7 @@ class WatchSender
                 'name' => $node->getName(),
                 'path' => $this->ownerPath($watch['uid'], $node),
             ];
-            if ($this->ownWrites->isUnchanged($fileId, (int) $node->getMTime())) {
+            if ($this->ownWrites->isOwnVersion($fileId, $fields['version'])) {
                 return $this->send($watch, $fields + ['own_write' => '1'], null);
             }
             if ($node->getSize() > self::MAX_BYTES) {

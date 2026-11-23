@@ -67,7 +67,7 @@ class WatchEventListener implements IEventListener
         }
         $id = (int) $node->getId();
         $now = $this->time->getTime();
-        if ($id <= 0 || $this->ownWrites->isRecent($id, $now)) {
+        if ($id <= 0 || $this->ownWrites->isOwnVersion($id, WatchSender::version($node))) {
             return;
         }
         try {

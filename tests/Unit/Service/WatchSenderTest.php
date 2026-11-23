@@ -61,10 +61,21 @@ final class WatchSenderTest extends TestCase
     public function testAFileThisAppWroteGoesAsAnOwnWriteWithoutItsBytes(): void
     {
         $this->file(7, 30, 'Incoming/report.en.pdf', 'e1', 1234);
-        $this->ownWrites->method('isUnchanged')->willReturn(true);
+        $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $id === 7 && $version === 'e1');
         $this->links->expects($this->once())->method('sendWatchFile')
             ->with('ada', 5, $this->callback(static fn (array $fields): bool => ($fields['own_write'] ?? '') === '1'), null)
             ->willReturn(['status_code' => 200, 'state' => 'skipped']);
+
+        self::assertSame(WatchSender::SENT, $this->sender()->file(self::WATCH, 7));
+    }
+
+    public function testAFileAPersonEditedAfterThisAppWroteItGoesWithItsBytes(): void
+    {
+        $this->file(7, 30, 'Incoming/report.en.pdf', 'e2', 1234);
+        $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $id === 7 && $version === 'e1');
+        $this->links->expects($this->once())->method('sendWatchFile')
+            ->with('ada', 5, $this->callback(static fn (array $fields): bool => !isset($fields['own_write']) && $fields['version'] === 'e2'), $this->isArray())
+            ->willReturn(['status_code' => 200, 'state' => 'queued']);
 
         self::assertSame(WatchSender::SENT, $this->sender()->file(self::WATCH, 7));
     }
