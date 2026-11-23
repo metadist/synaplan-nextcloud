@@ -19,7 +19,9 @@ use Psr\Log\LoggerInterface;
  *
  * A folder watch looks at the files directly in its folder, like the
  * OpenCloud service. Only files changed after the app started feeding the
- * watch count, unless the person asked for the files already there.
+ * watch count, unless the person asked for the files already there. A file
+ * that changed within the quiet period goes through the feed's queue, like
+ * one the listener saw.
  *
  * @phpstan-import-type WatchRow from WatchIndex
  */
@@ -80,7 +82,7 @@ class WatchReconcile
     public function waiting(array $watch): int
     {
         $count = 0;
-        foreach (array_chunk($this->candidates($watch), self::BATCH, true) as $batch) {
+        foreach (array_chunk(array_map(WatchSender::version(...), $this->candidates($watch)), self::BATCH, true) as $batch) {
             $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
             $count += count(array_filter($answer['process'], static fn (string $id): bool => isset($batch[$id])));
         }
@@ -94,7 +96,9 @@ class WatchReconcile
      */
     private function watch(array $watch, int $now, float $deadline): bool
     {
-        foreach (array_chunk($this->candidates($watch), self::BATCH, true) as $batch) {
+        $quiet = WatchFeed::quietSecondsIn($this->config);
+        $files = $this->candidates($watch);
+        foreach (array_chunk(array_map(WatchSender::version(...), $files), self::BATCH, true) as $batch) {
             try {
                 $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
             } catch (\Throwable $e) {
@@ -111,18 +115,24 @@ class WatchReconcile
                 if (!isset($batch[$id])) {
                     continue;
                 }
-                if (microtime(true) > $deadline) {
-                    $this->index->enqueue($watch['id'], (int) $id, '', 0);
+                $fileId = (int) $id;
+                // A queued file is the feed's: its newer change keeps its quiet period.
+                if ($this->index->queued($watch['id'], $fileId)) {
                     continue;
                 }
-                $result = $this->sender->file($watch, (int) $id);
+                $changed = (int) $files[$fileId]->getMTime();
+                if ($changed > $now - $quiet || microtime(true) > $deadline) {
+                    $this->index->enqueue($watch['id'], $fileId, '', min($changed, $now));
+                    continue;
+                }
+                $result = $this->sender->file($watch, $fileId);
                 if ($result === WatchSender::NOT_RUNNING) {
                     $this->sync->request($watch['uid']);
 
                     return true;
                 }
                 if ($result === WatchSender::RETRY) {
-                    $this->index->enqueue($watch['id'], (int) $id, '', 0, $now + 60);
+                    $this->index->enqueue($watch['id'], $fileId, '', $changed, $now + 60);
                 }
             }
         }
@@ -132,11 +142,10 @@ class WatchReconcile
 
     /**
      * The target's files that changed after the app started feeding the
-     * watch, by id, with their versions. None while the target is gone or a
-     * setting holds it.
+     * watch, by id. None while the target is gone or a setting holds it.
      *
      * @param WatchRow $watch
-     * @return array<int, string>
+     * @return array<int, File>
      */
     private function candidates(array $watch): array
     {
@@ -144,14 +153,14 @@ class WatchReconcile
         if ($target === null || $this->policy->blocks($target)) {
             return [];
         }
-        $versions = [];
+        $files = [];
         foreach ($this->files($target) as $file) {
             if ($watch['since'] === 0 || $file->getMTime() > $watch['since']) {
-                $versions[$file->getId()] = WatchSender::version($file);
+                $files[(int) $file->getId()] = $file;
             }
         }
 
-        return $versions;
+        return $files;
     }
 
     /**

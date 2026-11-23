@@ -241,6 +241,20 @@ class WatchIndex
         $update->executeStatement();
     }
 
+    public function queued(int $watchId, int $fileId): bool
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('file_id')->from(self::QUEUE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+            ->setMaxResults(1);
+        $result = $qb->executeQuery();
+        $found = $result->fetchOne();
+        $result->closeCursor();
+
+        return $found !== false;
+    }
+
     /**
      * @return list<QueueRow>
      */
