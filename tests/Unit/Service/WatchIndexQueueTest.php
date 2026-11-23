@@ -121,6 +121,16 @@ final class WatchIndexQueueTest extends TestCase
         ], $this->last());
     }
 
+    public function testASyncThatReadSynaplansListBeforeTheResumeLeavesTheNewStart(): void
+    {
+        $this->rowExists = true;
+        $this->index()->replace('ada', [['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'paused']], 100);
+
+        $updates = array_values(array_filter($this->statements, static fn (array $statement): bool => ($statement[0] ?? '') === 'update synaplan_watches'));
+        self::assertCount(1, $updates);
+        self::assertSame([], array_values(array_filter($updates[0], static fn (string $line): bool => str_starts_with($line, 'set since'))));
+    }
+
     private function index(): WatchIndex
     {
         $db = $this->createStub(IDBConnection::class);

@@ -254,8 +254,12 @@ final class WatchControllerTest extends TestCase
     public function testResumingWithoutTheWaitingFilesCountsOnlyFilesFromNowOn(): void
     {
         $watch = ['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active'];
-        $this->client->method('updateWatch')->willReturn($watch);
         $calls = [];
+        $this->client->method('updateWatch')->willReturnCallback(function () use (&$calls, $watch): array {
+            $calls[] = 'updateWatch';
+
+            return $watch;
+        });
         $this->index->expects($this->once())->method('update')->willReturnCallback(function () use (&$calls): void {
             $calls[] = 'update';
         });
@@ -264,8 +268,8 @@ final class WatchControllerTest extends TestCase
         });
 
         $this->assertSame(200, $this->controller->update(5, 'active', false)->getStatus());
-        // Marked active only once the files queued before are gone, or the feed could send them.
-        $this->assertSame(['restartFrom', 'update'], $calls);
+        // The files queued before go while the watch is still paused, here and in Synaplan.
+        $this->assertSame(['restartFrom', 'updateWatch', 'update'], $calls);
     }
 
     /**

@@ -183,7 +183,8 @@ class WatchController extends Controller
     /**
      * Pause or resume one of this person's watches. Resumed without the
      * files that arrived while it was paused, the watch counts only files
-     * that change from now on.
+     * that change from now on, even when Synaplan then refuses the resume:
+     * the owner let those files go.
      *
      * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
@@ -195,14 +196,14 @@ class WatchController extends Controller
             return (new Failure(Http::STATUS_BAD_REQUEST, Failure::UNEXPECTED))->toResponse();
         }
         try {
-            $watch = $this->synaplanClient->updateWatch($id, $state);
             $now = $this->time->getTime();
-            $this->note(function () use ($user, $watch, $now, $state, $handleWaiting, $id): void {
-                if ($state === 'active' && !$handleWaiting) {
-                    $this->index->restartFrom($id, $now);
-                }
-                $this->index->update($user->getUID(), $watch, $now);
-            });
+            if ($state === 'active' && !$handleWaiting) {
+                // Before Synaplan resumes the watch: from then on a sync can
+                // mark it active here, and the feed would send what is queued.
+                $this->note(fn () => $this->index->restartFrom($id, $now));
+            }
+            $watch = $this->synaplanClient->updateWatch($id, $state);
+            $this->note(fn () => $this->index->update($user->getUID(), $watch, $now));
 
             return new JSONResponse(['success' => true, 'watch' => $this->listed($watch)]);
         } catch (\Throwable $e) {
