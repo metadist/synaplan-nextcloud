@@ -540,13 +540,14 @@ class SynaplanClient
      *
      * @param string $source only files from this source, e.g. "generated"
      * @param string $search only files whose name or text has this
+     * @param int $limit files per page; Synaplan sends at most 100
      * @return array<string, mixed>
      */
-    public function listRecentFiles(int $page = 1, string $source = '', string $search = ''): array
+    public function listRecentFiles(int $page = 1, string $source = '', string $search = '', int $limit = 50): array
     {
         $query = [
             'page' => max(1, $page),
-            'limit' => 50,
+            'limit' => max(1, min(100, $limit)),
         ];
         if ($source !== '') {
             $query['source'] = $source;

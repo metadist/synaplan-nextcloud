@@ -148,7 +148,7 @@ class CloudStatusController extends Controller
             return new JSONResponse(['success' => true, 'files' => []]);
         }
         try {
-            $recent = $this->synaplanClient->listRecentFiles(100);
+            $recent = $this->synaplanClient->listRecentFiles(1, 'nextcloud', '', 100);
         } catch (\Throwable) {
             return new JSONResponse(['success' => true, 'files' => []]);
         }

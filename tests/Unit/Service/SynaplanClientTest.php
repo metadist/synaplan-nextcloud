@@ -225,6 +225,15 @@ class SynaplanClientTest extends TestCase
         $this->synaplanClient->listRecentFiles(2, 'generated', ' q3 plan ');
     }
 
+    public function testAPageHoldsAtMostTheHundredFilesSynaplanSends(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('http://localhost:8000/api/v1/files?page=1&limit=100&source=nextcloud')
+            ->willReturn($this->json(['files' => []]));
+
+        $this->synaplanClient->listRecentFiles(1, 'nextcloud', '', 500);
+    }
+
     public function testAFileLargerThanACopyMayBeIsRefusedFromItsAnnouncedLength(): void
     {
         $response = $this->createMock(IResponse::class);
