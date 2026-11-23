@@ -145,20 +145,25 @@ class PlatformLinkServiceTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{list<string>, bool}>
+     * @return iterable<string, array{bool, bool, list<string>, bool}>
      */
     public static function watchOffers(): iterable
     {
-        yield 'cloud files on' => [['deliveries', 'pickups', 'read_scope', 'cloud_status', 'source_events', 'watches'], true];
-        yield 'cloud files off' => [['deliveries', 'pickups', 'read_scope'], false];
+        $on = ['deliveries', 'pickups', 'read_scope', 'cloud_status', 'source_events', 'watches'];
+        yield 'personal accounts, registered, cloud files on' => [true, true, $on, true];
+        yield 'cloud files off' => [true, true, ['deliveries', 'pickups', 'read_scope'], false];
+        yield 'one shared key on a registered server' => [false, true, $on, false];
+        yield 'personal accounts on a server not registered' => [true, false, $on, false];
     }
 
     /**
      * @param list<string> $capabilities
      */
     #[DataProvider('watchOffers')]
-    public function testSynaplanTakesWatchesOnlyWhileItListsThem(array $capabilities, bool $takes): void
+    public function testAWatchIsOfferedOnlyWhereItsFilesCanReachSynaplan(bool $personal, bool $registered, array $capabilities, bool $takes): void
     {
+        $this->synaplanConfig->method('isPerUserAccountsEnabled')->willReturn($personal);
+        $this->synaplanConfig->method('isRegistered')->willReturn($registered);
         $this->httpClient->method('get')->willReturn($this->answer(200, (string) json_encode([
             'issuer' => 'https://synaplan.example',
             'capabilities' => $capabilities,

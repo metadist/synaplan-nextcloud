@@ -197,12 +197,15 @@ class PlatformLinkService
     }
 
     /**
-     * Whether this Synaplan takes watches: it lists them only while its cloud
-     * files are on.
+     * Whether a watch started here gets files: they go with each person's
+     * own credential, from a registered server, to a Synaplan that lists
+     * watches (only while its cloud files are on).
      */
     public function takesWatches(): bool
     {
-        return in_array('watches', $this->offers(), true);
+        return $this->synaplanConfig->isPerUserAccountsEnabled()
+            && $this->synaplanConfig->isRegistered()
+            && in_array('watches', $this->offers(), true);
     }
 
     /**
