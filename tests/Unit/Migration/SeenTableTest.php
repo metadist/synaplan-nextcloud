@@ -18,12 +18,15 @@ final class SeenTableTest extends TestCase
     public function testTheMigrationCreatesTheTableOfSeenNotifications(): void
     {
         $columns = [];
-        $table = $this->createMock(Table::class);
+        // Nextcloud 35 declares its own ITable where 33 returns Doctrine's Table.
+        $tableClass = self::declaredReturnType(ISchemaWrapper::class, 'createTable', Table::class);
+        $table = $this->createMock($tableClass);
+        $column = $this->createMock(self::declaredReturnType($tableClass, 'addColumn', Column::class));
         $table->method('addColumn')->willReturnCallback(
-            function (string $name, string $type) use (&$columns) {
+            function (string $name, string $type) use (&$columns, $column) {
                 $columns[$name] = $type;
 
-                return new Column();
+                return $column;
             }
         );
         $table->expects(self::once())->method('setPrimaryKey')->with(['notice_hash']);
@@ -62,5 +65,22 @@ final class SeenTableTest extends TestCase
 
         $this->expectExceptionMessage('query builder reached');
         (new SeenNotifications($db))->alreadySeen('copy', 'n-1');
+    }
+
+    /**
+     * @param class-string $class
+     * @param class-string $undeclared the type when the method declares none
+     *
+     * @return class-string
+     */
+    private static function declaredReturnType(string $class, string $method, string $undeclared): string
+    {
+        $type = (new \ReflectionMethod($class, $method))->getReturnType();
+        if (!$type instanceof \ReflectionNamedType) {
+            return $undeclared;
+        }
+
+        /** @var class-string */
+        return $type->getName();
     }
 }
