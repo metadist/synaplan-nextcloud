@@ -102,6 +102,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   folder's name, after that folder was deleted or moved away. It said
   "Synaplan may read this folder." and changed nothing, so every read of the
   new folder was refused.
+- **A folder read finished in the background** skips a file it cannot open
+  or check, sends the rest and reports. One such file ended the read: the
+  files after it were never sent and Synaplan waited for a result in vain.
 - **Folder reads are offered only where Synaplan reads folders.** The read
   setting, **Let Synaplan read this folder** and its menu entry appear when
   Synaplan's configuration offers both folder reads and the read setting.

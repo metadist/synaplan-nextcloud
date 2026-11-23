@@ -70,6 +70,7 @@ final class FolderReadTest extends TestCase
         // Nextcloud finds the home folder by its own id too.
         $home->method('getById')->willReturnCallback(static fn (int $id): array => match ($id) {
             7 => [$file],
+            13 => throw new \RuntimeException('Storage is not available'),
             99 => [$home],
             default => [],
         });
@@ -292,6 +293,44 @@ final class FolderReadTest extends TestCase
         $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
             static fn (array $body): bool => $body['status'] === 'partial'
                 && ($body['skipped'][0]['reason'] ?? '') === 'outside_scope',
+        ));
+
+        $this->reads->finish('15', [
+            'uid' => 'ada',
+            'left' => [['id' => '7', 'version' => 'etag-1']],
+            'sent' => 0,
+            'listed' => 1,
+            'skipped' => [],
+        ]);
+    }
+
+    public function testAQueuedFileThatBreaksIsSkippedAndTheRestIsStillSent(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->expects($this->once())->method('uploadPickupFile')->with('15', 'ada', '7')->willReturn(['status_code' => 200]);
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'partial'
+                && $body['sent'] === 2
+                && $body['listed'] === 3
+                && $body['skipped'] === [['id' => '13', 'name' => '13', 'reason' => 'unreadable']],
+        ));
+
+        $this->reads->finish('15', [
+            'uid' => 'ada',
+            'left' => [['id' => '13', 'version' => 'e13'], ['id' => '7', 'version' => 'etag-1']],
+            'sent' => 1,
+            'listed' => 3,
+            'skipped' => [],
+        ]);
+    }
+
+    public function testAFileWhoseSettingCannotBeCheckedIsSkippedAsUnreadable(): void
+    {
+        $this->scope->method('mayRead')->willThrowException(new \RuntimeException('Deadlock found'));
+        $this->links->expects($this->never())->method('uploadPickupFile');
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'partial'
+                && $body['skipped'] === [['id' => '7', 'name' => 'a.txt', 'reason' => 'unreadable']],
         ));
 
         $this->reads->finish('15', [

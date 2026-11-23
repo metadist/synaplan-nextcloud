@@ -56,6 +56,7 @@ class FolderRead
     /**
      * Uploads left over from a read that did not finish in the request, from
      * app config, or from the arguments of a job queued by an older version.
+     * It ends in a result call whatever fails on the way.
      *
      * @param array<string, mixed>|null $pending
      */
@@ -76,21 +77,25 @@ class FolderRead
         $skipped = is_array($pending['skipped'] ?? null) ? $pending['skipped'] : [];
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
+            foreach ($left as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $outcome = $this->uploadOne($id, $uid, $userFolder, $item, 120);
+                if ($outcome === null) {
+                    $sent++;
+                } else {
+                    $skipped[] = $outcome;
+                }
+            }
         } catch (\Throwable $e) {
+            $this->logger->warning('A folder read could not be finished: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
             $this->report($id, $uid, 'failed', $listed, $sent, $skipped, 'unreachable');
 
             return;
-        }
-        foreach ($left as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-            $outcome = $this->uploadOne($id, $uid, $userFolder, $item, 120);
-            if ($outcome === null) {
-                $sent++;
-            } else {
-                $skipped[] = $outcome;
-            }
         }
         $this->close($id, $uid, $listed, $sent, $skipped);
     }
@@ -238,28 +243,33 @@ class FolderRead
     /**
      * Send one listed file. The person's setting and the file's version are
      * checked again here, at the moment of reading: both may have changed
-     * since the listing, above all while a background job was waiting.
+     * since the listing, above all while a background job was waiting. A
+     * file that fails is skipped, so the rest still goes and the read still
+     * reports.
      *
      * @param array{id: string, version: string} $item
      * @return array{id: string, name: string, reason: string}|null null when the file was stored
      */
     private function uploadOne(string $pickupId, string $uid, Folder $userFolder, array $item, int $timeoutSeconds): ?array
     {
-        $nodes = $userFolder->getById((int) $item['id']);
-        $node = $nodes[0] ?? null;
-        if (!$node instanceof File) {
-            return ['id' => $item['id'], 'name' => $item['id'], 'reason' => 'unreadable'];
-        }
-        if (!$this->scope->mayRead($uid, $this->parentFolder($userFolder, $node))) {
-            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'outside_scope'];
-        }
-        if ((string) $node->getEtag() !== $item['version']) {
-            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'changed_since_listing'];
-        }
+        $name = $item['id'];
         try {
+            $nodes = $userFolder->getById((int) $item['id']);
+            $node = $nodes[0] ?? null;
+            if (!$node instanceof File) {
+                return ['id' => $item['id'], 'name' => $name, 'reason' => 'unreadable'];
+            }
+            $name = $node->getName();
+            if (!$this->scope->mayRead($uid, $this->parentFolder($userFolder, $node))) {
+                return ['id' => $item['id'], 'name' => $name, 'reason' => 'outside_scope'];
+            }
+            if ((string) $node->getEtag() !== $item['version']) {
+                return ['id' => $item['id'], 'name' => $name, 'reason' => 'changed_since_listing'];
+            }
+            $mime = $node->getMimeType();
             $bytes = $node->getContent();
         } catch (\Throwable) {
-            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'unreadable'];
+            return ['id' => $item['id'], 'name' => $name, 'reason' => 'unreadable'];
         }
         try {
             $stored = $this->links->uploadPickupFile(
@@ -268,12 +278,12 @@ class FolderRead
                 $item['id'],
                 $item['version'],
                 $bytes,
-                $node->getName(),
-                $node->getMimeType(),
+                $name,
+                $mime,
                 max(1, $timeoutSeconds),
             );
         } catch (\Throwable) {
-            return ['id' => $item['id'], 'name' => $node->getName(), 'reason' => 'unreachable'];
+            return ['id' => $item['id'], 'name' => $name, 'reason' => 'unreachable'];
         }
         if (($stored['status_code'] ?? 0) === 200) {
             return null;
@@ -281,7 +291,7 @@ class FolderRead
 
         return [
             'id' => $item['id'],
-            'name' => $node->getName(),
+            'name' => $name,
             'reason' => (string) ($stored['error'] ?? 'unreadable'),
         ];
     }
