@@ -8,7 +8,9 @@ import {
 	logIn,
 	nextcloudAs,
 	openFileAction,
+	ownIdentities,
 	saveSettings,
+	SYNAPLAN_CONTAINER,
 } from './support'
 
 /**
@@ -29,7 +31,6 @@ const READ = 1
 const EDIT = 31
 const POLICY_OFF = 'Stopped — your administrator turned off watching shared folders'
 const WATCHES_OFF = 'Stopped — your administrator turned off watching folders'
-const SYNAPLAN_CONTAINER = process.env.SYNAPLAN_APP_CONTAINER ?? 'synaplan-app-test'
 const SYNAPLAN_DB_CONTAINER = process.env.SYNAPLAN_DB_CONTAINER ?? 'synaplan-db-test'
 const NC_PROJECT = process.env.E2E_NC_PROJECT ?? 'synaplan-nextcloud-e2e'
 const SYNAPLAN_QUIET_SECONDS = 60
@@ -70,7 +71,7 @@ test('a file dropped into a watched folder reaches its watch and is finished the
 		).toBeVisible()
 
 		watchId = synaplanSql(
-			`SELECT BID FROM BCLOUDWATCHES WHERE BTARGETID='${folderId}' AND BSTATE='active' ORDER BY BID DESC LIMIT 1`,
+			`SELECT BID FROM BCLOUDWATCHES WHERE BTARGETID='${folderId}' AND BSTATE='active' AND BIDENTITYID IN (${ownIdentities(UID)}) ORDER BY BID DESC LIMIT 1`,
 		)
 		expect(watchId, 'the watch Synaplan started').toMatch(/^\d+$/)
 

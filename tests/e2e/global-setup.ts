@@ -4,6 +4,7 @@ import { expect, request } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import {
 	APP,
+	EMAIL,
 	FILE,
 	NC_URL,
 	nextcloudAs,
@@ -164,6 +165,12 @@ export default async function globalSetup(): Promise<void> {
 	}
 	expect(await registrationStatus(admin), 'the instance is active').toBe('active')
 
+	for (const [uid, email] of Object.entries(EMAIL)) {
+		const changed = await admin.put(`/ocs/v2.php/cloud/users/${uid}`, {
+			form: { key: 'email', value: email },
+		})
+		expect(changed.ok(), `giving ${uid} the email ${email}`).toBe(true)
+	}
 	await admin.dispose()
 
 	for (const uid of PEOPLE) {
