@@ -24,6 +24,8 @@ use Psr\Log\LoggerInterface;
 final class KeyStorage
 {
     public const USER_KEY = 'synaplan_user_api_key';
+    /** The private key this Nextcloud signs its client assertions with. */
+    public const CLIENT_KEY = 'oauth_private_key';
 
     /** What Nextcloud 33–35 return for a sensitive user value they cannot decrypt. */
     private const USER_ENCRYPTION_PREFIX = '$UserConfigEncryption$';
@@ -69,7 +71,7 @@ final class KeyStorage
     }
 
     /**
-     * @param 'api_key'|'api_key_local' $name
+     * @param 'api_key'|'api_key_local'|'oauth_private_key' $name
      * @throws \Exception when the config cannot be read for another reason than decryption
      */
     public function getAppKey(string $name): string
@@ -96,7 +98,7 @@ final class KeyStorage
     }
 
     /**
-     * @param 'api_key'|'api_key_local' $name
+     * @param 'api_key'|'api_key_local'|'oauth_private_key' $name
      */
     public function setAppKey(string $name, string $key): void
     {

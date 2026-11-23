@@ -293,9 +293,10 @@ Shipped since this guide first listed them as planned:
   the copy up to date in one click.
 - **AI users panel** — Administration settings → Synaplan → **AI Users** lists
   the people who turned AI on, with their Synaplan account and usage.
-  **Deactivate** turns AI off for one person and revokes their key in
-  Synaplan, whether they connected their account or the app created it. The
-  Synaplan account stays; activating AI again gives the person a new key.
+  **Deactivate** turns AI off for one person. For an account the app created,
+  Synaplan pauses that person and their key stays; activating AI again
+  resumes the same account. A person who connected their own account has
+  their grant revoked and connects again. The Synaplan account stays.
 - **Scope enforcement** — Synaplan enforces the scopes of per-user keys (§2).
 
 Planned, **not yet implemented**:

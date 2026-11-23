@@ -3,7 +3,9 @@ import type { APIRequestContext, Locator, Page } from '@playwright/test'
 import { expect, request } from '@playwright/test'
 
 export const NC_URL = process.env.NC_URL ?? 'http://localhost:8081'
-export const SYNAPLAN_URL = process.env.SYNAPLAN_URL ?? 'http://localhost:8001'
+// A test-only name: SYNAPLAN_URL is what the dev hook and a deployment read,
+// and the setup creates keys and registers a client wherever this points.
+export const SYNAPLAN_URL = process.env.E2E_SYNAPLAN_URL ?? 'http://localhost:8001'
 export const APP = '/index.php/apps/synaplan_integration'
 export const FILE = 'vendor-review.txt'
 
@@ -90,6 +92,44 @@ export async function resetPerson(uid: string): Promise<void> {
 	)
 	expect(response.ok(), `resetting ${uid}'s AI access`).toBe(true)
 	await admin.dispose()
+}
+
+/**
+ * The ids of the Synaplan accounts provisioning created for an email address.
+ * Accounts people made themselves are left out.
+ *
+ * @param email the person's email address in Nextcloud
+ */
+export async function provisionedAccountIds(email: string): Promise<number[]> {
+	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
+	const found = await synaplan.get(
+		`/api/v1/admin/users?search=${encodeURIComponent(email)}`,
+	)
+	expect(found.ok(), `looking up ${email} in Synaplan`).toBe(true)
+	const { users = [] } = (await found.json()) as {
+		users?: { id: number; email: string; providerId: string }[]
+	}
+	await synaplan.dispose()
+	return users
+		.filter((user) => user.email === email && user.providerId === 'external')
+		.map((user) => user.id)
+}
+
+/**
+ * Delete the Synaplan account provisioning created for a person, so a
+ * provisioning journey starts without one, even after a release that
+ * revoked the account on Deactivate.
+ *
+ * @param email the person's email address in Nextcloud
+ */
+export async function deleteSynaplanAccount(email: string): Promise<void> {
+	const ids = await provisionedAccountIds(email)
+	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
+	for (const id of ids) {
+		const deleted = await synaplan.delete(`/api/v1/admin/users/${id}`)
+		expect(deleted.ok(), `deleting ${email} from Synaplan`).toBe(true)
+	}
+	await synaplan.dispose()
 }
 
 /**

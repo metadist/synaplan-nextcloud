@@ -180,6 +180,58 @@ class SynaplanClientTest extends TestCase
         $this->assertSame('Hola mundo', $this->synaplanClient->translate('Hello world', 'es')['summary']);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function pathsThatLeaveSynaplan(): iterable
+    {
+        yield 'userinfo turns the base into a user name' => ['@evil.example/x.png'];
+        yield 'a dot extends the host' => ['.evil.example/x.png'];
+        yield 'a colon sets another port' => [':4444/x.png'];
+        yield 'a protocol-relative path' => ['//evil.example/x.png'];
+        yield 'a backslash' => ['/\\evil.example/x.png'];
+        yield 'a newline' => ["/api/v1/files/1\r\nHost: evil.example"];
+        yield 'an absolute URL' => ['https://evil.example/x.png'];
+    }
+
+    #[DataProvider('pathsThatLeaveSynaplan')]
+    public function testADownloadNeverLeavesSynaplanWithTheKey(string $path): void
+    {
+        $this->httpClient->expects($this->never())->method('get');
+
+        try {
+            $this->synaplanClient->downloadFile($path);
+            self::fail('A path that leaves Synaplan must be refused.');
+        } catch (FailureException $e) {
+            self::assertSame([404, 'file_not_found'], [$e->failure->status, $e->failure->code]);
+        }
+    }
+
+    public function testADownloadOnSynaplanIsFetched(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('http://localhost:8000/api/v1/files/uploads/01/a@b cat.png')
+            ->willReturn($this->json([]));
+
+        $this->synaplanClient->downloadFile('/api/v1/files/uploads/01/a@b cat.png');
+    }
+
+    public function testOffersTranslationOnlyWhenSynaplanListsIt(): void
+    {
+        $this->httpClient->method('get')->willReturnOnConsecutiveCalls(
+            $this->capabilities(['abstractive', 'translation']),
+        );
+        $this->assertTrue($this->synaplanClient->offersSummaryType('translation'));
+        $this->assertFalse($this->synaplanClient->offersSummaryType('extractive'));
+    }
+
+    public function testAnUnreadableAnswerStillOffersTranslation(): void
+    {
+        $this->httpClient->method('get')->willThrowException(new \Exception('Connection refused'));
+
+        $this->assertTrue($this->synaplanClient->offersSummaryType('translation'));
+    }
+
     public function testCapabilitiesAreReadOncePerRequest(): void
     {
         $this->httpClient->expects($this->once())

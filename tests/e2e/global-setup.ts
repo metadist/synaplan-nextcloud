@@ -1,3 +1,5 @@
+import type { APIRequestContext } from '@playwright/test'
+
 import { expect, request } from '@playwright/test'
 import {
 	APP,
@@ -52,6 +54,35 @@ async function waitUntilReady(url: string): Promise<void> {
 const REGISTRATION_TOKEN = 'nextcloud-e2e-initial-access-token-0001'
 
 /**
+ * This Nextcloud's registration status at Synaplan, '' when not registered.
+ *
+ * @param admin request context signed in as the Nextcloud administrator
+ */
+async function registrationStatus(admin: APIRequestContext): Promise<string> {
+	const response = await admin.get(`${APP}/api/v1/settings/instance-status`)
+	expect(response.ok(), 'reading the registration status').toBe(true)
+	const { instance } = (await response.json()) as {
+		instance: { status?: string } | null
+	}
+	return instance?.status ?? ''
+}
+
+/**
+ * Registers this Nextcloud with Synaplan.
+ *
+ * @param admin request context signed in as the Nextcloud administrator
+ * @param token initial access token, '' for none
+ * @return the error Nextcloud reports, '' on success
+ */
+async function register(admin: APIRequestContext, token: string): Promise<string> {
+	const response = await admin.post(`${APP}/api/v1/settings/register-instance`, {
+		data: { registration_token: token },
+	})
+	const { error } = (await response.json()) as { error?: string }
+	return error ?? ''
+}
+
+/**
  * Connects the app to the Synaplan test stack the way an administrator
  * does: a Synaplan API key in the admin settings, "Connect your Synaplan
  * account" as the mode, this Nextcloud registered. Each test person starts
@@ -85,15 +116,17 @@ export default async function globalSetup(): Promise<void> {
 	})
 
 	const admin = await nextcloudAs('admin')
-	const registered = await admin.post(`${APP}/api/v1/settings/register-instance`, {
-		data: { registration_token: REGISTRATION_TOKEN },
-	})
-	const registration = (await registered.json()) as {
-		error?: string
-		status?: string
+	if ((await registrationStatus(admin)) !== 'active') {
+		await admin.post(`${APP}/api/v1/settings/forget-instance`)
+		let error = await register(admin, REGISTRATION_TOKEN)
+		// The token is single-use. A Synaplan test stack kept from an earlier
+		// run (E2E_KEEP_SYNAPLAN, or the other app's) registers openly.
+		if (/already used/.test(error)) {
+			error = await register(admin, '')
+		}
+		expect(error, 'registering Nextcloud').toBe('')
 	}
-	expect(registration.error ?? '', 'registering Nextcloud').toBe('')
-	expect(registration.status, 'the instance is active').toBe('active')
+	expect(await registrationStatus(admin), 'the instance is active').toBe('active')
 
 	await admin.dispose()
 

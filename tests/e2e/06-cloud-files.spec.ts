@@ -5,6 +5,7 @@ import {
 	ensureConnected,
 	linksOf,
 	logIn,
+	NC_URL,
 	nextcloudAs,
 	SYNAPLAN_PERSON,
 	synaplanAs,
@@ -113,6 +114,57 @@ test('Synaplan reads a folder by path only when the person allows it', async () 
 	} finally {
 		await setScope('watched')
 		await person.delete(`/remote.php/dav/files/${UID}/${folder}`)
+		await person.dispose()
+	}
+})
+
+test('an allowed folder can still be read by Synaplan after it is moved', async () => {
+	const stamp = Date.now()
+	const folder = `Receipts-${stamp}`
+	const moved = `Archive-${stamp}/Receipts 2026`
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${UID}`
+	for (const path of [folder, `Archive-${stamp}`]) {
+		expect(
+			(await person.fetch(`${dav}/${path}`, { method: 'MKCOL' })).ok(),
+		).toBe(true)
+	}
+	expect(
+		(
+			await person.put(`${dav}/${folder}/receipt.txt`, {
+				data: 'receipt',
+				headers: { 'Content-Type': 'text/plain' },
+			})
+		).ok(),
+	).toBe(true)
+
+	try {
+		const saved = await person.put(`${APP}/api/v1/preferences`, {
+			data: {
+				read_scope: { mode: 'allowed', folders: [{ id: '', path: folder }] },
+			},
+		})
+		expect(saved.ok(), 'allowing the folder').toBe(true)
+		expect(openFolderRead(folder).state).toBe('done')
+
+		const move = await person.fetch(`${dav}/${folder}`, {
+			method: 'MOVE',
+			headers: {
+				Destination: `${NC_URL}${dav}/${encodeURI(moved)}`,
+			},
+		})
+		expect(move.ok(), 'moving the folder').toBe(true)
+
+		const read = openFolderRead(moved)
+		expect(read.state, JSON.stringify(read)).toBe('done')
+		expect(read.names).toEqual(['receipt.txt'])
+		expect(openFolderRead(folder).sent ?? 0).toBe(0)
+	} finally {
+		await person.put(`${APP}/api/v1/preferences`, {
+			data: { read_scope: { mode: 'watched', folders: [] } },
+		})
+		await person.delete(`${dav}/Archive-${stamp}`)
+		await person.delete(`${dav}/${folder}`)
 		await person.dispose()
 	}
 })

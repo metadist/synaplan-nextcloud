@@ -200,8 +200,9 @@ function onClose() {
 }
 
 /**
+ * Take a new folder typed into the folder picker.
  *
- * @param tag
+ * @param tag the folder name
  */
 function onNewFolder(tag: string) {
 	const name = clip(tag)

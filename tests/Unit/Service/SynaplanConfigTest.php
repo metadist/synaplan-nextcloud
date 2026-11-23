@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\Service\KeyStorage;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
+use OCP\Config\IUserConfig;
+use OCP\IAppConfig;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 class SynaplanConfigTest extends TestCase
 {
@@ -66,6 +70,7 @@ class SynaplanConfigTest extends TestCase
         $this->assertFalse($this->cfg()->isLinkAvailable());
 
         $this->appConfig['oauth_kid'] = 'kid-1';
+        $this->appConfig['oauth_private_key'] = 'pem';
         $this->assertTrue($this->cfg()->isLinkAvailable());
         $this->assertTrue($this->cfg()->isRegistered());
 
@@ -80,7 +85,25 @@ class SynaplanConfigTest extends TestCase
         $this->assertFalse($this->cfg()->isRegistered());
 
         $this->appConfig['link_instance_id'] = 'client-1';
+        $this->assertFalse($this->cfg()->isRegistered(), 'without the client key nothing can be signed');
+
+        $this->appConfig['oauth_private_key'] = 'pem';
         $this->assertTrue($this->cfg()->isRegistered());
+    }
+
+    public function testAClientKeyThatNoLongerDecryptsIsNotARegistration(): void
+    {
+        $this->appConfig['link_instance_id'] = 'client-1';
+        $this->appConfig['oauth_kid'] = 'kid-1';
+        $user = $this->createStub(IUserConfig::class);
+        $app = $this->createMock(IAppConfig::class);
+        $app->method('getValueString')->willThrowException(new \Exception('HMAC does not match.'));
+        $app->expects($this->once())->method('deleteKey')->with('synaplan_integration', 'oauth_private_key');
+
+        $config = new SynaplanConfig($this->config, new KeyStorage($user, $app, new NullLogger()));
+
+        $this->assertFalse($config->isRegistered());
+        $this->assertFalse($config->isLinkAvailable());
     }
 
     public function testAutoProvisionNeedsLinkModeFlagAndAdminKey(): void

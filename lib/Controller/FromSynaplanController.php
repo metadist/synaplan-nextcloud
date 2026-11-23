@@ -33,6 +33,9 @@ class FromSynaplanController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function list(int $page = 1): JSONResponse
     {
@@ -46,6 +49,9 @@ class FromSynaplanController extends Controller
         }
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function copy(?int $fileId = null, ?string $folder = null, ?string $name = null): JSONResponse
     {

@@ -58,7 +58,15 @@ class OAuthClient
 
     public function isRegistered(): bool
     {
-        return $this->clientId() !== '' && $this->appConfig->getValueString(Application::APP_ID, self::KEY) !== '';
+        if ($this->clientId() === '') {
+            return false;
+        }
+        try {
+            return $this->appConfig->getValueString(Application::APP_ID, self::KEY) !== '';
+        } catch (\Exception) {
+            // A key that no longer decrypts (a changed secret) cannot sign.
+            return false;
+        }
     }
 
     /**
@@ -123,10 +131,13 @@ class OAuthClient
      * Tell Synaplan a person here was deleted, disabled or enabled again.
      * Synaplan pauses, resumes or ends their link; a disabled person resumes
      * without connecting again.
+     *
+     * @return array<string, mixed> Synaplan's answer: `account` (kept,
+     *                              deleted, absent, unchanged) and `status`
      */
-    public function reportLifecycle(string $externalId, string $event): void
+    public function reportLifecycle(string $externalId, string $event): array
     {
-        $this->asClient('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
+        return $this->asClient('POST', '/oauth/register/' . rawurlencode($this->clientId()) . '/lifecycle', [
             'external_id' => $externalId,
             'event' => $event,
         ]);
@@ -342,7 +353,9 @@ class OAuthClient
      */
     private function token(array $params): array
     {
-        return $this->form('/oauth/token', $params + ['client_id' => $this->clientId()] + $this->assertionFields());
+        // The assertion names the client; the token endpoint declares no
+        // client_id field.
+        return $this->form('/oauth/token', $params + $this->assertionFields());
     }
 
     /**

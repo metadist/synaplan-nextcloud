@@ -67,7 +67,7 @@ final class WatchTarget
         return [
             'target_kind' => $actual,
             'target_id' => (string) $node->getId(),
-            'target_path' => substr($path, 0, self::PATH_MAX_LENGTH),
+            'target_path' => mb_strcut($path, 0, self::PATH_MAX_LENGTH, 'UTF-8'),
         ];
     }
 }

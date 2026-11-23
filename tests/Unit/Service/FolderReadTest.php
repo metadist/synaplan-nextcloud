@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\BackgroundJob\PickupJob;
 use OCA\SynaplanIntegration\Service\FolderRead;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
@@ -11,8 +12,10 @@ use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\IAppConfig;
 use OCP\IUser;
 use OCP\IUserManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -25,6 +28,10 @@ final class FolderReadTest extends TestCase
     private FolderRead $reads;
     private string $etag = 'etag-1';
     private int $etagReads = 0;
+    /** @var array<string, array<string, mixed>> */
+    private array $stored = [];
+    /** @var list<\OCP\Files\Node> */
+    private array $listing = [];
 
     protected function setUp(): void
     {
@@ -52,7 +59,8 @@ final class FolderReadTest extends TestCase
         $file->method('getPath')->willReturn('/ada/files/Invoices/a.txt');
 
         $invoices = $this->createMock(Folder::class);
-        $invoices->method('getDirectoryListing')->willReturn([$file]);
+        $this->listing = [$file];
+        $invoices->method('getDirectoryListing')->willReturnCallback(fn (): array => $this->listing);
         $invoices->method('getPath')->willReturn('/ada/files/Invoices');
         $invoices->method('getName')->willReturn('Invoices');
 
@@ -69,6 +77,19 @@ final class FolderReadTest extends TestCase
         $root = $this->createMock(IRootFolder::class);
         $root->method('getUserFolder')->with('ada')->willReturn($home);
 
+        $appConfig = $this->createStub(IAppConfig::class);
+        $appConfig->method('setValueArray')->willReturnCallback(function (string $app, string $key, array $value): bool {
+            $this->stored[$key] = $value;
+
+            return true;
+        });
+        $appConfig->method('getValueArray')->willReturnCallback(
+            fn (string $app, string $key, array $default): array => $this->stored[$key] ?? $default,
+        );
+        $appConfig->method('deleteKey')->willReturnCallback(function (string $app, string $key): void {
+            unset($this->stored[$key]);
+        });
+
         $this->reads = new FolderRead(
             $this->links,
             $this->scope,
@@ -76,6 +97,7 @@ final class FolderReadTest extends TestCase
             $users,
             $this->jobs,
             new NullLogger(),
+            $appConfig,
         );
     }
 
@@ -128,6 +150,58 @@ final class FolderReadTest extends TestCase
         $this->reads->handle('15', 'ada');
     }
 
+    public function testAFolderOfMoreThanFiveHundredFilesIsListedInFullInCallsOfFiveHundred(): void
+    {
+        $this->listing = [];
+        for ($i = 1; $i <= 1201; $i++) {
+            $file = $this->createStub(File::class);
+            $file->method('getId')->willReturn(1000 + $i);
+            $file->method('getName')->willReturn('f' . $i . '.txt');
+            $file->method('getMTime')->willReturn(time());
+            $file->method('getPath')->willReturn('/ada/files/Invoices/f' . $i . '.txt');
+            $this->listing[] = $file;
+        }
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $sizes = [];
+        $this->links->expects($this->exactly(3))->method('submitPickupListing')->willReturnCallback(
+            function (string $id, string $uid, array $items) use (&$sizes): array {
+                $sizes[] = count($items);
+                $last = $items[count($items) - 1]['id'];
+
+                return ['upload' => [], 'reuse' => [], 'skip' => [['id' => $last, 'reason' => 'over_limit']]];
+            },
+        );
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['listed'] === 1201
+                && array_column($body['skipped'], 'id') === ['1500', '2000', '2201'],
+        ));
+
+        $this->reads->handle('15', 'ada');
+
+        self::assertSame([500, 500, 201], $sizes);
+    }
+
+    public function testAClaimedReadThatBreaksStillReportsAFailure(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willThrowException(new \RuntimeException('cURL error 28: timed out'));
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'unreachable',
+        ));
+
+        $this->reads->handle('15', 'ada');
+    }
+
+    public function testAReadThatCannotBeClaimedReportsNothing(): void
+    {
+        $this->links->method('claimPickup')->willThrowException(new \RuntimeException('cURL error 7'));
+        $this->links->expects($this->never())->method('reportPickupResult');
+
+        $this->reads->handle('15', 'ada');
+    }
+
     public function testAFileChangedSinceTheListingIsNotSentUnderItsOldVersion(): void
     {
         $this->etag = 'etag-2';
@@ -156,6 +230,36 @@ final class FolderReadTest extends TestCase
         $this->reads->handle('15', 'ada');
     }
 
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function selectorsNamingNoFolder(): iterable
+    {
+        yield 'nothing' => [['recursive' => true]];
+        yield 'an empty path' => [['folder_path' => '', 'recursive' => true]];
+        yield 'blanks' => [['folder_id' => '', 'folder_path' => '  ', 'recursive' => true]];
+        yield 'the root' => [['folder_path' => '/', 'recursive' => true]];
+    }
+
+    /**
+     * @param array<string, mixed> $selector
+     */
+    #[DataProvider('selectorsNamingNoFolder')]
+    public function testASelectorNamingNoFolderIsRefusedEvenWhenAllFilesMayBeRead(array $selector): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $claim = $this->claim();
+        $claim['selector'] = $selector;
+        $claim['read_scope'] = ['mode' => 'all', 'folders' => []];
+        $this->links->method('claimPickup')->willReturn($claim);
+        $this->links->expects($this->never())->method('submitPickupListing');
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'failed' && $body['error_code'] === 'not_found',
+        ));
+
+        $this->reads->handle('15', 'ada');
+    }
+
     public function testAQueuedUploadRechecksTheSettingBeforeReading(): void
     {
         $this->scope->method('mayRead')->willReturn(false);
@@ -172,6 +276,26 @@ final class FolderReadTest extends TestCase
             'listed' => 1,
             'skipped' => [],
         ]);
+    }
+
+    public function testUploadsLeftOverAreKeptOutOfTheJobArgumentAndFinishedLater(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $this->links->expects($this->once())->method('uploadPickupFile')->willReturn(['status_code' => 200]);
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'done' && $body['sent'] === 1 && $body['listed'] === 1,
+        ));
+
+        $this->reads->handle('15', 'ada', 1);
+        $this->assertCount(1, $this->stored);
+
+        $this->reads->finish('15');
+        $this->assertSame([], $this->stored);
+
+        $this->reads->finish('15');
     }
 
     public function testAFailedUploadClosesTheReadAsPartial(): void

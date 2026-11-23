@@ -25,6 +25,8 @@ use Psr\Log\LoggerInterface;
  * A Synaplan error status or a failed connection ends the stream with one
  * error event that carries a {@see Failure} code, never Synaplan's raw body or
  * the cURL message.
+ *
+ * @template-extends Response<Http::STATUS_*, array<string, mixed>>
  */
 class SseProxyResponse extends Response implements ICallbackResponse
 {

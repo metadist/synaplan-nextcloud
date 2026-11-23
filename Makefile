@@ -107,7 +107,10 @@ appstore: sign ## Build, sign, and prepare for App Store upload
 # NC_IMAGE picks the Nextcloud version (default: the top of the supported range);
 # NC_OIDC=0 skips organisation login. Both apply to a fresh install (dev-reset).
 
-COMPOSE_DEV := docker compose -f docker-compose.dev.yml
+# DEV_SYNAPLAN=test points the dev Nextcloud at the Synaplan test stack on
+# the Docker host instead of the Synaplan dev stack (docker/dev-test-backend.yml).
+DEV_SYNAPLAN ?= dev
+COMPOSE_DEV := docker compose -f docker-compose.dev.yml $(if $(filter test,$(DEV_SYNAPLAN)),-f docker/dev-test-backend.yml)
 NC_EXEC := $(COMPOSE_DEV) exec -T -u www-data nextcloud
 
 # A Windows docker.exe called from WSL sees only the variables WSLENV names.
@@ -124,7 +127,7 @@ docker-compose.dev.yml: docker-compose.dev.yml.example
 	fi
 	cp $< $@
 
-dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network)
+dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron and the test people (joins the Synaplan network; DEV_SYNAPLAN=test: the test stack)
 	@if [ ! -f js/synaplan_integration-files-init.mjs ]; then \
 		echo "Building the frontend (js/ is missing)…"; \
 		test -d node_modules || npm install; \
@@ -134,7 +137,7 @@ dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron an
 	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
 	@echo ""
 	@echo "Nextcloud:  http://localhost:8081  (admin / admin; ada, bob, carol / <name>-dev-pass)"
-	@echo "Synaplan:   http://localhost:5173  (from the Nextcloud containers: http://backend)"
+	@echo "Synaplan:   $(if $(filter test,$(DEV_SYNAPLAN)),$(E2E_SYNAPLAN_URL)  (the test stack; from the Nextcloud containers: http://host.docker.internal:8001),http://localhost:5173  (from the Nextcloud containers: http://backend))"
 
 dev-down: docker-compose.dev.yml ## Stop local Nextcloud (keeps the volumes)
 	$(COMPOSE_DEV) down
@@ -156,9 +159,14 @@ dev-shell: docker-compose.dev.yml ## Open a shell in the Nextcloud container as 
 # test stack of the synaplan checkout in SYNAPLAN_DIR, run from the Synaplan
 # image pinned in CI. E2E_SYNAPLAN_FILES adds compose files to the Synaplan
 # stack, e.g. one that drops a host port that is already taken.
+#
+# One Synaplan test stack serves this repo and the ownCloud.online repo: when
+# one already answers at E2E_SYNAPLAN_URL, e2e-up uses it and leaves it alone,
+# and e2e-down only removes a stack this repo started.
 
 SYNAPLAN_DIR ?= ../synaplan
 E2E_NC_PORT ?= 8091
+E2E_SYNAPLAN_URL ?= http://localhost:8001
 export APP_IMAGE ?= ghcr.io/metadist/synaplan@$(shell grep -oE 'SYNAPLAN_IMAGE_DIGEST:[[:space:]]+sha256:[a-f0-9]+' .github/workflows/ci.yml | awk '{print $$2}')
 export NC_PORT := $(E2E_NC_PORT)
 export WSLENV := $(WSLENV):APP_IMAGE:NC_PORT
@@ -168,18 +176,23 @@ COMPOSE_E2E_SYNAPLAN := docker compose -p synaplan-nextcloud-e2e-synaplan \
 	-f $(SYNAPLAN_DIR)/docker-compose.test.ci.yml \
 	-f tests/e2e/synaplan-test-stack.yml $(foreach file,$(E2E_SYNAPLAN_FILES),-f $(file))
 
-e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001, Nextcloud (NC_IMAGE) on E2E_NC_PORT
-	docker pull -q $(APP_IMAGE)
-	$(COMPOSE_E2E_SYNAPLAN) up -d --wait
+e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001 (or reuse a running one), Nextcloud (NC_IMAGE) on E2E_NC_PORT
+	@if curl -fsS -o /dev/null --max-time 5 $(E2E_SYNAPLAN_URL)/api/health; then \
+		echo "A Synaplan test stack already answers at $(E2E_SYNAPLAN_URL): using it."; \
+	else \
+		test -f $(SYNAPLAN_DIR)/docker-compose.test.yml || { echo "No Synaplan checkout at $(SYNAPLAN_DIR) (README, End-to-end journeys)."; exit 1; }; \
+		docker image inspect $(APP_IMAGE) >/dev/null 2>&1 || docker pull -q $(APP_IMAGE); \
+		$(COMPOSE_E2E_SYNAPLAN) up -d --wait; \
+	fi
 	$(COMPOSE_E2E) up -d --wait
 	$(COMPOSE_E2E) exec -T -u www-data nextcloud sh /mnt/synaplan_integration/docker/dev-seed.sh
 
 test-e2e: ## Run the e2e journeys against the stacks of e2e-up
-	NC_URL=http://localhost:$(E2E_NC_PORT) npx playwright test
+	NC_URL=http://localhost:$(E2E_NC_PORT) E2E_SYNAPLAN_URL=$(E2E_SYNAPLAN_URL) npx playwright test
 
-e2e-down: ## Stop the e2e stacks and delete their data
+e2e-down: ## Stop the e2e stacks and delete their data (E2E_KEEP_SYNAPLAN=1 keeps the Synaplan test stack)
 	$(COMPOSE_E2E) down -v
-	$(COMPOSE_E2E_SYNAPLAN) down -v
+	$(if $(filter 1,$(E2E_KEEP_SYNAPLAN)),@echo "Keeping the Synaplan test stack.",$(COMPOSE_E2E_SYNAPLAN) down -v)
 
 ## Help
 

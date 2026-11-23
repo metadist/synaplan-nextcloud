@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
 use OCP\IConfig;
 
 /**
@@ -22,9 +24,13 @@ class ReadScope
     public const MODE_ALLOWED = 'allowed';
     public const MODE_ALL = 'all';
 
+    /** @var array<string, ?string> */
+    private array $resolved = [];
+
     public function __construct(
         private IConfig $config,
         private PlatformLinkService $links,
+        private IRootFolder $rootFolder,
     ) {
     }
 
@@ -73,7 +79,7 @@ class ReadScope
         }
         $scope = $this->get($uid);
         foreach ($scope['folders'] as $folder) {
-            if ($folder['path'] === $path) {
+            if ($folder['path'] === $path || $this->currentPath($uid, $folder) === $path) {
                 // Already named, but the folder menu promises this folder may
                 // be read now: under "Only what I watch" that promise takes
                 // the mode switch too, or nothing changes.
@@ -140,7 +146,10 @@ class ReadScope
         }
         $folder = self::clean($folder);
         foreach ($scope['folders'] as $allowed) {
-            $path = $allowed['path'];
+            $path = $this->currentPath($uid, $allowed);
+            if ($path === null) {
+                continue;
+            }
             if ($folder === $path || str_starts_with($folder . '/', $path . '/')) {
                 return true;
             }
@@ -180,10 +189,102 @@ class ReadScope
     }
 
     /**
+     * Bring the saved paths up to date after folders moved. Synaplan refuses
+     * a run, and names folders to its planner, from the paths in its copy,
+     * so a moved allowed folder is reported again. True when a path changed.
+     * A folder that cannot be found (deleted, in the trash) keeps its path.
+     */
+    public function follow(string $uid): bool
+    {
+        $scope = $this->get($uid);
+        if ($scope['folders'] === []) {
+            return false;
+        }
+        $this->resolved = [];
+        $moved = false;
+        foreach ($scope['folders'] as $i => $folder) {
+            if ($folder['id'] === '') {
+                continue;
+            }
+            $path = $this->currentPath($uid, $folder);
+            if ($path !== null && $path !== $folder['path']) {
+                $scope['folders'][$i]['path'] = $path;
+                $moved = true;
+            }
+        }
+        if ($moved) {
+            $this->store($uid, $scope);
+        }
+
+        return $moved;
+    }
+
+    /**
+     * Where an allowed folder is now. The person allowed a folder, not a
+     * name: a folder moved or renamed keeps its permission, and a new folder
+     * at the old name does not get it. An entry saved without an id is
+     * matched by its path.
+     *
+     * @param array{id: string, path: string} $allowed
+     */
+    private function currentPath(string $uid, array $allowed): ?string
+    {
+        if ($allowed['id'] === '') {
+            return $allowed['path'];
+        }
+        $key = $uid . "\0" . $allowed['id'];
+        if (!array_key_exists($key, $this->resolved)) {
+            $this->resolved[$key] = null;
+            try {
+                $userFolder = $this->rootFolder->getUserFolder($uid);
+                foreach ($userFolder->getById((int) $allowed['id']) as $node) {
+                    if ($node instanceof Folder) {
+                        $path = self::clean((string) $userFolder->getRelativePath($node->getPath()));
+                        $this->resolved[$key] = $path !== '' ? $path : null;
+                        break;
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return $this->resolved[$key];
+    }
+
+    /**
+     * The id of each folder as this Nextcloud knows it, whatever id the
+     * request carried. A path that names no folder keeps an empty id.
+     *
+     * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
+     * @return array{mode: string, folders: list<array{id: string, path: string}>}
+     */
+    private function withIds(string $uid, array $scope): array
+    {
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($uid);
+        } catch (\Throwable) {
+            return $scope;
+        }
+        foreach ($scope['folders'] as $i => $folder) {
+            try {
+                $node = $userFolder->get($folder['path']);
+                $id = $node instanceof Folder ? (string) $node->getId() : '';
+            } catch (\Throwable) {
+                $id = '';
+            }
+            $scope['folders'][$i]['id'] = $id;
+        }
+
+        return $scope;
+    }
+
+    /**
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
     private function store(string $uid, array $scope): void
     {
+        $scope = $this->withIds($uid, $scope);
+        $this->resolved = [];
         $this->config->setUserValue(
             $uid,
             Application::APP_ID,

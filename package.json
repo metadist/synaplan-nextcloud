@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts",
+    "lint": "eslint --max-warnings 0 src/ tests/unit/ tests/e2e/ playwright.config.ts",
     "lint:fix": "eslint src/ tests/unit/ tests/e2e/ playwright.config.ts --fix",
     "format": "prettier --write src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",
     "format:check": "prettier --check src/ tests/unit/ tests/e2e/ playwright.config.ts vitest.config.ts",
@@ -34,7 +34,7 @@
     "@nextcloud/eslint-config": "9.0.1",
     "@nextcloud/prettier-config": "1.2.0",
     "@nextcloud/vite-config": "2.5.4",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@types/node": "26.6.6",
     "eslint": "10.15.0",
     "happy-dom": "21.0.4",

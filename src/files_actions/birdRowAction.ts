@@ -15,8 +15,9 @@ import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 export const SIDEBAR_TAB_ID = 'synaplan_integration'
 
 /**
+ * The Nextcloud file id of a node.
  *
- * @param node
+ * @param node the file list node
  */
 function extractNodeId(node: Record<string, unknown>): string {
 	const raw = node.fileid ?? node.id
@@ -24,8 +25,9 @@ function extractNodeId(node: Record<string, unknown>): string {
 }
 
 /**
+ * The etag of a node, without quotes.
  *
- * @param node
+ * @param node the file list node
  */
 function extractNodeVersion(node: Record<string, unknown>): string {
 	const attrs = (node.attributes ?? {}) as Record<string, unknown>
@@ -42,8 +44,9 @@ function extractNodeVersion(node: Record<string, unknown>): string {
 }
 
 /**
+ * Open the Synaplan sidebar tab for a node.
  *
- * @param node
+ * @param node the file list node
  */
 function openSidebarFor(node: INode): void {
 	try {
@@ -178,9 +181,10 @@ export const birdRowAction: IFileAction = {
 }
 
 /**
+ * The glyph colour for a file's Synaplan state.
  *
- * @param state
- * @param watchState
+ * @param state the file's Synaplan state
+ * @param watchState the state of its watch, if any
  */
 function colorForState(
 	state: CloudFileStateCode,

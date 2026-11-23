@@ -461,4 +461,11 @@ class ApiControllerTest extends TestCase
         $this->assertFalse($data['memory']['allowed']);
         $this->assertFalse($data['memory']['available']);
     }
+
+    public function testFeaturesOfferTranslationOnlyWhenSynaplanDoes(): void
+    {
+        $this->synaplanClient->method('offersSummaryType')->willReturnMap([['translation', false]]);
+
+        $this->assertSame(['translation' => false], $this->controller->features()->getData());
+    }
 }

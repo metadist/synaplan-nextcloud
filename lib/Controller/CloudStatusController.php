@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Service\CloudStateService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
@@ -36,6 +37,9 @@ class CloudStatusController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function status(): JSONResponse
     {
@@ -64,6 +68,9 @@ class CloudStatusController extends Controller
         ]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_NOT_FOUND, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function detail(int $fileId): JSONResponse
     {
@@ -127,6 +134,9 @@ class CloudStatusController extends Controller
         ]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function searchable(): JSONResponse
     {

@@ -33,6 +33,8 @@ return [
 
         // Client runtime config (language + memory availability) for the chat UI
         ['name' => 'api#clientConfig', 'url' => '/api/v1/client-config', 'verb' => 'GET'],
+        // What the connected Synaplan supports, for the Files actions
+        ['name' => 'api#features', 'url' => '/api/v1/features', 'verb' => 'GET'],
 
         // Per-user "Activate AI" consent (per-user mode only)
         ['name' => 'consent#getConsent', 'url' => '/api/v1/ai-consent', 'verb' => 'GET'],

@@ -1,0 +1,27 @@
+# Compose overlay for the dev stack: Nextcloud talks to the Synaplan test
+# stack on the Docker host (make e2e-up, or the one the ownCloud.online repo
+# started) instead of joining the Synaplan dev stack's network.
+#
+#   make dev-reset dev-up DEV_SYNAPLAN=test
+#
+# The address is written at install time, so switching needs fresh volumes.
+# Without Keycloak in the test stack, organisation login is off.
+
+services:
+  nextcloud:
+    networks: !override
+      - default
+    environment:
+      NC_OIDC: "0"
+      SYNAPLAN_URL: http://host.docker.internal:8001
+      SYNAPLAN_PUBLIC_URL: http://localhost:8001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nextcloud-cron:
+    networks: !override
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks: !reset {}

@@ -67,6 +67,15 @@ test('Make searchable by AI, then remove it again', async ({ page }) => {
 	).toBeVisible()
 	await expect(sidebar.getByText('Added by you.')).toBeVisible()
 
+	await sidebar.getByRole('button', { name: 'Update' }).click()
+	const update = page.getByRole('dialog', { name: /Make searchable by AI/ })
+	await expect(update).toBeVisible()
+	await page.keyboard.press('Escape')
+	await expect(update).toHaveCount(0)
+	await expect(sidebar.getByTestId('synaplan-sidebar-state')).toHaveText(
+		'Searchable by AI',
+	)
+
 	await sidebar.getByTestId('synaplan-sidebar-remove').click()
 	await expect(bird).toHaveCount(0)
 })

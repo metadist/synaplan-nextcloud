@@ -11,6 +11,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\IAppConfig;
 use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
@@ -19,13 +20,15 @@ use Psr\Log\LoggerInterface;
  * list the folder, send what was asked for, and report.
  *
  * The whole answer has {@see self::BUDGET_SECONDS} inside the notification
- * request, claim and listing included. What is left goes to
- * {@see PickupJob} with everything it needs in its own arguments, so the
- * read finishes even when nothing else remembers it.
+ * request, claim and listing included. What is left is kept in app config
+ * under the read's id and finished by {@see PickupJob}: a job argument is
+ * capped (4000 characters on Nextcloud 33, 32000 later), and a large folder
+ * leaves more than that.
  */
 class FolderRead
 {
     public const BUDGET_SECONDS = 20;
+    private const LISTING_CHUNK = 500;
 
     public function __construct(
         private PlatformLinkService $links,
@@ -34,6 +37,7 @@ class FolderRead
         private IUserManager $users,
         private IJobList $jobs,
         private LoggerInterface $logger,
+        private IAppConfig $appConfig,
     ) {
     }
 
@@ -50,13 +54,21 @@ class FolderRead
     }
 
     /**
-     * Uploads left over from a read that did not finish in the request. The
-     * job carries them; there is no other copy.
+     * Uploads left over from a read that did not finish in the request, from
+     * app config, or from the arguments of a job queued by an older version.
      *
-     * @param array<string, mixed> $pending
+     * @param array<string, mixed>|null $pending
      */
-    public function finish(string $id, array $pending): void
+    public function finish(string $id, ?array $pending = null): void
     {
+        if ($pending === null) {
+            $key = self::pendingKey($id);
+            $pending = $this->appConfig->getValueArray(Application::APP_ID, $key, [], true);
+            $this->appConfig->deleteKey(Application::APP_ID, $key);
+            if ($pending === []) {
+                return;
+            }
+        }
         $uid = (string) ($pending['uid'] ?? '');
         $left = is_array($pending['left'] ?? null) ? $pending['left'] : [];
         $sent = (int) ($pending['sent'] ?? 0);
@@ -102,6 +114,25 @@ class FolderRead
 
             return;
         }
+        // Once claimed, Synaplan waits for a result until its timeout: every
+        // way out of the read has to report one.
+        try {
+            $this->read($id, $uid, $claim, $deadline);
+        } catch (\Throwable $e) {
+            $this->logger->warning('A claimed folder read failed: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
+            $this->report($id, $uid, 'failed', 0, 0, [], 'unreachable');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $claim
+     */
+    private function read(string $id, string $uid, array $claim, float $deadline): void
+    {
         $selector = is_array($claim['selector'] ?? null) ? $claim['selector'] : [];
         $userFolder = $this->rootFolder->getUserFolder($uid);
         $folder = $this->folder($userFolder, $selector);
@@ -131,11 +162,21 @@ class FolderRead
                 'mime' => $file['mime'],
             ];
         }
-        $listing = $this->links->submitPickupListing($id, $uid, $items);
-        if (isset($listing['status_code']) && (int) $listing['status_code'] !== 200) {
-            $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
+        // Synaplan reads at most 500 items of one listing call and keeps
+        // its decisions across calls (`07` §4).
+        $listing = ['upload' => [], 'skip' => []];
+        foreach (array_chunk($items, self::LISTING_CHUNK) ?: [[]] as $chunk) {
+            $answer = $this->links->submitPickupListing($id, $uid, $chunk);
+            if (isset($answer['status_code']) && (int) $answer['status_code'] !== 200) {
+                $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
 
-            return;
+                return;
+            }
+            foreach (['upload', 'skip'] as $key) {
+                if (is_array($answer[$key] ?? null)) {
+                    $listing[$key] = array_merge($listing[$key], array_values($answer[$key]));
+                }
+            }
         }
 
         $byId = [];
@@ -143,7 +184,7 @@ class FolderRead
             $byId[$file['id']] = $file;
         }
         $skipped = [];
-        foreach (is_array($listing['skip'] ?? null) ? $listing['skip'] : [] as $skip) {
+        foreach ($listing['skip'] as $skip) {
             if (!is_array($skip)) {
                 continue;
             }
@@ -158,7 +199,7 @@ class FolderRead
             ];
         }
         $upload = [];
-        foreach (is_array($listing['upload'] ?? null) ? $listing['upload'] : [] as $remoteId) {
+        foreach ($listing['upload'] as $remoteId) {
             if (is_string($remoteId) && isset($byId[$remoteId])) {
                 $upload[] = ['id' => $remoteId, 'version' => $byId[$remoteId]['version']];
             }
@@ -180,14 +221,14 @@ class FolderRead
             }
         }
         if ($left !== []) {
-            $this->jobs->add(PickupJob::class, [
-                'id' => $id,
+            $this->appConfig->setValueArray(Application::APP_ID, self::pendingKey($id), [
                 'uid' => $uid,
                 'left' => $left,
                 'sent' => $sent,
                 'listed' => count($items),
                 'skipped' => $skipped,
-            ]);
+            ], true);
+            $this->jobs->add(PickupJob::class, ['id' => $id]);
 
             return;
         }
@@ -290,6 +331,11 @@ class FolderRead
         }
     }
 
+    private static function pendingKey(string $id): string
+    {
+        return 'pickup_pending_' . md5($id);
+    }
+
     private function uid(string $externalId): ?string
     {
         if ($externalId !== '' && $this->users->get($externalId) !== null) {
@@ -301,9 +347,10 @@ class FolderRead
     }
 
     /**
-     * The folder a selector names. An empty path is the person's files; a
-     * path that cannot be cleaned (`Invoices//2026`, `Invoices/../HR`) is
-     * refused, never read as the whole home folder.
+     * The folder a selector names. A selector naming no folder, or the root,
+     * is refused even when the person lets Synaplan read all their files, and
+     * so is a path that cannot be cleaned (`Invoices//2026`,
+     * `Invoices/../HR`): neither is read as the whole home folder.
      *
      * @param array<string, mixed> $selector
      */
@@ -316,11 +363,7 @@ class FolderRead
 
             return $node instanceof Folder ? $node : null;
         }
-        $raw = trim((string) ($selector['folder_path'] ?? ''));
-        if ($raw === '') {
-            return $userFolder;
-        }
-        $path = ReadScope::clean($raw);
+        $path = ReadScope::clean(trim(is_string($selector['folder_path'] ?? null) ? $selector['folder_path'] : ''));
         if ($path === '') {
             return null;
         }

@@ -22,6 +22,7 @@ final class ControllerAccessTest extends TestCase
         'adminAiUsers#list' => [],
         'adminAiUsers#usage' => [],
         'api#clientConfig' => ['NoAdminRequired'],
+        'api#features' => ['NoAdminRequired'],
         'api#getGroups' => ['NoAdminRequired'],
         'api#getModels' => ['NoAdminRequired'],
         'api#knowledgeStatus' => ['NoAdminRequired'],

@@ -531,10 +531,24 @@ class SynaplanClient
         return $this->downloadFile('/api/v1/files/' . $id . '/download');
     }
 
+    /**
+     * The bytes behind a path on Synaplan, fetched with the person's key. The
+     * path comes from the browser (media proxy and save), so it must stay on
+     * Synaplan: appended to the base URL, "@evil.example/x" would send the
+     * key to another host.
+     *
+     * @throws FailureException when the path leaves Synaplan
+     */
     public function downloadFile(string $relativePath): string
     {
-        $client = $this->clientService->newClient();
         $url = $this->getBaseUrl() . $relativePath;
+        if (!$this->staysOnSynaplan($relativePath, $url)) {
+            throw new FailureException(
+                new Failure(Http::STATUS_NOT_FOUND, Failure::FILE_NOT_FOUND),
+                'A download path that leaves Synaplan was refused',
+            );
+        }
+        $client = $this->clientService->newClient();
 
         $options = [
             'headers' => SynaplanCredential::header($this->requireApiKey()),
@@ -598,6 +612,35 @@ class SynaplanClient
         }
 
         return $this->synaplanConfig->getAdminApiKey();
+    }
+
+    private function staysOnSynaplan(string $relativePath, string $url): bool
+    {
+        if (!str_starts_with($relativePath, '/') || str_starts_with($relativePath, '//')
+            || preg_match('/[\\\\\x00-\x1f\x7f]/', $relativePath) === 1) {
+            return false;
+        }
+        $base = parse_url($this->getBaseUrl());
+        $target = parse_url($url);
+        if (!is_array($base) || !is_array($target)) {
+            return false;
+        }
+        foreach (['scheme', 'host', 'port', 'user'] as $part) {
+            if (($base[$part] ?? null) !== ($target[$part] ?? null)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether the connected Synaplan offers a summary type, such as
+     * translation. An unreadable answer counts as offered, as for requests.
+     */
+    public function offersSummaryType(string $type): bool
+    {
+        return !$this->knownSummaryTypesMiss($type);
     }
 
     /**
@@ -707,6 +750,7 @@ class SynaplanClient
     }
 
     /**
+     * @param array<string, mixed>|null $body
      * @param bool $requiresKey false for public routes, which work without an account
      * @param array<string, scalar> $query
      * @return array<string, mixed>
@@ -833,6 +877,9 @@ class SynaplanClient
         return str_contains((string) $response->getBody(), '"insufficient_scope"');
     }
 
+    /**
+     * @param array<string, mixed> $options
+     */
     private function doRequest(IClient $client, string $method, string $url, array $options): \OCP\Http\Client\IResponse
     {
         return match (strtoupper($method)) {

@@ -6,10 +6,12 @@ namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
@@ -42,6 +44,8 @@ class ConsentController extends Controller
 
     /**
      * Current consent state for the logged-in user.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function getConsent(): JSONResponse
@@ -54,6 +58,8 @@ class ConsentController extends Controller
 
     /**
      * Grant or withdraw consent to activate AI.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function setConsent(bool $granted = false, bool $createAccount = false): JSONResponse
@@ -88,10 +94,7 @@ class ConsentController extends Controller
                             ]);
                         }
 
-                        return new JSONResponse([
-                            'success' => false,
-                            'error' => $e->getMessage(),
-                        ]);
+                        return (new Failure(Http::STATUS_CONFLICT, Failure::EMAIL_ALREADY_USED))->toResponse();
                     } catch (\Throwable $e) {
                         $failure = Failure::fromThrowable($e);
                         $this->logger?->error('Creating a Synaplan account failed: {message}', [
@@ -105,7 +108,11 @@ class ConsentController extends Controller
                     }
                 }
             }
-            $this->userAccounts->grantConsent();
+            try {
+                $this->userAccounts->grantConsent();
+            } catch (FailureException $e) {
+                return $e->failure->toResponse();
+            }
         } else {
             $this->userAccounts->revokeConsent();
         }
