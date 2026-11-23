@@ -132,13 +132,21 @@ final class SourceEventQueueTest extends TestCase
         self::assertSame([], $this->sql);
     }
 
-    public function testADeletionThatHappenedReleasesItsHeldRows(): void
+    public function testADeletionThatHappenedReleasesTheHeldRowsOfItsLastAttemptOnly(): void
     {
-        $this->heldFor = [['uid' => 'bob']];
+        $this->heldFor = [['uid' => 'bob', 'ord' => 10], ['uid' => 'ada', 'ord' => 20], ['uid' => 'bob', 'ord' => 20]];
 
-        self::assertSame(['bob'], $this->queue()->release(50));
+        self::assertSame(['ada', 'bob'], $this->queue()->release(50));
         self::assertSame(['select synaplan_source_events', 'where step="held"', 'where walked=50'], $this->statements[0]);
-        self::assertSame(['update synaplan_source_events', 'set step="send"', 'where step="held"', 'where walked=50'], $this->statements[1]);
+        self::assertSame(['update synaplan_source_events', 'set step="send"', 'where step="held"', 'where walked=50', 'where ord=20'], $this->statements[1]);
+        self::assertSame(['delete synaplan_source_events', 'where step="held"', 'where walked=50', 'where ord < 20'], $this->statements[2]);
+    }
+
+    public function testADeletionAttemptThatNeverHappenedDropsItsOwnHeldRows(): void
+    {
+        $this->queue()->removeHeld('ada', 50, 10);
+
+        self::assertSame(['delete synaplan_source_events', 'where uid="ada"', 'where step="held"', 'where walked=50', 'where ord=10'], $this->statements[0]);
     }
 
     private function queue(): SourceEventQueue
@@ -170,6 +178,7 @@ final class SourceEventQueueTest extends TestCase
         $expr->method('notLike')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' NOT LIKE ' . $y);
         $expr->method('neq')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<>' . $y);
         $expr->method('gt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' > ' . $y);
+        $expr->method('lt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . ' < ' . $y);
         $expr->method('literal')->willReturnCallback(function (mixed $value): ILiteral {
             $literal = $this->createStub(ILiteral::class);
             $literal->method('__toString')->willReturn((string) json_encode($value, JSON_UNESCAPED_SLASHES));

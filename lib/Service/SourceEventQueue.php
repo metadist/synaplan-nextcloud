@@ -251,47 +251,61 @@ class SourceEventQueue
     }
 
     /**
-     * The held rows of a deletion that happened become ready to send.
+     * The held rows of a deletion that happened become ready to send: those
+     * of its last attempt, as the rows of an earlier one that failed may
+     * name files that have left the folder since. Those go.
      *
      * @return list<string> the people whose rows they are
      */
     public function release(int $folderId): array
     {
         $select = $this->db->getQueryBuilder();
-        $result = $select->selectDistinct('uid')
+        $result = $select->selectDistinct(['uid', 'ord'])
             ->from(self::TABLE)
             ->where($select->expr()->eq('step', $select->createNamedParameter(self::STEP_HELD)))
             ->andWhere($select->expr()->eq('walked', $select->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
             ->executeQuery();
-        $people = [];
+        $held = [];
         while (($row = $result->fetch()) !== false) {
-            $people[] = (string) $row['uid'];
+            $held[] = ['uid' => (string) $row['uid'], 'ord' => (int) $row['ord']];
         }
         $result->closeCursor();
-        if ($people === []) {
+        if ($held === []) {
             return [];
         }
+        $last = max(array_column($held, 'ord'));
 
         $qb = $this->db->getQueryBuilder();
         $qb->update(self::TABLE)
             ->set('step', $qb->createNamedParameter(self::STEP_SEND))
             ->where($qb->expr()->eq('step', $qb->createNamedParameter(self::STEP_HELD)))
             ->andWhere($qb->expr()->eq('walked', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('ord', $qb->createNamedParameter($last, IQueryBuilder::PARAM_INT)))
+            ->executeStatement();
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete(self::TABLE)
+            ->where($qb->expr()->eq('step', $qb->createNamedParameter(self::STEP_HELD)))
+            ->andWhere($qb->expr()->eq('walked', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->lt('ord', $qb->createNamedParameter($last, IQueryBuilder::PARAM_INT)))
             ->executeStatement();
 
-        return $people;
+        return array_values(array_unique(array_column(
+            array_filter($held, static fn (array $row): bool => $row['ord'] === $last),
+            'uid',
+        )));
     }
 
     /**
-     * The held rows of a folder deletion that never happened.
+     * The held rows of a deletion attempt that never happened.
      */
-    public function removeHeld(string $uid, int $folderId): void
+    public function removeHeld(string $uid, int $folderId, int $ord): void
     {
         $qb = $this->db->getQueryBuilder();
         $qb->delete(self::TABLE)
             ->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)))
             ->andWhere($qb->expr()->eq('step', $qb->createNamedParameter(self::STEP_HELD)))
             ->andWhere($qb->expr()->eq('walked', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('ord', $qb->createNamedParameter($ord, IQueryBuilder::PARAM_INT)))
             ->executeStatement();
     }
 

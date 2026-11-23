@@ -142,6 +142,18 @@ class SourceEventListenerTest extends TestCase
         self::assertSame(1, $this->queue->cacheReads);
     }
 
+    public function testAFileThatLeftAFolderAfterAFailedDeletionIsNotDeletedWithIt(): void
+    {
+        $folder = $this->specsFolder();
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->queue->fileCache = array_values(array_filter($this->queue->fileCache, static fn (array $entry): bool => $entry['id'] !== 52));
+        usleep(1);
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame(['ada send 51', 'ada send 50'], $this->queue->steps(), 'b.pdf was moved out before the second attempt');
+    }
+
     /**
      * Ada's `Specs/Old` (id 53), as Bob sees it through the share of `Specs`:
      * its internal path is below the share, the file cache keeps Ada's.

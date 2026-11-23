@@ -157,21 +157,28 @@ final class ArraySourceEventQueue extends SourceEventQueue
 
     public function release(int $folderId): array
     {
+        $held = array_filter($this->rows, static fn (array $row): bool => $row['step'] === self::STEP_HELD && $row['walked'] === $folderId);
+        if ($held === []) {
+            return [];
+        }
+        $last = max(array_column($held, 'ord'));
         $people = [];
-        foreach ($this->rows as $seq => $row) {
-            if ($row['step'] === self::STEP_HELD && $row['walked'] === $folderId) {
+        foreach ($held as $seq => $row) {
+            if ($row['ord'] === $last) {
                 $this->rows[$seq]['step'] = self::STEP_SEND;
                 $people[$row['uid']] = true;
+            } else {
+                unset($this->rows[$seq]);
             }
         }
 
         return array_map('strval', array_keys($people));
     }
 
-    public function removeHeld(string $uid, int $folderId): void
+    public function removeHeld(string $uid, int $folderId, int $ord): void
     {
         foreach ($this->rows as $seq => $row) {
-            if ($row['uid'] === $uid && $row['step'] === self::STEP_HELD && $row['walked'] === $folderId) {
+            if ($row['uid'] === $uid && $row['step'] === self::STEP_HELD && $row['walked'] === $folderId && $row['ord'] === $ord) {
                 unset($this->rows[$seq]);
             }
         }
