@@ -295,6 +295,19 @@ class WatchIndex
     }
 
     /**
+     * Take back a lifecycle event of a watch's target that has not gone out.
+     */
+    public function cancelEvent(int $watchId, int $fileId, string $event): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete(self::QUEUE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('event', $qb->createNamedParameter($event)));
+        $qb->executeStatement();
+    }
+
+    /**
      * A row from due() was handled. A change queued while it was being sent
      * replaced the row and stays.
      *
