@@ -376,7 +376,6 @@ async function saveScope() {
 	savingScope.value = true
 	try {
 		const { data } = await axios.put(`${baseUrl}/api/v1/preferences`, {
-			copy_folder: copyFolder.value,
 			read_scope: { mode: readMode.value, folders: readFolders.value },
 		})
 		if (data.success) {

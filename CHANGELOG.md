@@ -74,6 +74,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its registration by an hourly background job, once. Until then Synaplan
   could not find them when a person was deleted, disabled or paused here, so
   their Synaplan accounts stayed as they were.
+- **Saving what Synaplan may read** keeps the folder for files from
+  Synaplan. A save that left that folder out put it back to `Synaplan`, and
+  the read setting's Save stored an unsaved edit of the folder field.
 
 ## 2.0.0 – 2026-11-16
 
