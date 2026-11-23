@@ -66,7 +66,7 @@ final class ReadScopeTest extends TestCase
         $scope = $this->scope();
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
 
-        self::assertNull($scope->allow('ada', '9', 'HR'));
+        self::assertNull($scope->allow('ada', 'HR'));
 
         self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
@@ -85,7 +85,7 @@ final class ReadScopeTest extends TestCase
     public function testANamedFolderAndWhatIsInsideItMayBeRead(): void
     {
         $scope = $this->scope();
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
         self::assertTrue($scope->mayRead('ada', 'Invoices/2026'));
@@ -96,20 +96,20 @@ final class ReadScopeTest extends TestCase
     public function testTheAdministratorsCapStopsAnotherFolder(): void
     {
         $scope = $this->scope(1);
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
-        self::assertSame('cap', $scope->allow('ada', '4', 'HR'));
+        self::assertSame('cap', $scope->allow('ada', 'HR'));
         self::assertCount(1, $scope->get('ada')['folders']);
     }
 
     public function testNamingAnAlreadyNamedFolderUnderWatchedOpensIt(): void
     {
         $scope = $this->scope();
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
         $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '3', 'path' => 'Invoices']]);
         self::assertFalse($scope->mayRead('ada', 'Invoices'));
 
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
         self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
@@ -163,7 +163,7 @@ final class ReadScopeTest extends TestCase
         $scope = $this->scope();
         $scope->setCeiling(ReadScope::MODE_WATCHED);
 
-        self::assertSame('ceiling', $scope->allow('ada', '3', 'Invoices'));
+        self::assertSame('ceiling', $scope->allow('ada', 'Invoices'));
         self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
         self::assertSame([], $scope->get('ada')['folders']);
     }
@@ -248,7 +248,7 @@ final class ReadScopeTest extends TestCase
     public function testANewFolderAtAnAllowedNameIsNotAllowed(): void
     {
         $this->folders = ['Invoices' => 3];
-        $this->scope()->allow('ada', '99', 'Invoices');
+        $this->scope()->allow('ada', 'Invoices');
         self::assertSame('3', $this->scope()->get('ada')['folders'][0]['id']);
 
         $this->folders = ['Invoices' => 8];
@@ -294,6 +294,49 @@ final class ReadScopeTest extends TestCase
 
         self::assertSame([['id' => '3', 'path' => 'Invoices']], $scope->get('ada')['folders']);
         self::assertFalse($scope->mayRead('ada', 'HR'));
+    }
+
+    public function testAllowingTheFolderThatReplacedAnAllowedOneTakesItsPlace(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope(1)->allow('ada', 'Invoices'));
+
+        // Ada deleted Invoices and made a new one.
+        $this->folders = ['Invoices' => 8];
+        $scope = $this->scope(1);
+        self::assertNull($scope->allow('ada', 'Invoices'));
+
+        self::assertSame([['id' => '8', 'path' => 'Invoices']], $scope->get('ada')['folders']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAllowingANewFolderUnderTheNameOfAMovedOneKeepsBoth(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope()->allow('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3, 'Invoices' => 8];
+        $scope = $this->scope();
+        self::assertNull($scope->allow('ada', 'Invoices'));
+
+        self::assertSame(
+            [['id' => '3', 'path' => 'Archive/Invoices'], ['id' => '8', 'path' => 'Invoices']],
+            $scope->get('ada')['folders'],
+        );
+        self::assertTrue($scope->mayRead('ada', 'Archive/Invoices'));
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAllowingAnAllowedFolderAtItsNewNameTakesNoOtherPlace(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope(1)->allow('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3];
+        $scope = $this->scope(1);
+        self::assertNull($scope->allow('ada', 'Archive/Invoices'));
+
+        self::assertSame([['id' => '3', 'path' => 'Archive/Invoices']], $scope->get('ada')['folders']);
     }
 
     public function testAFolderSavedWithoutAnIdIsMatchedByPath(): void

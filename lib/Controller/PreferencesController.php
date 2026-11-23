@@ -50,12 +50,12 @@ class PreferencesController extends Controller
     }
 
     /**
-     * Add one folder the person lets Synaplan read.
+     * Add the folder at this path, which the person lets Synaplan read.
      *
      * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_FORBIDDEN, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
-    public function allowFolder(string $fileId = '', string $path = ''): JSONResponse
+    public function allowFolder(string $path = ''): JSONResponse
     {
         $uid = $this->uid();
         if ($uid === null) {
@@ -63,15 +63,10 @@ class PreferencesController extends Controller
         }
         $raw = file_get_contents('php://input');
         $decoded = $raw !== false && $raw !== '' ? json_decode($raw, true) : [];
-        if (is_array($decoded)) {
-            if ($fileId === '' && isset($decoded['fileId'])) {
-                $fileId = (string) $decoded['fileId'];
-            }
-            if ($path === '' && isset($decoded['path'])) {
-                $path = (string) $decoded['path'];
-            }
+        if (is_array($decoded) && $path === '' && isset($decoded['path'])) {
+            $path = (string) $decoded['path'];
         }
-        $reason = $this->scope->allow($uid, $fileId, $path);
+        $reason = $this->scope->allow($uid, $path);
         if ($reason === 'ceiling') {
             return new JSONResponse(['success' => false, 'error' => 'ceiling'], Http::STATUS_FORBIDDEN);
         }

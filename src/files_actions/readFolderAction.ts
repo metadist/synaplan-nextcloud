@@ -61,10 +61,7 @@ export const readFolderAction: IFileAction = {
 				generateUrl(
 					'/apps/synaplan_integration/api/v1/preferences/read-folders',
 				),
-				{
-					fileId: String(folder.fileid),
-					path: (folder.path || folder.basename).replace(/^\/+/, ''),
-				},
+				{ path: (folder.path || folder.basename).replace(/^\/+/, '') },
 			)
 			if (data.success) {
 				showSuccess(

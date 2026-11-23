@@ -218,16 +218,16 @@ class ReadScope
     }
 
     /**
-     * A folder the person named. `ceiling` when the administrator lets
-     * Synaplan read only watched folders, `cap` when the administrator's
-     * limit is full, `folder` when the name cannot be used.
+     * The folder at this path, which the person named. `ceiling` when the
+     * administrator lets Synaplan read only watched folders, `cap` when the
+     * administrator's limit is full, `folder` when the name cannot be used.
      */
-    public function allow(string $uid, string $id, string $path): ?string
+    public function allow(string $uid, string $path): ?string
     {
-        return $this->changing($uid, fn (): ?string => $this->allowNow($uid, $id, $path));
+        return $this->changing($uid, fn (): ?string => $this->allowNow($uid, $path));
     }
 
-    private function allowNow(string $uid, string $id, string $path): ?string
+    private function allowNow(string $uid, string $path): ?string
     {
         if ($this->ceiling() === self::MODE_WATCHED) {
             return 'ceiling';
@@ -237,27 +237,57 @@ class ReadScope
             return 'folder';
         }
         $scope = $this->get($uid);
-        foreach ($scope['folders'] as $folder) {
-            if ($folder['path'] === $path || $this->currentPath($uid, $folder) === $path) {
-                // Already named, but the folder menu promises this folder may
-                // be read now: under "Only what I watch" that promise takes
-                // the mode switch too, or nothing changes.
-                if ($scope['mode'] === self::MODE_WATCHED) {
-                    $scope['mode'] = self::MODE_ALLOWED;
-                    $this->store($uid, $scope);
-                }
-
-                return null;
+        $before = $scope;
+        // A folder that moved is listed where it is now, never under the
+        // name a new folder took.
+        foreach ($scope['folders'] as $i => $folder) {
+            $now = $folder['id'] !== '' ? $this->currentPath($uid, $folder) : null;
+            if ($now !== null) {
+                $scope['folders'][$i]['path'] = $now;
             }
         }
-        if (count($scope['folders']) >= $this->cap()) {
-            return 'cap';
+        $id = $this->idAt($uid, $path);
+        $at = $this->entryFor($uid, $scope['folders'], $id, $path);
+        if ($at === null) {
+            if (count($scope['folders']) >= $this->cap()) {
+                return 'cap';
+            }
+            $scope['folders'][] = ['id' => $id, 'path' => $path];
+        } elseif ($id !== '') {
+            $scope['folders'][$at] = ['id' => $id, 'path' => $path];
         }
-        $scope['folders'][] = ['id' => $this->idAt($uid, $path), 'path' => $path];
+        // The folder menu promises this folder may be read now: under "Only
+        // what I watch" that promise takes the mode switch too.
         if ($scope['mode'] === self::MODE_WATCHED) {
             $scope['mode'] = self::MODE_ALLOWED;
         }
-        $this->store($uid, $scope);
+        if ($scope !== $before) {
+            $this->store($uid, $scope);
+        }
+
+        return null;
+    }
+
+    /**
+     * The entry that stands for the folder at this path: the one saved with
+     * its id, or one saved under this path that has no id or whose folder is
+     * gone. An entry for a folder that now lives elsewhere keeps standing
+     * for that folder.
+     *
+     * @param list<array{id: string, path: string}> $folders
+     */
+    private function entryFor(string $uid, array $folders, string $id, string $path): ?int
+    {
+        foreach ($folders as $i => $folder) {
+            if ($id !== '' && $folder['id'] === $id) {
+                return $i;
+            }
+        }
+        foreach ($folders as $i => $folder) {
+            if ($folder['path'] === $path && ($folder['id'] === '' || $this->currentPath($uid, $folder) === null)) {
+                return $i;
+            }
+        }
 
         return null;
     }

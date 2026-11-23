@@ -98,6 +98,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   The permission followed the name only. Saving the read setting keeps each
   allowed folder, also while it cannot be found; it looked every folder up
   by its name again and gave the permission to whatever folder had it.
+- **Let Synaplan read this folder** works for a folder that took an allowed
+  folder's name, after that folder was deleted or moved away. It said
+  "Synaplan may read this folder." and changed nothing, so every read of the
+  new folder was refused.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again.
