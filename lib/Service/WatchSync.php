@@ -62,8 +62,21 @@ class WatchSync
                 'uid' => $uid,
                 'message' => $e->getMessage(),
             ]);
+            $this->retry($uid);
 
             return false;
+        }
+    }
+
+    /**
+     * A person with rows here is synced again by the ten-minute round; one
+     * without, such as someone who just started their first watch, only by
+     * the daily scan, so they stay marked for the next run.
+     */
+    private function retry(string $uid): void
+    {
+        if ($this->index->rowsOf($uid) === []) {
+            $this->request($uid);
         }
     }
 
