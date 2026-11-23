@@ -1,6 +1,7 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test'
 
 import { expect, request } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 
 export const NC_URL = process.env.NC_URL ?? 'http://localhost:8081'
 // A test-only name: SYNAPLAN_URL is what the dev hook and a deployment read,
@@ -8,6 +9,16 @@ export const NC_URL = process.env.NC_URL ?? 'http://localhost:8081'
 export const SYNAPLAN_URL = process.env.E2E_SYNAPLAN_URL ?? 'http://localhost:8001'
 export const APP = '/index.php/apps/synaplan_integration'
 export const FILE = 'vendor-review.txt'
+export const SYNAPLAN_CONTAINER =
+	process.env.SYNAPLAN_APP_CONTAINER ?? 'synaplan-app-test'
+
+/**
+ * Emails of the test people whose Synaplan account the journeys create.
+ * The dev Nextcloud seeds carol@example.org on the same Synaplan.
+ */
+export const EMAIL: Record<string, string> = {
+	carol: 'carol.nc-e2e@example.org',
+}
 
 /** Fixture accounts of the Synaplan test stack. */
 export const SYNAPLAN_ADMIN = {
@@ -94,40 +105,122 @@ export async function resetPerson(uid: string): Promise<void> {
 	await admin.dispose()
 }
 
+const NC_HOST = new URL(NC_URL).host
+if (!/^[a-z0-9.-]+(:\d+)?$/i.test(NC_HOST)) {
+	throw new Error(`unexpected Nextcloud host ${NC_HOST}`)
+}
+
+/** SQL condition on BPLATFORMINSTANCES p: a Nextcloud instance on this host. */
+const OURS = `p.BCLIENT = 'nextcloud' AND p.BHOST = '${NC_HOST}'`
+
 /**
- * The ids of the Synaplan accounts provisioning created for an email address.
- * Accounts people made themselves are left out.
+ * SQL subquery for the ids of the Synaplan identities a person has at a
+ * Nextcloud instance on this host, so a query on the shared test stack
+ * leaves rows of the dev Nextcloud and ownCloud.online alone.
  *
- * @param email the person's email address in Nextcloud
+ * @param uid Nextcloud user id
  */
-export async function provisionedAccountIds(email: string): Promise<number[]> {
-	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
-	const found = await synaplan.get(
-		`/api/v1/admin/users?search=${encodeURIComponent(email)}`,
-	)
-	expect(found.ok(), `looking up ${email} in Synaplan`).toBe(true)
-	const { users = [] } = (await found.json()) as {
-		users?: { id: number; email: string; providerId: string }[]
+export function ownIdentities(uid: string): string {
+	if (!/^[a-z0-9._-]+$/i.test(uid)) {
+		throw new Error(`unexpected uid ${uid}`)
 	}
-	await synaplan.dispose()
-	return users
-		.filter((user) => user.email === email && user.providerId === 'external')
-		.map((user) => user.id)
+	return `SELECT i.BID FROM BEXTERNALIDENTITIES i
+		JOIN BPLATFORMINSTANCES p ON p.BINSTANCEID = i.BINSTANCEID
+		WHERE ${OURS} AND i.BEXTERNALID = '${uid}'`
 }
 
 /**
- * Delete the Synaplan account provisioning created for a person, so a
- * provisioning journey starts without one, even after a release that
- * revoked the account on Deactivate.
+ * The Synaplan accounts this Nextcloud provisioned for a person: each has
+ * an identity for the uid at a Nextcloud instance on this host (a kept
+ * Synaplan also holds the instances of earlier runs), and none elsewhere.
+ * The dev Nextcloud and ownCloud.online share the test stack and seed the
+ * same people, so an email or "provisioned" alone names their accounts too.
+ * Synaplan's admin API does not show identities, so this asks its database.
  *
- * @param email the person's email address in Nextcloud
+ * @param uid Nextcloud user id
  */
-export async function deleteSynaplanAccount(email: string): Promise<void> {
-	const ids = await provisionedAccountIds(email)
+export function ownedAccountIds(uid: string): number[] {
+	return [...ownedAccounts(uid).keys()]
+}
+
+/**
+ * The accounts of ownedAccountIds, each with its email in the database.
+ *
+ * @param uid Nextcloud user id
+ */
+function ownedAccounts(uid: string): Map<number, string> {
+	const sql = `SELECT CONCAT('owned:', COALESCE(GROUP_CONCAT(DISTINCT CONCAT(u.BID, '=', u.BMAIL) SEPARATOR ';'), '')) AS owned
+		FROM BEXTERNALIDENTITIES i JOIN BUSER u ON u.BID = i.BUSERID
+		WHERE i.BID IN (${ownIdentities(uid)})
+		AND i.BUSERID NOT IN (SELECT o.BUSERID FROM BEXTERNALIDENTITIES o
+			LEFT JOIN BPLATFORMINSTANCES p ON p.BINSTANCEID = o.BINSTANCEID
+			WHERE p.BID IS NULL OR NOT (${OURS}))`
+	const out = execFileSync('docker', [
+		'exec',
+		SYNAPLAN_CONTAINER,
+		'php',
+		'bin/console',
+		'dbal:run-sql',
+		sql.replace(/\s+/g, ' '),
+	]).toString()
+	const match = /owned:(\S*)/.exec(out)
+	if (match === null) {
+		throw new Error(`could not read the accounts of ${uid}: ${out}`)
+	}
+	const accounts = new Map<number, string>()
+	for (const pair of match[1].split(';').filter((entry) => entry !== '')) {
+		const at = pair.indexOf('=')
+		accounts.set(Number(pair.slice(0, at)), pair.slice(at + 1))
+	}
+	return accounts
+}
+
+/**
+ * The email of a Synaplan account.
+ *
+ * @param id Synaplan user id
+ */
+export async function accountEmail(id: number): Promise<string> {
 	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
-	for (const id of ids) {
+	const found = await synaplan.get(`/api/v1/admin/users/${id}/usage`)
+	expect(found.ok(), `reading Synaplan account ${id}`).toBe(true)
+	const { user } = (await found.json()) as { user?: { email?: string } }
+	await synaplan.dispose()
+	return user?.email ?? ''
+}
+
+/**
+ * Delete the Synaplan accounts this Nextcloud provisioned for a person, so
+ * a provisioning journey starts without one, even after a release that
+ * revoked the account on Deactivate. Accounts of other clouds sharing the
+ * test stack are never touched.
+ *
+ * @param uid Nextcloud user id
+ */
+export async function deleteSynaplanAccount(uid: string): Promise<void> {
+	const accounts = ownedAccounts(uid)
+	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
+	for (const [id, email] of accounts) {
+		// The database is read in SYNAPLAN_APP_CONTAINER, the deletion goes to
+		// E2E_SYNAPLAN_URL: an account that differs between them means two
+		// stacks, where the id may name someone else's account.
+		const found = await synaplan.get(`/api/v1/admin/users/${id}/usage`)
+		const seen = found.ok()
+			? (((await found.json()) as { user?: { email?: string } }).user?.email
+				?? '')
+			: ''
+		if (seen !== email) {
+			await synaplan.dispose()
+			throw new Error(
+				`Synaplan account ${id} is ${email} in ${SYNAPLAN_CONTAINER} but ${seen || 'missing'} at ${SYNAPLAN_URL}: they are different stacks, so nothing was deleted. Point SYNAPLAN_APP_CONTAINER and E2E_SYNAPLAN_URL at one.`,
+			)
+		}
+	}
+	for (const id of accounts.keys()) {
 		const deleted = await synaplan.delete(`/api/v1/admin/users/${id}`)
-		expect(deleted.ok(), `deleting ${email} from Synaplan`).toBe(true)
+		expect(deleted.ok(), `deleting ${uid}'s account ${id} from Synaplan`).toBe(
+			true,
+		)
 	}
 	await synaplan.dispose()
 }

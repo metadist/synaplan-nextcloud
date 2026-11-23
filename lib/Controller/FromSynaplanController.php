@@ -7,6 +7,7 @@ namespace OCA\SynaplanIntegration\Controller;
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\LibraryImport;
+use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -27,6 +28,7 @@ class FromSynaplanController extends Controller
     public function __construct(
         IRequest $request,
         private LibraryImport $imports,
+        private SynaplanConfig $synaplanConfig,
         private IUserSession $userSession,
         private LoggerInterface $logger,
     ) {
@@ -37,13 +39,16 @@ class FromSynaplanController extends Controller
      * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
-    public function list(int $page = 1): JSONResponse
+    public function list(int $page = 1, string $show = 'all', string $search = ''): JSONResponse
     {
         if ($this->uid() === null) {
             return new JSONResponse(['success' => false, 'error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
         }
         try {
-            return new JSONResponse($this->imports->list(max(1, $page)));
+            return new JSONResponse([
+                ...$this->imports->list(max(1, $page), $show === 'generated', mb_substr($search, 0, 200)),
+                'openSynaplanUrl' => $this->synaplanConfig->getPublicBaseUrl(),
+            ]);
         } catch (\Throwable $e) {
             return $this->failed($e, 'Could not list Synaplan files');
         }

@@ -162,6 +162,10 @@ make e2e-down     # stop both stacks and delete their data
 - The journeys reach Synaplan at `E2E_SYNAPLAN_URL` (default
   http://localhost:8001), never at `SYNAPLAN_URL`: the setup creates API keys
   and registers a client there, so it must only ever point at a test stack.
+  It has the form `http://localhost:<port>`; the e2e Nextcloud calls the same
+  port on the Docker host, and the setup saves both addresses each run. A port
+  other than 8001 needs a stack that already runs there, since `make e2e-up`
+  starts one on :8001 only.
 - The setup resets the test people, so `make test-e2e` runs again on the same
   stacks.
 - `tests/e2e/synaplan-test-stack.yml` is a Compose overlay for the **Synaplan**
@@ -215,7 +219,8 @@ one, start the journeys there first.
 
 For hand testing, the dev Nextcloud can use the same Synaplan test stack
 instead of the Synaplan dev stack. `docker/dev-test-backend.yml` takes it off
-the Synaplan dev network, points it at `http://host.docker.internal:8001` and
+the Synaplan dev network, points it at `http://host.docker.internal:8001`
+(the port of `E2E_SYNAPLAN_URL`) and
 installs it without organisation login (the test stack has no Keycloak). The
 address is written at install time, so switching needs fresh volumes:
 

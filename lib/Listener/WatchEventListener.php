@@ -67,7 +67,7 @@ class WatchEventListener implements IEventListener
         }
         $id = (int) $node->getId();
         $now = $this->time->getTime();
-        if ($id <= 0 || $this->ownWrites->isRecent($id, $now)) {
+        if ($id <= 0 || $this->ownWrites->isOwnVersion($id, WatchSender::version($node))) {
             return;
         }
         try {
@@ -84,7 +84,8 @@ class WatchEventListener implements IEventListener
 
     /**
      * A deleted target is reported while its watch runs; a restored one only
-     * while its watch says the target is gone.
+     * while its watch says the target is gone. A target restored before its
+     * deletion went out takes the deletion back: Synaplan never knew.
      */
     private function targetEvent(Node $node, string $event): void
     {
@@ -96,6 +97,8 @@ class WatchEventListener implements IEventListener
             $running = $watch['state'] === WatchIndex::ACTIVE;
             if ($event === 'deleted' ? $running : !$running) {
                 $this->index->enqueue($watch['id'], $id, $event, $this->time->getTime());
+            } elseif ($event === 'restored') {
+                $this->index->cancelEvent($watch['id'], $id, 'deleted');
             }
         }
     }

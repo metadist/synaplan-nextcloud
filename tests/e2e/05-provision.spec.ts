@@ -2,10 +2,12 @@ import type { Locator, Page } from '@playwright/test'
 
 import { expect, test } from '@playwright/test'
 import {
+	accountEmail,
 	deleteSynaplanAccount,
+	EMAIL,
 	logIn,
 	openFileAction,
-	provisionedAccountIds,
+	ownedAccountIds,
 	resetPerson,
 	saveSettings,
 } from './support'
@@ -13,7 +15,7 @@ import {
 test.beforeAll(async () => {
 	await saveSettings({ mode: 'provision' })
 	await resetPerson('carol')
-	await deleteSynaplanAccount('carol@example.org')
+	await deleteSynaplanAccount('carol')
 })
 
 test.beforeEach(async () => {
@@ -50,6 +52,8 @@ test('with accounts created by the administrator, a person activates AI once', a
 }) => {
 	await logIn(page, 'carol')
 	await activateAndSummarize(page)
+	const [account] = ownedAccountIds('carol')
+	expect(await accountEmail(account)).toBe(EMAIL.carol)
 })
 
 test('after the administrator deactivates AI, the person turns it back on with the same account', async ({
@@ -57,12 +61,12 @@ test('after the administrator deactivates AI, the person turns it back on with t
 }) => {
 	await logIn(page, 'carol')
 	await activateAndSummarize(page)
-	const account = await provisionedAccountIds('carol@example.org')
+	const account = ownedAccountIds('carol')
 	expect(account).toHaveLength(1)
 
 	await resetPerson('carol')
 	await page.reload()
 	await activateAndSummarize(page)
 
-	expect(await provisionedAccountIds('carol@example.org')).toEqual(account)
+	expect(ownedAccountIds('carol')).toEqual(account)
 })

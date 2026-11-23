@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Http\Failure;
 use OCP\AppFramework\Http;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
+use OCP\Http\Client\IResponse;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -537,22 +538,35 @@ class SynaplanClient
     /**
      * Recent files in the signed-in person's Synaplan, newest first.
      *
+     * @param string $source only files from this source, e.g. "generated"
+     * @param string $search only files whose name or text has this
+     * @param int $limit files per page; Synaplan sends at most 100
      * @return array<string, mixed>
      */
-    public function listRecentFiles(int $page = 1): array
+    public function listRecentFiles(int $page = 1, string $source = '', string $search = '', int $limit = 50): array
     {
-        return $this->request('GET', '/api/v1/files', null, true, [
+        $query = [
             'page' => max(1, $page),
-            'limit' => 50,
-        ]);
+            'limit' => max(1, min(100, $limit)),
+        ];
+        if ($source !== '') {
+            $query['source'] = $source;
+        }
+        if (trim($search) !== '') {
+            $query['search'] = trim($search);
+        }
+
+        return $this->request('GET', '/api/v1/files', null, true, $query);
     }
 
     /**
      * The bytes of one file the person owns in Synaplan.
+     *
+     * @throws FailureException over $maxBytes
      */
-    public function downloadStoredFile(int $id): string
+    public function downloadStoredFile(int $id, ?int $maxBytes = null): string
     {
-        return $this->downloadFile('/api/v1/files/' . $id . '/download');
+        return $this->downloadFile('/api/v1/files/' . $id . '/download', $maxBytes);
     }
 
     /**
@@ -561,9 +575,12 @@ class SynaplanClient
      * Synaplan: appended to the base URL, "@evil.example/x" would send the
      * key to another host.
      *
-     * @throws FailureException when the path leaves Synaplan
+     * With $maxBytes, a larger file is refused from its announced length
+     * or once that much is read, without holding the rest in memory.
+     *
+     * @throws FailureException when the path leaves Synaplan, or over $maxBytes
      */
-    public function downloadFile(string $relativePath): string
+    public function downloadFile(string $relativePath, ?int $maxBytes = null): string
     {
         $url = $this->getBaseUrl() . $relativePath;
         if (!$this->staysOnSynaplan($relativePath, $url)) {
@@ -578,11 +595,19 @@ class SynaplanClient
             'headers' => SynaplanCredential::header($this->requireApiKey()),
             'timeout' => self::MEDIA_TIMEOUT,
         ];
+        if ($maxBytes !== null) {
+            $options['stream'] = true;
+        }
 
         try {
             $response = $client->get($url, $options);
+            if ($maxBytes === null) {
+                return (string) $response->getBody();
+            }
 
-            return $response->getBody();
+            return $this->readAtMost($response, $maxBytes);
+        } catch (FailureException $e) {
+            throw $e;
         } catch (\Exception $e) {
             $this->logger->error('Synaplan file download failed: {message}', [
                 'app' => Application::APP_ID,
@@ -592,6 +617,29 @@ class SynaplanClient
 
             throw $this->refusedKey($e) ?? $e;
         }
+    }
+
+    /**
+     * @throws FailureException over $maxBytes
+     */
+    private function readAtMost(IResponse $response, int $maxBytes): string
+    {
+        $announced = trim($response->getHeader('Content-Length'));
+        if ($announced !== '' && ctype_digit($announced) && (int) $announced > $maxBytes) {
+            throw FailureException::copyTooLarge($maxBytes);
+        }
+        $body = $response->getBody();
+        if (!is_resource($body)) {
+            $bytes = (string) $body;
+        } else {
+            $bytes = (string) stream_get_contents($body, $maxBytes + 1);
+            fclose($body);
+        }
+        if (strlen($bytes) > $maxBytes) {
+            throw FailureException::copyTooLarge($maxBytes);
+        }
+
+        return $bytes;
     }
 
     /**

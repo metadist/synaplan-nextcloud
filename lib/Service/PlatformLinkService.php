@@ -64,8 +64,7 @@ class PlatformLinkService
 
     /**
      * The address Synaplan's servers call. An empty setting means this
-     * server. A browser address of localhost is the dev stack, which Synaplan
-     * reaches as http://nextcloud.
+     * server's own address.
      */
     public function defaultDeliveryUrl(): string
     {
@@ -73,15 +72,8 @@ class PlatformLinkService
         if ($configured !== '') {
             return $configured;
         }
-        $absolute = $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.inbound.receive');
-        $host = strtolower((string) parse_url($absolute, PHP_URL_HOST));
-        if (in_array($host, ['localhost', '127.0.0.1'], true)) {
-            $path = (string) parse_url($absolute, PHP_URL_PATH);
 
-            return 'http://nextcloud' . $path;
-        }
-
-        return $absolute;
+        return $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.inbound.receive');
     }
 
     /**
@@ -623,6 +615,15 @@ class PlatformLinkService
     public function canActFor(string $uid): bool
     {
         return $uid !== '' && $this->userAccounts->getStoredApiKey($uid) !== '';
+    }
+
+    /**
+     * canActFor() said no only for now: the person's grant is held, but its
+     * token could not be renewed.
+     */
+    public function canActForLater(string $uid): bool
+    {
+        return $this->userAccounts->holdsGrant($uid);
     }
 
     /**

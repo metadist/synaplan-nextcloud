@@ -66,40 +66,64 @@ const BANNED = [
 	/Qdrant/i,
 ]
 
-type Locale = { translations: Record<string, string>; pluralForm: string }
+type Translation = string | string[]
+type Locale = { translations: Record<string, Translation>; pluralForm: string }
 
 const read = (file: string): string => readFileSync(join(L10N_DIR, file), 'utf8')
 const locale = (code: string): Locale => JSON.parse(read(`${code}.json`))
+function forms(translation: Translation): string[] {
+	return Array.isArray(translation) ? translation : [translation]
+}
+function sourceForms(source: string): string[] {
+	return isPlural(source) ? source.slice(1, -1).split('_::_') : [source]
+}
+function isPlural(source: string): boolean {
+	return source.startsWith('_') && source.includes('_::_')
+}
 function placeholders(text: string): string[] {
 	return (text.match(/\{[a-zA-Z]+\}/g) ?? []).sort()
 }
 function withoutPlaceholders(text: string): string {
 	return text.replace(/\{[a-zA-Z]+\}/g, '')
 }
+function unescape(text: string): string {
+	return text
+		.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+			String.fromCharCode(parseInt(hex, 16)),
+		)
+		.replace(/\\(['"\\])/g, '$1')
+}
+
+const QUOTED = '([\'"])((?:\\\\.|(?!\\1).)*)\\1'
 
 /**
  * Every string the app passes to t() or n(), with JavaScript escapes resolved
- * the way the browser sees them.
+ * the way the browser sees them. n() is keyed "_singular_::_plural_", as
+ * Nextcloud looks it up.
  *
  * @param dir Directory to scan
  */
 function sourceStrings(dir: string): Set<string> {
-	const call =
-		/\b[tn]\(\s*['"]synaplan_integration['"]\s*,\s*(['"])((?:\\.|(?!\1).)*)\1/gs
+	const single = new RegExp(
+		`\\bt\\(\\s*['"]synaplan_integration['"]\\s*,\\s*${QUOTED}`,
+		'gs',
+	)
+	const plural = new RegExp(
+		`\\bn\\(\\s*['"]synaplan_integration['"]\\s*,\\s*${QUOTED}\\s*,\\s*${QUOTED.replaceAll('\\1', '\\3')}`,
+		'gs',
+	)
 	const strings = new Set<string>()
 	for (const name of readdirSync(dir)) {
 		const path = join(dir, name)
 		if (statSync(path).isDirectory()) {
 			sourceStrings(path).forEach((text) => strings.add(text))
 		} else if (/\.(vue|ts)$/.test(name)) {
-			for (const match of readFileSync(path, 'utf8').matchAll(call)) {
-				strings.add(
-					match[2]
-						.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-							String.fromCharCode(parseInt(hex, 16)),
-						)
-						.replace(/\\(['"\\])/g, '$1'),
-				)
+			const code = readFileSync(path, 'utf8')
+			for (const match of code.matchAll(single)) {
+				strings.add(unescape(match[2]))
+			}
+			for (const match of code.matchAll(plural)) {
+				strings.add(`_${unescape(match[2])}_::_${unescape(match[4])}_`)
 			}
 		}
 	}
@@ -129,8 +153,26 @@ describe.each(LOCALES)('%s', (code) => {
 
 	it('keeps every placeholder and leading space', () => {
 		for (const [source, translation] of Object.entries(translations)) {
-			expect(placeholders(translation), source).toEqual(placeholders(source))
-			expect(translation.startsWith(' '), source).toBe(source.startsWith(' '))
+			const english = sourceForms(source)
+			forms(translation).forEach((form, i) => {
+				const original = english[Math.min(i, english.length - 1)]
+				expect(placeholders(form), source).toEqual(placeholders(original))
+				expect(form.startsWith(' '), source).toBe(original.startsWith(' '))
+			})
+		}
+	})
+
+	it('gives a plural every form of the language', () => {
+		const count = Number(/nplurals=(\d+)/.exec(locale(code).pluralForm)?.[1])
+		for (const [source, translation] of Object.entries(translations)) {
+			const plural = isPlural(source)
+			expect(Array.isArray(translation), source).toBe(plural)
+			if (plural) {
+				expect(translation, source).toHaveLength(count)
+				for (const form of forms(translation)) {
+					expect(form, source).toContain('%n')
+				}
+			}
 		}
 	})
 
@@ -144,9 +186,9 @@ describe.each(LOCALES)('%s', (code) => {
 	})
 
 	it('uses no banned word', () => {
-		for (const translation of Object.values(translations)) {
+		for (const form of Object.values(translations).flatMap(forms)) {
 			for (const word of BANNED) {
-				expect(withoutPlaceholders(translation)).not.toMatch(word)
+				expect(withoutPlaceholders(form)).not.toMatch(word)
 			}
 		}
 	})

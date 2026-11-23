@@ -48,6 +48,11 @@ class WatchSync
     {
         $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
         if (!$this->links->canActFor($uid)) {
+            if ($this->links->canActForLater($uid)) {
+                $this->retry($uid);
+
+                return false;
+            }
             $this->index->forget($uid);
 
             return true;
@@ -62,8 +67,21 @@ class WatchSync
                 'uid' => $uid,
                 'message' => $e->getMessage(),
             ]);
+            $this->retry($uid);
 
             return false;
+        }
+    }
+
+    /**
+     * A person with rows here is synced again by the ten-minute round; one
+     * without, such as someone who just started their first watch, only by
+     * the daily scan, so they stay marked for the next run.
+     */
+    private function retry(string $uid): void
+    {
+        if ($this->index->rowsOf($uid) === []) {
+            $this->request($uid);
         }
     }
 

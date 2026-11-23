@@ -2,7 +2,7 @@
 # stack on the Docker host (make e2e-up, or the one the ownCloud.online repo
 # started) instead of joining the Synaplan dev stack's network.
 #
-#   make dev-reset dev-up DEV_SYNAPLAN=test
+#   make dev-reset dev-up DEV_SYNAPLAN=test   # E2E_SYNAPLAN_URL picks another port
 #
 # The address is written at install time, so switching needs fresh volumes.
 # Without Keycloak in the test stack, organisation login is off.
@@ -13,8 +13,9 @@ services:
       - default
     environment:
       NC_OIDC: "0"
-      SYNAPLAN_URL: http://host.docker.internal:8001
-      SYNAPLAN_PUBLIC_URL: http://localhost:8001
+      SYNAPLAN_URL: http://host.docker.internal:${SYNAPLAN_PORT:-8001}
+      SYNAPLAN_PUBLIC_URL: http://localhost:${SYNAPLAN_PORT:-8001}
+      SYNAPLAN_DELIVERY_URL: http://host.docker.internal:8081/index.php/apps/synaplan_integration/api/v1/inbound
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

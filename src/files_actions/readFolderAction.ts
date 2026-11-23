@@ -8,6 +8,28 @@ import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 import { failureFromAnswer, failureFromError } from '../failures'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
+import { readFoldersAllowed } from './features'
+
+/**
+ * The sentence for a refusal the server names.
+ *
+ * @param code the server's error code
+ */
+function refusal(code: unknown): string | null {
+	if (code === 'cap') {
+		return t(
+			'synaplan_integration',
+			'Synaplan may already read as many folders as your administrator allows.',
+		)
+	}
+	if (code === 'ceiling') {
+		return t(
+			'synaplan_integration',
+			'Your administrator lets Synaplan read only the folders you watch.',
+		)
+	}
+	return null
+}
 
 /**
  * Right-click a folder to let Synaplan read it.
@@ -19,7 +41,7 @@ export const readFolderAction: IFileAction = {
 
 	enabled(...args: unknown[]) {
 		const nodes = extractNodesFromEnabled(...args)
-		if (nodes.length !== 1) {
+		if (nodes.length !== 1 || !readFoldersAllowed()) {
 			return false
 		}
 		const node = nodes[0]
@@ -48,26 +70,12 @@ export const readFolderAction: IFileAction = {
 				showSuccess(
 					t('synaplan_integration', 'Synaplan may read this folder.'),
 				)
-			} else if (data.error === 'cap') {
-				showError(
-					t(
-						'synaplan_integration',
-						'Synaplan may already read as many folders as your administrator allows.',
-					),
-				)
 			} else {
-				showError(failureFromAnswer(data).text)
+				showError(refusal(data.error) ?? failureFromAnswer(data).text)
 			}
 		} catch (error: unknown) {
 			const code = isAxiosError(error) ? error.response?.data?.error : ''
-			showError(
-				code === 'cap'
-					? t(
-							'synaplan_integration',
-							'Synaplan may already read as many folders as your administrator allows.',
-						)
-					: failureFromError(error).text,
-			)
+			showError(refusal(code) ?? failureFromError(error).text)
 		}
 		return null
 	},

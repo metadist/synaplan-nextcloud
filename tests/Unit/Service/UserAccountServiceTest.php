@@ -455,6 +455,17 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('', $service->credentialFor('ada'));
     }
 
+    public function testAGrantWhoseTokenCannotBeRenewedJustNowIsStillHeld(): void
+    {
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->oauth->method('accessToken')->willReturn('');
+
+        $service = $this->service();
+        $this->assertSame('', $service->credentialFor('ada'));
+        $this->assertTrue($service->holdsGrant('ada'));
+        $this->assertFalse($service->holdsGrant('carol'));
+    }
+
     public function testWithdrawnConsentForgetsTheGrantWhenSynaplanCannotBeTold(): void
     {
         $this->userConfig['ada|ai_consent'] = '1';
@@ -1052,6 +1063,20 @@ class UserAccountServiceTest extends TestCase
             $this->assertNull($renewed);
             $this->assertNull($minted);
         }
+    }
+
+    public function testTheOldKeyIsKeptWhenNoReplacementCouldBeMinted(): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        unset($this->appConfig['api_key_local']);
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_old';
+        $this->userConfig['alice|synaplan_user_key_id'] = '4';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('alice', 'alice@example.com', 'Alice'));
+        $this->httpClient->expects($this->never())->method('delete');
+
+        $this->assertNull($this->service()->renewProvisionedKey());
+        $this->assertSame('sk_old', $this->userConfig['alice|synaplan_user_api_key']);
     }
 
     public function testALinkedKeyIsNotReplaced(): void

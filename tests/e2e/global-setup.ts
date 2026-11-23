@@ -4,6 +4,7 @@ import { expect, request } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import {
 	APP,
+	EMAIL,
 	FILE,
 	NC_URL,
 	nextcloudAs,
@@ -49,6 +50,20 @@ async function waitUntilReady(url: string): Promise<void> {
 		)
 		.toBe(200)
 	await context.dispose()
+}
+
+/**
+ * The address under which the Nextcloud container reaches a URL the host
+ * reaches: localhost is the Docker host there.
+ *
+ * @param url an address on the host
+ */
+function fromContainers(url: string): string {
+	const address = new URL(url)
+	if (['localhost', '127.0.0.1'].includes(address.hostname)) {
+		address.hostname = 'host.docker.internal'
+	}
+	return address.toString().replace(/\/+$/, '')
 }
 
 /** The initial access token the Synaplan test stack accepts (synaplan-test-stack.yml). */
@@ -97,9 +112,24 @@ const SYNAPLAN_REDIS_CONTAINER =
  * Synaplan allows a registered client 30 updates an hour and has no setting
  * to lift that. Every saved admin setting is one update, so a test stack
  * that stays up between runs locks this Nextcloud out within a few runs.
- * Clear those counters on the test stack's Redis before each run.
+ * Clear this Nextcloud's counter on the test stack's Redis before each run,
+ * and only its own: other clients of a shared stack keep theirs.
  */
-function resetClientUpdateLimit(): void {
+async function resetClientUpdateLimit(): Promise<void> {
+	const admin = await nextcloudAs('admin')
+	const settings = await admin.get(`${APP}/api/v1/settings`)
+	expect(settings.ok(), 'reading the admin settings').toBe(true)
+	const { link_instance_id: instanceId } = (await settings.json()) as {
+		link_instance_id?: string
+	}
+	await admin.dispose()
+	if (!instanceId) {
+		return
+	}
+	if (!/^[\w-]+$/.test(instanceId)) {
+		throw new Error(`Unexpected instance id ${instanceId}.`)
+	}
+
 	const redis = (...args: string[]) =>
 		execFileSync('docker', [
 			'exec',
@@ -112,7 +142,7 @@ function resetClientUpdateLimit(): void {
 			.filter((line) => line.trim() !== '')
 	let keys: string[]
 	try {
-		keys = redis('--scan', '--pattern', '*oauth:client-update:*')
+		keys = redis('--scan', '--pattern', `*oauth:client-update:${instanceId}`)
 	} catch (error) {
 		throw new Error(
 			`Could not reach the Synaplan test Redis in ${SYNAPLAN_REDIS_CONTAINER}; set SYNAPLAN_REDIS_CONTAINER.`,
@@ -124,10 +154,58 @@ function resetClientUpdateLimit(): void {
 	}
 }
 
+const NC_PROJECT = process.env.E2E_NC_PROJECT ?? 'synaplan-nextcloud-e2e'
+
+/**
+ * Run a command in the e2e Nextcloud container.
+ *
+ * @param user the container user
+ * @param command the command and its arguments
+ */
+function inNextcloud(user: string, ...command: string[]): void {
+	try {
+		execFileSync(
+			'docker',
+			[
+				'compose',
+				'-p',
+				NC_PROJECT,
+				'-f',
+				'docker-compose.ci.yml',
+				'exec',
+				'-T',
+				'-u',
+				user,
+				'nextcloud',
+				...command,
+			],
+			{ stdio: ['ignore', 'ignore', 'inherit'] },
+		)
+	} catch (error) {
+		throw new Error(
+			`Could not run ${command.join(' ')} in the e2e Nextcloud (compose project ${NC_PROJECT}); set E2E_NC_PROJECT.`,
+			{ cause: error },
+		)
+	}
+}
+
+/**
+ * The app's version stays put between releases, so a Nextcloud kept running
+ * from an older checkout never gets the migrations and background jobs added
+ * since (docker/dev-migrate.sh), and keeps serving the routes it cached in
+ * APCu under that version, which an Apache restart clears.
+ */
+function catchUpWithTheCheckout(): void {
+	inNextcloud('www-data', 'sh', '/mnt/synaplan_integration/docker/dev-migrate.sh')
+	inNextcloud('root', 'sh', '-c', 'apachectl -k graceful 2>/dev/null')
+}
+
 export default async function globalSetup(): Promise<void> {
 	await waitUntilReady(`${SYNAPLAN_URL}/api/health`)
 	await waitUntilReady(`${NC_URL}/status.php`)
-	resetClientUpdateLimit()
+	catchUpWithTheCheckout()
+	await waitUntilReady(`${NC_URL}/status.php`)
+	await resetClientUpdateLimit()
 
 	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
 	const created = await synaplan.post('/api/v1/apikeys', {
@@ -143,7 +221,11 @@ export default async function globalSetup(): Promise<void> {
 	// a name Synaplan's test environment accepts for plain-http delivery.
 	const inbound = new URL(`${APP}/api/v1/inbound`, NC_URL)
 	inbound.hostname = 'host.docker.internal'
+	// The key is created at E2E_SYNAPLAN_URL, so Nextcloud must call that
+	// stack too, whatever address it was installed with.
 	await saveSettings({
+		synaplan_url_local: fromContainers(SYNAPLAN_URL),
+		synaplan_public_url_local: SYNAPLAN_URL.replace(/\/+$/, ''),
 		api_key_local: apiKey.key,
 		active_env: 'local',
 		mode: 'link',
@@ -164,6 +246,12 @@ export default async function globalSetup(): Promise<void> {
 	}
 	expect(await registrationStatus(admin), 'the instance is active').toBe('active')
 
+	for (const [uid, email] of Object.entries(EMAIL)) {
+		const changed = await admin.put(`/ocs/v2.php/cloud/users/${uid}`, {
+			form: { key: 'email', value: email },
+		})
+		expect(changed.ok(), `giving ${uid} the email ${email}`).toBe(true)
+	}
 	await admin.dispose()
 
 	for (const uid of PEOPLE) {

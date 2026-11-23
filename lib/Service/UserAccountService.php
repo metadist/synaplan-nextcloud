@@ -320,6 +320,15 @@ class UserAccountService
         return $this->storedKey($uid);
     }
 
+    /**
+     * The person's sign-in to Synaplan is still held, even when its token
+     * could not be renewed just now (Synaplan unreachable).
+     */
+    public function holdsGrant(string $uid): bool
+    {
+        return $uid !== '' && $this->oauth->isConnected($uid);
+    }
+
     public function getStoredApiKeyId(string $uid): string
     {
         return $this->config->getUserValue($uid, Application::APP_ID, self::USER_KEY_ID_PREF, '');
@@ -754,6 +763,11 @@ class UserAccountService
                 'message' => $e->getMessage(),
             ]);
 
+            return null;
+        }
+        if ($minted === null || $minted === '') {
+            // Nothing replaced it (no admin key, say): the old key is still
+            // the person's only one.
             return null;
         }
         $this->revokeReplacedKey($oldKey, $oldKeyId);

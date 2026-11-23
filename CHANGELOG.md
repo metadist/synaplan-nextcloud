@@ -30,6 +30,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   jobs run in AJAX mode, because watches then only move on while someone has
   a page open. In webcron mode the admin screen says watches get new files
   only as often as the outside service calls.
+- **Synaplan may read at most** on the admin screen: watched folders,
+  folders people allow (the default) or all their files. Personal settings
+  offer only the choices up to it. Lowering it narrows everyone who chose
+  more, and Synaplan learns it within the hour; raising it widens nobody.
+  An update from a version where someone already chose "All my files"
+  starts the ceiling at all their files, so nobody is narrowed silently.
+
+### Changed
+
+- **New → From Synaplan…** opens "Add from Synaplan": generated files or all
+  files, a search, a check box per file and **Add 2 files**, into the folder
+  named under the list. The filter and the search run in Synaplan, so a
+  generated file on a later page shows too, and the added files appear in
+  the folder without a reload. With nothing to show, it says where files
+  come from and offers **Open Synaplan**.
 
 ### Fixed
 
@@ -37,6 +52,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **Withdrawing consent while a token refresh is under way** no longer lets
+  the refresh's answer store the grant again, also when the withdrawal
+  could not wait for the refresh. Revoking waits for the refresh and ends
+  the token it rotated to.
+- **Renewing a provisioned key** keeps the old key when no new one could be
+  minted, for example while the administrator's key is missing. It used to
+  revoke the person's only working key.
+- **Notifications signed with a new key** make Synaplan's keys be read at most
+  once a minute also when several arrive at once. Each used to read the old
+  check time and fetch the keys itself.
+- **The searchable files on the Synaplan page** are the newest hundred that
+  came from Nextcloud. The app asked Synaplan for page 100 of all files, so
+  the list was mostly empty.
 - **Deactivate** in the admin's AI Users panel pauses a person whose account
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
@@ -68,6 +96,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its registration by an hourly background job, once. Until then Synaplan
   could not find them when a person was deleted, disabled or paused here, so
   their Synaplan accounts stayed as they were.
+- **Saving what Synaplan may read** keeps the folder for files from
+  Synaplan. A save that left that folder out put it back to `Synaplan`, and
+  the read setting's Save stored an unsaved edit of the folder field.
+- **Also folders I allow** keeps the folders you watch readable. Allowing
+  one more folder, also through **Let Synaplan read this folder**, stopped
+  Synaplan reading the watched ones.
+- **A folder for files from Synaplan made of spaces** means the Synaplan
+  folder, and a path with a blank folder name in it, like `Projects/ /Q3`,
+  is refused. Both were saved, and copies went into a folder without a
+  visible name.
+- **The table of notifications already seen** comes with the app's
+  migrations, like its other tables. It was created at the first
+  notification with SQL that Oracle does not accept, so no copy arrived
+  there.
+- **The address Synaplan uses to reach this Nextcloud** defaults to this
+  server's own address, also when that is `localhost`. It was the dev
+  stack's `http://nextcloud`, which Synaplan was then told to call; the dev
+  and test stacks now set that address themselves.
+- **Open in Nextcloud** in Synaplan and the link in the notice about a copy
+  go to the address people use, not the one Synaplan called. On a server
+  without `overwritehost`, both pointed at the internal address entered for
+  Synaplan.
+- **Save in the chat** puts the file into the folder you chose under "Save
+  files from Synaplan to", in its kind folder, like a copy Synaplan sends.
+  It always used `Synaplan/`.
+- **From Synaplan and Save in the chat** have the limits of a copy: a file
+  over 100 MB is refused before it is read, a full storage and twenty files
+  of one name say so, and a write that fails leaves no empty file behind. A
+  large file ended the request when PHP ran out of memory.
 
 ## 2.0.0 – 2026-11-16
 

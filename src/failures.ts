@@ -340,6 +340,27 @@ export function describeFailure(
 					'This file is too large for Synaplan. Try a smaller file.',
 				),
 			}
+		case 'copy_too_large':
+			return {
+				text: t(
+					'synaplan_integration',
+					'This file is larger than 100 MB, more than Synaplan copies into your files.',
+				),
+			}
+		case 'storage_full':
+			return {
+				text: t(
+					'synaplan_integration',
+					'This file does not fit into your storage. Make room and try again.',
+				),
+			}
+		case 'name_taken':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Twenty files with this name are already in that folder. Rename or remove one and try again.',
+				),
+			}
 		case 'unsupported_type':
 			return {
 				text: t(

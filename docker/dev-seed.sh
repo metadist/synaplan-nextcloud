@@ -9,10 +9,14 @@ occ() { php /var/www/html/occ "$@"; }
 # appinfo/info.xml may stop below the running server version; a dev stack
 # enables the app anyway.
 occ app:enable synaplan_integration >/dev/null 2>&1 || occ app:enable --force synaplan_integration
-# The mounted code may carry a migration its version number does not announce yet.
-# occ only offers migrations:migrate in debug mode.
-php -r 'require "/var/www/html/lib/base.php";
-  (new \OC\DB\MigrationService("synaplan_integration", \OCP\Server::get(\OC\DB\Connection::class)))->migrate();'
+sh /mnt/synaplan_integration/docker/dev-migrate.sh
+
+# Synaplan's containers reach this Nextcloud at another address than the
+# browser does. Set once, so an address saved on the admin screen stays.
+if [ -z "$(occ config:app:get synaplan_integration delivery_url 2>/dev/null || true)" ]; then
+  occ config:app:set synaplan_integration delivery_url \
+    --value "${SYNAPLAN_DELIVERY_URL:-http://nextcloud/index.php/apps/synaplan_integration/api/v1/inbound}" >/dev/null
+fi
 
 ADA=ada:ada-dev-pass
 DAV=http://localhost/remote.php/dav/files/ada
