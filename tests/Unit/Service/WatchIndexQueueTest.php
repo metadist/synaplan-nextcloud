@@ -132,6 +132,16 @@ final class WatchIndexQueueTest extends TestCase
         self::assertSame([], array_values(array_filter($updates[0], static fn (string $line): bool => str_starts_with($line, 'set since'))));
     }
 
+    public function testAPassCutShortIsContinuedAndAFinishedOneStartsOver(): void
+    {
+        $index = $this->index();
+        $index->continueAfter(5, 500);
+        self::assertSame(['update synaplan_watches', 'set reconcile_after=500', 'where watch_id=5'], $this->last());
+
+        $index->markReconciled(5, 200);
+        self::assertSame(['update synaplan_watches', 'set reconciled=200', 'set reconcile_after=0', 'where watch_id=5'], $this->last());
+    }
+
     private function index(): WatchIndex
     {
         $db = $this->createStub(IDBConnection::class);

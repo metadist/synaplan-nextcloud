@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **Large watched folders are checked to the end.** The hourly check of a
+  watched folder with more than 500 files could stop at its time limit and
+  start over each run, never reaching the later files. It now goes on where
+  it stopped.
 - **The app's own files stay out of watches for good.** A file this app
   wrote, such as a translation saved into a watched folder, counted as new
   a week later, so a paused or late watch could take it again. Its mark now

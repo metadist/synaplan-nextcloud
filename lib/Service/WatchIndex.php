@@ -200,6 +200,35 @@ class WatchIndex
         $qb = $this->db->getQueryBuilder();
         $qb->update(self::TABLE)
             ->set('reconciled', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('reconcile_after', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
+        $qb->executeStatement();
+    }
+
+    /**
+     * The file id after which the watch's unfinished pass goes on; 0 for a
+     * pass from the start.
+     */
+    public function reconcileAfter(int $watchId): int
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('reconcile_after')->from(self::TABLE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
+        $result = $qb->executeQuery();
+        $after = $result->fetchOne();
+        $result->closeCursor();
+
+        return is_numeric($after) ? (int) $after : 0;
+    }
+
+    /**
+     * The pass asked about every file up to $fileId; markReconciled() ends it.
+     */
+    public function continueAfter(int $watchId, int $fileId): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('reconcile_after', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
     }
