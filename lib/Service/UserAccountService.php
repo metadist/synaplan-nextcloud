@@ -765,6 +765,11 @@ class UserAccountService
 
             return null;
         }
+        if ($minted === null || $minted === '') {
+            // Nothing replaced it (no admin key, say): the old key is still
+            // the person's only one.
+            return null;
+        }
         $this->revokeReplacedKey($oldKey, $oldKeyId);
 
         return $minted;

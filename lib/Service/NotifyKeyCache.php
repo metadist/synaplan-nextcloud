@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 
 /**
  * Synaplan's notification issuer and keys, read from its two public
@@ -21,10 +24,14 @@ class NotifyKeyCache
     public const ISSUER = 'notify_issuer';
     private const UNKNOWN_KEY_CHECKED_AT = 'notify_keys_unknown_checked_at';
     private const UNKNOWN_KEY_INTERVAL = 60;
+    private const UNKNOWN_KEY_LOCK = Application::APP_ID . '/notify-keys-unknown';
+    private const LOCK_WAIT_SECONDS = 10;
 
     public function __construct(
         private IConfig $config,
+        private IAppConfig $appConfig,
         private PlatformLinkService $links,
+        private ILockingProvider $locks,
     ) {
     }
 
@@ -54,19 +61,46 @@ class NotifyKeyCache
 
     /**
      * A notification no known key verifies may be signed with a key Synaplan
-     * started using since the last refresh. Returns whether the keys changed.
+     * started using since the last refresh. Returns whether the keys changed
+     * since this request read them, also when another request refreshed them.
      */
     public function refreshForUnknownKey(int $now): bool
     {
-        $checkedAt = (int) $this->config->getAppValue(Application::APP_ID, self::UNKNOWN_KEY_CHECKED_AT, '0');
-        if ($now - $checkedAt < self::UNKNOWN_KEY_INTERVAL) {
+        $before = $this->keys();
+        if (!$this->acquire()) {
             return false;
         }
-        $this->config->setAppValue(Application::APP_ID, self::UNKNOWN_KEY_CHECKED_AT, (string) $now);
-        $before = $this->keys();
-        $this->refresh();
+        try {
+            // Concurrent requests claim the interval one at a time, each
+            // reading the claim the one before it wrote.
+            $this->appConfig->clearCache();
+            $checkedAt = (int) $this->config->getAppValue(Application::APP_ID, self::UNKNOWN_KEY_CHECKED_AT, '0');
+            if ($now - $checkedAt >= self::UNKNOWN_KEY_INTERVAL) {
+                $this->config->setAppValue(Application::APP_ID, self::UNKNOWN_KEY_CHECKED_AT, (string) $now);
+                $this->refresh();
+            }
 
-        return $this->keys() !== $before;
+            return $this->keys() !== $before;
+        } finally {
+            $this->locks->releaseLock(self::UNKNOWN_KEY_LOCK, ILockingProvider::LOCK_EXCLUSIVE);
+        }
+    }
+
+    private function acquire(): bool
+    {
+        $deadline = microtime(true) + self::LOCK_WAIT_SECONDS;
+        while (true) {
+            try {
+                $this->locks->acquireLock(self::UNKNOWN_KEY_LOCK, ILockingProvider::LOCK_EXCLUSIVE);
+
+                return true;
+            } catch (LockedException) {
+                if (microtime(true) >= $deadline) {
+                    return false;
+                }
+                usleep(100_000);
+            }
+        }
     }
 
     /**

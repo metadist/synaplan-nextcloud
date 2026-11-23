@@ -7,6 +7,7 @@ import {
 	logIn,
 	NC_URL,
 	nextcloudAs,
+	SYNAPLAN_CONTAINER,
 	SYNAPLAN_PERSON,
 	synaplanAs,
 } from './support'
@@ -23,7 +24,6 @@ import {
  */
 
 const UID = 'ada'
-const SYNAPLAN_CONTAINER = process.env.SYNAPLAN_APP_CONTAINER ?? 'synaplan-app-test'
 
 test.describe.configure({ mode: 'serial' })
 

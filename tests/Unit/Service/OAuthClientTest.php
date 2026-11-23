@@ -35,6 +35,8 @@ class OAuthClientTest extends TestCase
     private \Closure $respond;
     /** @var \Closure(string): void */
     private \Closure $onLock;
+    /** @var \Closure(string, string): void runs before a user value is written */
+    private \Closure $onUserWrite;
 
     public static function setUpBeforeClass(): void
     {
@@ -52,6 +54,8 @@ class OAuthClientTest extends TestCase
         $this->requests = [];
         $this->respond = static fn (): array => [200, []];
         $this->onLock = static function (): void {
+        };
+        $this->onUserWrite = static function (): void {
         };
     }
 
@@ -104,6 +108,7 @@ class OAuthClientTest extends TestCase
         );
         $userConfig->method('setValueString')->willReturnCallback(
             function (string $uid, string $app, string $key, string $value, bool $lazy = false, int $flags = 0): bool {
+                ($this->onUserWrite)($uid . '|' . $key, $value);
                 $this->user[$uid . '|' . $key] = $value;
                 if (($flags & IUserConfig::FLAG_SENSITIVE) !== 0) {
                     $this->sensitive[$uid . '|' . $key] = true;
@@ -166,6 +171,16 @@ class OAuthClientTest extends TestCase
         $this->user['ada|synaplan_oauth_access'] = $access;
         $this->user['ada|synaplan_oauth_expires'] = (string) $expires;
         $this->user['ada|synaplan_oauth_client'] = 'client-1';
+    }
+
+    /**
+     * The person's stored grant, without the withdrawal count that outlives it.
+     *
+     * @return array<string, string>
+     */
+    private function grant(): array
+    {
+        return array_diff_key($this->user, ['ada|synaplan_oauth_withdrawals' => true]);
     }
 
     /**
@@ -510,7 +525,7 @@ class OAuthClientTest extends TestCase
         $client = $this->client();
 
         $this->assertSame('', $client->accessToken('ada'));
-        $this->assertSame([], $this->user);
+        $this->assertSame([], $this->grant());
         $this->assertFalse($client->isConnected('ada'));
     }
 
@@ -590,6 +605,100 @@ class OAuthClientTest extends TestCase
         $this->assertSame([], $this->requests);
     }
 
+    public function testAGrantWithdrawnDuringARefreshIsNotBroughtBackByItsAnswer(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = function (string $method, string $url): array {
+            if (str_ends_with($url, '/oauth/token')) {
+                // A withdrawal that could not wait forgets the grant meanwhile.
+                $this->user = [];
+
+                return [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]];
+            }
+
+            return [200, []];
+        };
+        $client = $this->client();
+
+        $this->assertSame('', $client->accessToken('ada'));
+
+        $this->assertSame([], $this->grant());
+        $this->assertFalse($client->isConnected('ada'));
+        $this->assertCount(2, $this->requests);
+        $this->assertSame('https://synaplan.example/oauth/revoke', $this->requests[1]['url']);
+        $this->assertSame('rt-new', $this->form(1)['token'], 'the grant the answer carried is ended too');
+    }
+
+    public function testAWithdrawalBetweenTheCheckAndTheWriteIsNotUndoneByTheRefresh(): void
+    {
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = static fn (string $method, string $url): array => str_ends_with($url, '/oauth/token')
+            ? [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]]
+            : [200, []];
+        // A withdrawal that could not wait for the lock counts itself and
+        // deletes the grant just before the refresh writes its answer.
+        $this->onUserWrite = function (string $key, string $value): void {
+            if ($key === 'ada|synaplan_oauth_refresh' && $value === 'rt-new') {
+                $this->user = ['ada|synaplan_oauth_withdrawals' => '1'];
+            }
+        };
+        $client = $this->client();
+
+        $this->assertSame('', $client->accessToken('ada'));
+
+        $this->assertSame(['ada|synaplan_oauth_withdrawals' => '1'], $this->user);
+        $this->assertFalse($client->isConnected('ada'));
+        $this->assertSame('https://synaplan.example/oauth/revoke', $this->requests[1]['url'] ?? '');
+        $this->assertSame('rt-new', $this->form(1)['token']);
+    }
+
+    public function testForgettingCountsAWithdrawal(): void
+    {
+        $this->registered();
+        $this->connected();
+        $client = $this->client();
+
+        $client->forget('ada');
+        $this->connected();
+        $client->revoke('ada');
+
+        $this->assertSame(['ada|synaplan_oauth_withdrawals' => '2'], $this->user);
+    }
+
+    public function testForgettingAndRevokingWaitForARefreshUnderWay(): void
+    {
+        $this->registered();
+        $this->connected();
+        $locked = [];
+        $this->onLock = function (string $path) use (&$locked): void {
+            $locked[] = $path;
+        };
+        $client = $this->client();
+
+        $client->forget('ada');
+        $this->connected();
+        $client->revoke('ada');
+
+        $this->assertSame(['synaplan_integration/oauth-refresh/ada', 'synaplan_integration/oauth-refresh/ada'], $locked);
+        $this->assertSame([], $this->grant());
+    }
+
+    public function testRevokeTakesTheTokenARefreshUnderWayRotatedTo(): void
+    {
+        $this->registered();
+        $this->connected('rt-old');
+        $this->onLock = function (): void {
+            // The refresh holding the lock finishes before it is released.
+            $this->connected('rt-new', 'at-new', time() + 300);
+        };
+
+        $this->client()->revoke('ada');
+
+        $this->assertSame('rt-new', $this->form(0)['token']);
+    }
+
     public function testAGrantOfAnEarlierRegistrationIsNone(): void
     {
         $this->registered();
@@ -635,7 +744,7 @@ class OAuthClientTest extends TestCase
         $this->assertSame('rt-old', $form['token']);
         $this->assertSame('urn:ietf:params:oauth:client-assertion-type:jwt-bearer', $form['client_assertion_type']);
         $this->assertArrayHasKey('client_assertion', $form);
-        $this->assertSame([], $this->user);
+        $this->assertSame([], $this->grant());
         $this->assertFalse($client->isConnected('ada'));
     }
 
@@ -663,7 +772,7 @@ class OAuthClientTest extends TestCase
 
         $this->client()->revoke('ada');
 
-        $this->assertSame([], $this->user);
+        $this->assertSame([], $this->grant());
     }
 
     public function testRevokeAtASynaplanThatRefusesThisClientForgetsTheGrant(): void
@@ -676,7 +785,7 @@ class OAuthClientTest extends TestCase
         $client->revoke('ada');
 
         $this->assertCount(1, $this->requests);
-        $this->assertSame([], $this->user);
+        $this->assertSame([], $this->grant());
         $this->assertFalse($client->isConnected('ada'));
     }
 
