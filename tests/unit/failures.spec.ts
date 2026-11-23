@@ -129,10 +129,22 @@ describe('describeFailure', () => {
 		)
 	})
 
-	it('shows a sentence that arrived in the code field', () => {
-		expect(describeFailure('Choose a folder or a file.').text).toBe(
-			'Choose a folder or a file.',
+	it('keeps Synaplan’s model sentence and hides an untranslated app sentence', () => {
+		expect(
+			describeFailure(
+				'model_not_found',
+				'The selected model is not available.',
+			).text,
+		).toBe('The selected model is not available.')
+		expect(describeFailure('Unknown conversation').text).toBe(
+			describeFailure().text,
 		)
+		expect(
+			failureOr(
+				rejected(404, { error: 'Unknown conversation' }),
+				'Could not open this conversation. Try again.',
+			),
+		).toBe('Could not open this conversation. Try again.')
 	})
 
 	it("shows Synaplan's own sentence for a code the app does not know", () => {

@@ -127,8 +127,9 @@ function contextFrom(body: Record<string, unknown>): FailureContext {
 
 /**
  * The sentence for a failure code. A code the app does not know shows
- * Synaplan's own sentence when there is one. A sentence sent in the code
- * field is shown as that sentence.
+ * Synaplan's own sentence when it sent one beside the code. A sentence this
+ * app put in the code field stays the general sentence, so the caller can
+ * keep its translated fallback.
  *
  * @param code Failure code from the app's answer
  * @param message Synaplan's sentence, when it sent one
@@ -236,13 +237,12 @@ export function describeFailure(
 			}
 		case 'model_not_found':
 			return {
-				text: explained(
-					t(
-						'synaplan_integration',
-						'No model is set up for this. Ask your administrator.',
-					),
-					message,
-				),
+				text: message?.trim()
+					? message.trim()
+					: t(
+							'synaplan_integration',
+							'No model is set up for this. Ask your administrator.',
+						),
 			}
 		case 'no_access':
 			return {
@@ -387,9 +387,6 @@ export function describeFailure(
 	}
 	if (message) {
 		return { text: message }
-	}
-	if (code && !MACHINE_CODE.test(code)) {
-		return { text: code }
 	}
 	return {
 		text: t(
