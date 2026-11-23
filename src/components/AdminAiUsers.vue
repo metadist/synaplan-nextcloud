@@ -162,6 +162,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { failureOr } from '../failures'
 
 interface AiUser {
 	uid: string
@@ -252,10 +253,10 @@ async function load() {
 		if (data.success) {
 			users.value = data.users || []
 		}
-	} catch {
+	} catch (error: unknown) {
 		emit(
 			'notify',
-			t('synaplan_integration', 'Failed to load AI users.'),
+			failureOr(error, t('synaplan_integration', 'Failed to load AI users.')),
 			'error',
 		)
 	} finally {
@@ -330,10 +331,13 @@ async function deactivate(user: AiUser) {
 			}),
 		)
 		await load()
-	} catch {
+	} catch (error: unknown) {
 		emit(
 			'notify',
-			t('synaplan_integration', 'Failed to deactivate user.'),
+			failureOr(
+				error,
+				t('synaplan_integration', 'Failed to deactivate user.'),
+			),
 			'error',
 		)
 	}

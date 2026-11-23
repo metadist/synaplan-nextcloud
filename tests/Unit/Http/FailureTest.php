@@ -16,7 +16,28 @@ final class FailureTest extends TestCase
     {
         $failure = Failure::fromSynaplanResponse(403, '{"success":false,"error":"insufficient_scope","required":["chat"]}');
 
-        self::assertSame([403, 'insufficient_scope', null], [$failure->status, $failure->code, $failure->message]);
+        self::assertSame([403, 'insufficient_scope', null, ['chat']], [$failure->status, $failure->code, $failure->message, $failure->required]);
+    }
+
+    public function testAMissingFeatureKeepsItsModuleAndDropsTheDocsPath(): void
+    {
+        $failure = Failure::fromSynaplanResponse(404, '{"error":"feature_not_configured","module":"cloud_files","docs":"modules/cloud-files"}');
+
+        self::assertSame([404, 'feature_not_configured', 'cloud_files'], [$failure->status, $failure->code, $failure->module]);
+        $data = $failure->toResponse()->getData();
+        self::assertSame('cloud_files', $data['module']);
+        self::assertArrayNotHasKey('docs', $data);
+        self::assertArrayNotHasKey('message', $data);
+    }
+
+    public function testAMissingRightKeepsOnlySafeScopes(): void
+    {
+        $failure = Failure::fromSynaplanResponse(403, '{"error":"insufficient_scope","required":["cloud:watch","files:*","<script>","https://evil.example"],"granted":["chat"]}');
+
+        self::assertSame(['cloud:watch', 'files:*'], $failure->required);
+        $data = $failure->toResponse()->getData();
+        self::assertSame(['cloud:watch', 'files:*'], $data['required']);
+        self::assertArrayNotHasKey('granted', $data);
     }
 
     public function testASynaplanSentenceIsPassedOnAsTheMessage(): void

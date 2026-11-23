@@ -53,14 +53,92 @@ export function onConsentStale(listener: () => void): () => void {
 	return () => window.removeEventListener(CONSENT_STALE_EVENT, listener)
 }
 
+/** What Synaplan named beside the code: which module, and which right is missing. */
+export interface FailureContext {
+	module?: string
+	required?: string[]
+}
+
+const MACHINE_CODE = /^[a-z][a-z0-9_]*$/
+
+/**
+ * A right the person's Synaplan connection is missing, in words.
+ *
+ * @param scope A scope Synaplan named, such as cloud:watch
+ */
+function rightFor(scope: string): string {
+	switch (scope) {
+		case 'cloud:watch':
+			return t('synaplan_integration', 'watching folders and files')
+		case 'files':
+		case 'files:*':
+			return t('synaplan_integration', 'using files')
+		case 'chat':
+		case 'chats:*':
+			return t('synaplan_integration', 'chatting')
+		case 'rag':
+		case 'rag:*':
+			return t('synaplan_integration', 'searching your knowledge')
+		case 'memories':
+			return t('synaplan_integration', 'using memories')
+		case 'audio:transcribe':
+			return t('synaplan_integration', 'transcribing audio')
+		case 'messages:*':
+			return t('synaplan_integration', 'reading messages')
+		default:
+			return ''
+	}
+}
+
+/**
+ * The missing rights as one phrase, when Synaplan named any this app knows.
+ *
+ * @param required Scopes Synaplan said this action needs
+ */
+function missingRight(required?: string[]): string | undefined {
+	if (!required || required.length === 0) {
+		return undefined
+	}
+	const phrases = [
+		...new Set(
+			required
+				.map((scope) => rightFor(scope))
+				.filter((phrase) => phrase !== ''),
+		),
+	]
+	return phrases.length > 0 ? phrases.join(', ') : undefined
+}
+
+/**
+ * The module Synaplan sent, when it is an id and not a sentence.
+ *
+ * @param body One answer from the app
+ */
+function contextFrom(body: Record<string, unknown>): FailureContext {
+	const module = typeof body.module === 'string' ? body.module : undefined
+	const required = Array.isArray(body.required)
+		? body.required.filter((item): item is string => typeof item === 'string')
+		: undefined
+	return {
+		module: module && MACHINE_CODE.test(module) ? module : undefined,
+		required: required && required.length > 0 ? required : undefined,
+	}
+}
+
 /**
  * The sentence for a failure code. A code the app does not know shows
- * Synaplan's own sentence when there is one.
+ * Synaplan's own sentence when there is one. A sentence sent in the code
+ * field is shown as that sentence.
  *
  * @param code Failure code from the app's answer
  * @param message Synaplan's sentence, when it sent one
+ * @param context The module or the missing right, when Synaplan named one
  */
-export function describeFailure(code?: string, message?: string): Failure {
+export function describeFailure(
+	code?: string,
+	message?: string,
+	context?: FailureContext,
+): Failure {
 	if (code && CONSENT_STALE_CODES.has(code)) {
 		window.dispatchEvent(new CustomEvent(CONSENT_STALE_EVENT))
 	}
@@ -73,13 +151,105 @@ export function describeFailure(code?: string, message?: string): Failure {
 				),
 				settingsUrl: synaplanSettings(),
 			}
-		case 'insufficient_scope':
+		case 'insufficient_scope': {
+			const right = missingRight(context?.required)
+			return {
+				text: right
+					? t(
+							'synaplan_integration',
+							'Your Synaplan connection does not allow {right}. Connect your Synaplan account again.',
+							{ right },
+						)
+					: t(
+							'synaplan_integration',
+							'Your Synaplan connection does not allow this. Connect your Synaplan account again.',
+						),
+				settingsUrl: synaplanSettings(),
+			}
+		}
+		case 'feature_not_configured':
+			return {
+				text: explained(
+					context?.module === 'cloud_files'
+						? t(
+								'synaplan_integration',
+								'Watching folders and files is turned off on this Synaplan. Ask your administrator to turn it on.',
+							)
+						: t(
+								'synaplan_integration',
+								'This is turned off on this Synaplan. Ask your administrator.',
+							),
+					message,
+				),
+			}
+		case 'platform_disconnected':
+			return {
+				text:
+					message && /turned off/i.test(message)
+						? t(
+								'synaplan_integration',
+								'Synaplan is turned off for this Nextcloud. Ask your administrator.',
+							)
+						: explained(
+								t(
+									'synaplan_integration',
+									'This Nextcloud is not linked to Synaplan. Ask your administrator.',
+								),
+								message && /not linked/i.test(message)
+									? undefined
+									: message,
+							),
+			}
+		case 'platform_ambiguous':
 			return {
 				text: t(
 					'synaplan_integration',
-					'Your Synaplan connection does not allow this. Connect your Synaplan account again.',
+					'More than one Synaplan connection is registered for your login. Ask your administrator to remove the one no longer in use.',
 				),
-				settingsUrl: synaplanSettings(),
+			}
+		case 'watch_cap':
+			return {
+				text: explained(
+					t(
+						'synaplan_integration',
+						'You have reached the limit for watching folders and files.',
+					),
+					message,
+				),
+			}
+		case 'storage_quota':
+			return {
+				text: explained(
+					t(
+						'synaplan_integration',
+						'There is no space left in your Synaplan storage.',
+					),
+					message,
+				),
+			}
+		case 'invalid_watch':
+			return {
+				text: explained(
+					t('synaplan_integration', 'Synaplan could not use this watch.'),
+					message,
+				),
+			}
+		case 'model_not_found':
+			return {
+				text: explained(
+					t(
+						'synaplan_integration',
+						'No model is set up for this. Ask your administrator.',
+					),
+					message,
+				),
+			}
+		case 'no_access':
+			return {
+				text: t(
+					'synaplan_integration',
+					'You do not have access to this folder or file.',
+				),
 			}
 		case 'consent_required':
 			return {
@@ -190,7 +360,7 @@ export function describeFailure(code?: string, message?: string): Failure {
 			return {
 				text: t(
 					'synaplan_integration',
-					'Only people who may edit a folder or a file can watch it.',
+					'You need permission to edit this folder or file before you can watch it.',
 				),
 			}
 		case 'watches_off':
@@ -218,6 +388,9 @@ export function describeFailure(code?: string, message?: string): Failure {
 	if (message) {
 		return { text: message }
 	}
+	if (code && !MACHINE_CODE.test(code)) {
+		return { text: code }
+	}
 	return {
 		text: t(
 			'synaplan_integration',
@@ -227,14 +400,62 @@ export function describeFailure(code?: string, message?: string): Failure {
 }
 
 /**
+ * The failure in an answer body, including a module or a missing right.
+ *
+ * @param data What the app answered
+ */
+export function failureFromAnswer(data: unknown): Failure {
+	if (!data || typeof data !== 'object') {
+		return describeFailure()
+	}
+	const body = data as Record<string, unknown>
+	const error = body.error
+	if (error && typeof error === 'object') {
+		const nested = error as Record<string, unknown>
+		return describeFailure(
+			typeof nested.code === 'string' ? nested.code : undefined,
+			typeof nested.message === 'string' ? nested.message : undefined,
+			contextFrom(nested),
+		)
+	}
+	return describeFailure(
+		typeof body.error === 'string' ? body.error : undefined,
+		typeof body.message === 'string' ? body.message : undefined,
+		contextFrom(body),
+	)
+}
+
+/**
+ * The specific sentence, or the caller's own when the app only knows that
+ * something failed.
+ *
+ * @param error What axios threw
+ * @param fallback The sentence for this action
+ */
+export function failureOr(error: unknown, fallback: string): string {
+	const failure = failureFromError(error)
+	return failure.text === describeFailure().text ? fallback : failure.text
+}
+
+/**
+ * The specific sentence in an answer, or the caller's own.
+ *
+ * @param data What the app answered
+ * @param fallback The sentence for this action
+ */
+export function answerOr(data: unknown, fallback: string): string {
+	const failure = failureFromAnswer(data)
+	return failure.text === describeFailure().text ? fallback : failure.text
+}
+
+/**
  * The failure behind a rejected request to the app.
  *
  * @param error What axios threw
  */
 export function failureFromError(error: unknown): Failure {
 	if (isAxiosError(error)) {
-		const data = error.response?.data
-		return describeFailure(data?.error, data?.message)
+		return failureFromAnswer(error.response?.data)
 	}
 	return describeFailure()
 }

@@ -33,6 +33,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A failed Synaplan action names the reason.** Watching while cloud files
+  are turned off, a missing right, a full watch limit or a full storage says
+  so, instead of "Something went wrong." A folder or file the person cannot
+  read says they have no access.
 - **Deactivate** in the admin's AI Users panel pauses a person whose account
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in

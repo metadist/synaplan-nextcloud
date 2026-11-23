@@ -6,7 +6,7 @@ import { showError, showSuccess } from '@nextcloud/dialogs'
 import { Permission } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError } from '../failures'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 
 /**
@@ -56,7 +56,7 @@ export const readFolderAction: IFileAction = {
 					),
 				)
 			} else {
-				showError(describeFailure(data.error, data.message).text)
+				showError(failureFromAnswer(data).text)
 			}
 		} catch (error: unknown) {
 			const code = isAxiosError(error) ? error.response?.data?.error : ''

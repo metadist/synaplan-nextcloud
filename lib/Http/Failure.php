@@ -40,6 +40,8 @@ final class Failure
     public const UNEXPECTED = 'unexpected';
     /** Only people who may edit a folder or a file can watch it. */
     public const WATCH_NEEDS_EDIT = 'watch_needs_edit';
+    /** The person cannot read the folder or file they asked to watch. */
+    public const NO_ACCESS = 'no_access';
     /** The administrator turned off watching folders. */
     public const WATCHES_OFF = 'watches_off';
     /** The administrator turned off watching shared folders. */
@@ -49,11 +51,14 @@ final class Failure
 
     /**
      * @param Http::STATUS_* $status
+     * @param list<string> $required scopes Synaplan said this action needs
      */
     public function __construct(
         public readonly int $status,
         public readonly string $code,
         public readonly ?string $message = null,
+        public readonly ?string $module = null,
+        public readonly array $required = [],
     ) {
     }
 
@@ -118,12 +123,47 @@ final class Failure
             };
         }
         [$code, $message] = self::errorOf($decoded);
+        $module = self::moduleOf($decoded['module'] ?? null);
+        $required = self::requiredOf($decoded['required'] ?? null);
 
         return new self($kept, $code ?? match ($kept) {
             Http::STATUS_TOO_MANY_REQUESTS => self::RATE_LIMITED,
             Http::STATUS_REQUEST_ENTITY_TOO_LARGE => self::FILE_TOO_LARGE,
             default => self::SYNAPLAN_REJECTED,
-        }, $message);
+        }, $message, $module, $required);
+    }
+
+    /**
+     * A module id Synaplan names (`cloud_files`). A path, a URL or a sentence is not one.
+     */
+    private static function moduleOf(mixed $value): ?string
+    {
+        return is_string($value) && preg_match('/^[a-z][a-z0-9_]{0,40}$/', $value) === 1 ? $value : null;
+    }
+
+    /**
+     * The scopes Synaplan said were missing (`cloud:watch`). Anything else in
+     * that list, including what the key already has, stays out of the answer.
+     *
+     * @return list<string>
+     */
+    private static function requiredOf(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $scopes = [];
+        foreach ($value as $item) {
+            if (!is_string($item) || strlen($item) > 40 || preg_match('/^[a-z][a-z0-9_]*(\:[a-z*][a-z0-9_*]*)?$/', $item) !== 1) {
+                continue;
+            }
+            $scopes[] = $item;
+            if (count($scopes) === 8) {
+                break;
+            }
+        }
+
+        return $scopes;
     }
 
     /**
@@ -224,6 +264,12 @@ final class Failure
         $body = ['success' => false, 'error' => $this->code];
         if ($this->message !== null) {
             $body['message'] = $this->message;
+        }
+        if ($this->module !== null) {
+            $body['module'] = $this->module;
+        }
+        if ($this->required !== []) {
+            $body['required'] = $this->required;
         }
 
         return new JSONResponse(array_merge($extra, $body), $this->status);

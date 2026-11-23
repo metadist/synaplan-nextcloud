@@ -48,10 +48,12 @@
 
 <script setup lang="ts">
 import axios from '@nextcloud/axios'
+import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 import { onMounted, ref } from 'vue'
 import { BIRD_SVG } from '../cloud_state/glyphs'
+import { failureFromAnswer, failureFromError } from '../failures'
 
 interface SearchableRow {
 	id: number
@@ -94,9 +96,11 @@ async function removeFile(fileId: number): Promise<void> {
 		const { data } = await axios.delete(`${baseUrl}/api/v1/knowledge/${fileId}`)
 		if (data?.success) {
 			files.value = files.value.filter((f) => f.fileId !== fileId)
+		} else {
+			showError(failureFromAnswer(data).text)
 		}
-	} catch {
-		// Keep row on failure.
+	} catch (error: unknown) {
+		showError(failureFromError(error).text)
 	} finally {
 		removing.value = null
 	}

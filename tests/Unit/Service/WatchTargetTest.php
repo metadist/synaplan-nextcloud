@@ -13,6 +13,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
@@ -53,12 +54,37 @@ final class WatchTargetTest extends TestCase
         self::assertSame('Invoices', $this->target($node, 'Invoices')->resolve('folder', '8')['target_path']);
     }
 
-    public function testAnUnreadableNodeIsNotFound(): void
+    public function testAnUnreadableNodeSaysThereIsNoAccess(): void
     {
         $target = $this->target($this->file('Secret.md', Constants::PERMISSION_SHARE));
 
-        $this->expectException(NotFoundException::class);
-        $target->resolve('file', '7');
+        try {
+            $target->resolve('file', '7');
+            self::fail('A file without read permission was accepted');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::NO_ACCESS, $e->failure->code);
+        }
+    }
+
+    public function testAHiddenNodeSaysThereIsNoAccess(): void
+    {
+        $user = $this->createStub(IUser::class);
+        $user->method('getUID')->willReturn('ada');
+        $session = $this->createStub(IUserSession::class);
+        $session->method('getUser')->willReturn($user);
+        $home = $this->createStub(Folder::class);
+        $home->method('getFirstNodeById')->willThrowException(new NotPermittedException());
+        $root = $this->createStub(IRootFolder::class);
+        $root->method('getUserFolder')->willReturn($home);
+        $policy = $this->createStub(WatchPolicy::class);
+
+        try {
+            (new WatchTarget($root, $session, $policy))->resolve('file', '7');
+            self::fail('A hidden file was accepted');
+        } catch (FailureException $e) {
+            self::assertSame(Failure::NO_ACCESS, $e->failure->code);
+        }
     }
 
     public function testAFileThePersonMayOnlyReadCannotBeWatched(): void
