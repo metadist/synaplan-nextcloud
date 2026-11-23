@@ -3,15 +3,18 @@ import { Permission } from '@nextcloud/files'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
 	loadFeatures,
+	readFoldersAllowed,
 	resetFeatures,
 	translationOffered,
 	watchingAllowed,
 	watchSharedAllowed,
 } from '@/files_actions/features'
+import { readFolderAction } from '@/files_actions/readFolderAction'
 import { translateAction } from '@/files_actions/translateAction'
 import { watchAction } from '@/files_actions/watchAction'
 
 vi.mock('@nextcloud/axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('@nextcloud/dialogs', () => ({ showError: vi.fn(), showSuccess: vi.fn() }))
 vi.mock('@nextcloud/router', () => ({
 	generateUrl: (path: string) => path,
 }))
@@ -66,6 +69,39 @@ describe('translate', () => {
 		get.mockResolvedValue({ data: { translation: true } })
 		await Promise.all([loadFeatures(), loadFeatures()])
 		expect(get).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe('let Synaplan read this folder', () => {
+	const folder = {
+		fileid: 9,
+		basename: 'Invoices',
+		type: 'folder',
+		permissions: Permission.READ,
+	}
+
+	/**
+	 * Whether the action is offered for one folder.
+	 */
+	function readOffered(): boolean {
+		return (readFolderAction.enabled as (...a: unknown[]) => boolean)({
+			nodes: [folder],
+		})
+	}
+
+	it('is offered while the administrator lets people allow folders', async () => {
+		get.mockResolvedValue({ data: { translation: true, readFolders: true } })
+		await loadFeatures()
+
+		expect(readOffered()).toBe(true)
+	})
+
+	it('is hidden while Synaplan may read only watched folders', async () => {
+		get.mockResolvedValue({ data: { translation: true, readFolders: false } })
+		await loadFeatures()
+
+		expect(readFoldersAllowed()).toBe(false)
+		expect(readOffered()).toBe(false)
 	})
 })
 

@@ -7,6 +7,7 @@ import {
 	logIn,
 	NC_URL,
 	nextcloudAs,
+	saveSettings,
 	SYNAPLAN_CONTAINER,
 	SYNAPLAN_PERSON,
 	synaplanAs,
@@ -93,15 +94,23 @@ test('Synaplan reads a folder by path only when the person allows it', async () 
 		)
 		expect(put.ok(), `uploading ${file}`).toBe(true)
 	}
-	const setScope = async (mode: string) => {
+	const setScope = async (mode: string): Promise<string> => {
 		const saved = await person.put(`${APP}/api/v1/preferences`, {
 			data: { read_scope: { mode, folders: [] } },
 		})
 		expect(saved.ok(), `saving the read setting ${mode}`).toBe(true)
+		return ((await saved.json()) as { read_scope: { mode: string } }).read_scope
+			.mode
 	}
 
 	try {
-		await setScope('all')
+		expect(await setScope('all'), 'all files above the ceiling').toBe('allowed')
+		const capped = openFolderRead(folder)
+		expect(capped.sent ?? 0).toBe(0)
+		expect(['refused', 'failed']).toContain(capped.state)
+
+		await saveSettings({ read_scope_ceiling: 'all' })
+		expect(await setScope('all')).toBe('all')
 		const allowed = openFolderRead(folder)
 		expect(allowed.state, JSON.stringify(allowed)).toBe('done')
 		expect(allowed.sent).toBe(2)
@@ -112,6 +121,7 @@ test('Synaplan reads a folder by path only when the person allows it', async () 
 		expect(refused.sent ?? 0).toBe(0)
 		expect(['refused', 'failed']).toContain(refused.state)
 	} finally {
+		await saveSettings({ read_scope_ceiling: 'allowed' })
 		await setScope('watched')
 		await person.delete(`/remote.php/dav/files/${UID}/${folder}`)
 		await person.dispose()

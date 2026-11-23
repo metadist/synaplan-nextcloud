@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ApiController;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\App\IAppManager;
 use OCP\Files\File;
@@ -466,6 +467,18 @@ class ApiControllerTest extends TestCase
     {
         $this->synaplanClient->method('offersSummaryType')->willReturnMap([['translation', false]]);
 
-        $this->assertSame(['translation' => false, 'watches' => true, 'watchShared' => true], $this->controller->features()->getData());
+        $this->assertSame(
+            ['translation' => false, 'watches' => true, 'watchShared' => true, 'readFolders' => true],
+            $this->controller->features()->getData(),
+        );
+    }
+
+    public function testFeaturesOfferNoFolderToAllowUnderTheWatchedCeiling(): void
+    {
+        $this->config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => $key === ReadScope::CEILING ? ReadScope::MODE_WATCHED : $default,
+        );
+
+        $this->assertFalse($this->controller->features()->getData()['readFolders']);
     }
 }

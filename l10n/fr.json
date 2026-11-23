@@ -352,7 +352,12 @@
 		"Resume watching": "Reprendre la surveillance",
 		"Also handle the files that arrived while paused ({count})?": "Traiter aussi les fichiers arrivés pendant la pause ({count}) ?",
 		"Handle them too": "Oui, eux aussi",
-		"Only new files": "Seulement les nouveaux fichiers"
+		"Only new files": "Seulement les nouveaux fichiers",
+		"Your administrator lets Synaplan read only the folders you watch.": "Votre administrateur ne laisse Synaplan lire que les dossiers que vous surveillez.",
+		"Synaplan may read at most": "Synaplan peut lire au plus",
+		"People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody.": "Chacun choisit jusqu’à ce niveau dans ses paramètres personnels. L’abaisser restreint tous ceux qui ont choisi plus ; le relever n’élargit personne.",
+		"Folders people allow": "Dossiers que les personnes autorisent",
+		"All their files": "Tous leurs fichiers"
 	},
 	"pluralForm": "nplurals=2; plural=(n > 1);"
 }

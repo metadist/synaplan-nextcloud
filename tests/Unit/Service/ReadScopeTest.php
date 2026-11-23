@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\WatchIndex;
+use OCP\Config\IUserConfig;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
@@ -16,8 +17,11 @@ use PHPUnit\Framework\TestCase;
 
 final class ReadScopeTest extends TestCase
 {
-    /** @var array<string, string> */
+    /** @var array<string, string> uid . key => value */
     private array $stored = [];
+
+    /** @var array<string, string> */
+    private array $appValues = [];
 
     /** @var array<string, int> folder path => file id */
     private array $folders = [];
@@ -102,12 +106,57 @@ final class ReadScopeTest extends TestCase
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
     }
 
-    public function testAllFilesMayBeRead(): void
+    public function testAllFilesMayBeReadWhenTheAdministratorAllowsIt(): void
     {
         $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_ALL);
         $scope->save('ada', ReadScope::MODE_ALL, []);
 
         self::assertTrue($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testByDefaultNobodyMayChooseAllTheirFiles(): void
+    {
+        $scope = $this->scope();
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->ceiling());
+
+        $scope->save('ada', ReadScope::MODE_ALL, [['id' => '', 'path' => 'Invoices']]);
+
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testLoweringTheCeilingNarrowsEveryoneAboveItAndRaisingItWidensNobody(): void
+    {
+        $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_ALL);
+        $scope->save('ada', ReadScope::MODE_ALL, []);
+        $scope->save('bob', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'HR']]);
+        $scope->save('carol', ReadScope::MODE_WATCHED, []);
+
+        self::assertSame(2, $scope->setCeiling(ReadScope::MODE_WATCHED));
+
+        self::assertSame('1', $this->stored['ada' . ReadScope::PENDING] ?? null);
+        self::assertSame('1', $this->stored['bob' . ReadScope::PENDING] ?? null);
+        self::assertArrayNotHasKey('carol' . ReadScope::PENDING, $this->stored);
+        self::assertSame('HR', $scope->get('bob')['folders'][0]['path']);
+
+        self::assertSame(0, $scope->setCeiling(ReadScope::MODE_ALL));
+
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('bob')['mode']);
+        self::assertFalse($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testUnderTheWatchedCeilingNoFolderCanBeAllowed(): void
+    {
+        $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_WATCHED);
+
+        self::assertSame('ceiling', $scope->allow('ada', '3', 'Invoices'));
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
+        self::assertSame([], $scope->get('ada')['folders']);
     }
 
     public function testAnAllowedFolderKeepsItsPermissionWhenRenamed(): void
@@ -200,7 +249,17 @@ final class ReadScopeTest extends TestCase
     private function scope(int $cap = 20): ReadScope
     {
         $config = $this->createMock(IConfig::class);
-        $config->method('getAppValue')->willReturn((string) $cap);
+        $config->method('getAppValue')->willReturnCallback(
+            fn (string $app, string $key, string $default = ''): string => match ($key) {
+                ReadScope::CAP => (string) $cap,
+                default => $this->appValues[$key] ?? $default,
+            },
+        );
+        $config->method('setAppValue')->willReturnCallback(
+            function (string $app, string $key, string $value): void {
+                $this->appValues[$key] = $value;
+            },
+        );
         $config->method('getUserValue')->willReturnCallback(
             fn (string $uid, string $app, string $key): string => $this->stored[$uid . $key] ?? '',
         );
@@ -246,7 +305,19 @@ final class ReadScopeTest extends TestCase
         $watches = $this->createStub(WatchIndex::class);
         $watches->method('rowsOf')->willReturnCallback(fn (): array => $this->watches);
 
-        return new ReadScope($config, $links, $watches, $root);
+        $userConfig = $this->createStub(IUserConfig::class);
+        $userConfig->method('getValuesByUsers')->willReturnCallback(function (string $app, string $key): array {
+            $values = [];
+            foreach ($this->stored as $uidKey => $value) {
+                if (str_ends_with($uidKey, $key)) {
+                    $values[substr($uidKey, 0, -strlen($key))] = $value;
+                }
+            }
+
+            return $values;
+        });
+
+        return new ReadScope($config, $links, $watches, $root, $userConfig);
     }
 
     private function folder(int $id, string $path): Folder

@@ -353,6 +353,11 @@ OC.L10N.register(
     "Resume watching" : "İzlemeye devam et",
     "Also handle the files that arrived while paused ({count})?" : "Duraklatılmışken gelen dosyalar da işlensin mi ({count})?",
     "Handle them too" : "Evet, onlar da",
-    "Only new files" : "Yalnızca yeni dosyalar"
+    "Only new files" : "Yalnızca yeni dosyalar",
+    "Your administrator lets Synaplan read only the folders you watch." : "Yöneticiniz Synaplan'ın yalnızca izlediğiniz klasörleri okumasına izin veriyor.",
+    "Synaplan may read at most" : "Synaplan en fazla şunları okuyabilir",
+    "People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody." : "Kişiler kişisel ayarlarında en fazla bunu seçebilir. Düşürmek daha fazlasını seçen herkesi daraltır; yükseltmek kimseyi genişletmez.",
+    "Folders people allow" : "Kişilerin izin verdiği klasörler",
+    "All their files" : "Tüm dosyaları"
 },
 "nplurals=2; plural=(n > 1);");

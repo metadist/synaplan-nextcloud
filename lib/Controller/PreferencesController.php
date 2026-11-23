@@ -45,13 +45,14 @@ class PreferencesController extends Controller
             'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
             'read_folder_cap' => $this->scope->cap(),
+            'read_scope_ceiling' => $this->scope->ceiling(),
         ]);
     }
 
     /**
      * Add one folder the person lets Synaplan read.
      *
-     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_FORBIDDEN, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function allowFolder(string $fileId = '', string $path = ''): JSONResponse
@@ -71,6 +72,9 @@ class PreferencesController extends Controller
             }
         }
         $reason = $this->scope->allow($uid, $fileId, $path);
+        if ($reason === 'ceiling') {
+            return new JSONResponse(['success' => false, 'error' => 'ceiling'], Http::STATUS_FORBIDDEN);
+        }
         if ($reason === 'cap') {
             return new JSONResponse([
                 'success' => false,

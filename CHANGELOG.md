@@ -30,6 +30,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   jobs run in AJAX mode, because watches then only move on while someone has
   a page open. In webcron mode the admin screen says watches get new files
   only as often as the outside service calls.
+- **Synaplan may read at most** on the admin screen: watched folders,
+  folders people allow (the default) or all their files. Personal settings
+  offer only the choices up to it. Lowering it narrows everyone who chose
+  more, and Synaplan learns it within the hour; raising it widens nobody.
+  An update from a version where someone already chose "All my files"
+  starts the ceiling at all their files, so nobody is narrowed silently.
 
 ### Fixed
 

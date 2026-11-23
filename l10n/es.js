@@ -353,6 +353,11 @@ OC.L10N.register(
     "Resume watching" : "Reanudar la vigilancia",
     "Also handle the files that arrived while paused ({count})?" : "¿Procesar también los archivos que llegaron durante la pausa ({count})?",
     "Handle them too" : "Sí, también esos",
-    "Only new files" : "Solo archivos nuevos"
+    "Only new files" : "Solo archivos nuevos",
+    "Your administrator lets Synaplan read only the folders you watch." : "Tu administrador solo deja que Synaplan lea las carpetas que vigilas.",
+    "Synaplan may read at most" : "Synaplan puede leer como máximo",
+    "People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody." : "Cada persona elige hasta aquí en su configuración personal. Bajarlo limita a quien eligió más; subirlo no amplía a nadie.",
+    "Folders people allow" : "Carpetas que las personas permiten",
+    "All their files" : "Todos sus archivos"
 },
 "nplurals=2; plural=(n != 1);");

@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\Files\Folder;
+use OCP\Config\IUserConfig;
 use OCP\Files\IRootFolder;
 use OCP\IConfig;
 
@@ -20,9 +21,15 @@ class ReadScope
     public const CAP = 'read_folder_cap';
     public const DEFAULT_CAP = 20;
 
+    /** The widest choice the administrator lets people make. */
+    public const CEILING = 'read_scope_ceiling';
+
     public const MODE_WATCHED = 'watched';
     public const MODE_ALLOWED = 'allowed';
     public const MODE_ALL = 'all';
+
+    /** Narrowest first. */
+    public const MODES = [self::MODE_WATCHED, self::MODE_ALLOWED, self::MODE_ALL];
 
     /** @var array<string, ?string> */
     private array $resolved = [];
@@ -32,7 +39,61 @@ class ReadScope
         private PlatformLinkService $links,
         private WatchIndex $watches,
         private IRootFolder $rootFolder,
+        private IUserConfig $userConfig,
     ) {
+    }
+
+    /**
+     * The administrator's ceiling; "folders people allow" until one is set.
+     */
+    public static function ceilingIn(IConfig $config): string
+    {
+        $ceiling = $config->getAppValue(Application::APP_ID, self::CEILING, self::MODE_ALLOWED);
+
+        return in_array($ceiling, self::MODES, true) ? $ceiling : self::MODE_ALLOWED;
+    }
+
+    public function ceiling(): string
+    {
+        return self::ceilingIn($this->config);
+    }
+
+    /**
+     * Set the ceiling. Lowering it narrows the saved choice of everyone above
+     * it, so raising it later widens nobody without their saying so. Synaplan
+     * learns the narrowed choices from the hourly job. Returns how many
+     * people were narrowed.
+     */
+    public function setCeiling(string $ceiling): int
+    {
+        if (!in_array($ceiling, self::MODES, true)) {
+            throw new \InvalidArgumentException('Unknown read ceiling.');
+        }
+        $this->config->setAppValue(Application::APP_ID, self::CEILING, $ceiling);
+        $narrowed = 0;
+        foreach ($this->userConfig->getValuesByUsers(Application::APP_ID, self::PREF) as $uid => $raw) {
+            $decoded = is_string($raw) ? json_decode($raw, true) : null;
+            if (!is_array($decoded) || !self::wider((string) ($decoded['mode'] ?? ''), $ceiling)) {
+                continue;
+            }
+            $decoded['mode'] = $ceiling;
+            $this->config->setUserValue((string) $uid, Application::APP_ID, self::PREF, (string) json_encode($decoded, JSON_UNESCAPED_SLASHES));
+            $this->config->setUserValue((string) $uid, Application::APP_ID, self::PENDING, '1');
+            $narrowed++;
+        }
+
+        return $narrowed;
+    }
+
+    /**
+     * True when $mode lets Synaplan read more than $than.
+     */
+    public static function wider(string $mode, string $than): bool
+    {
+        $rank = array_search($mode, self::MODES, true);
+        $limit = array_search($than, self::MODES, true);
+
+        return $rank !== false && $limit !== false && $rank > $limit;
     }
 
     /**
@@ -43,8 +104,12 @@ class ReadScope
         $raw = $this->config->getUserValue($uid, Application::APP_ID, self::PREF, '');
         $decoded = $raw !== '' ? json_decode($raw, true) : null;
         $mode = is_array($decoded) ? (string) ($decoded['mode'] ?? '') : '';
-        if (!in_array($mode, [self::MODE_WATCHED, self::MODE_ALLOWED, self::MODE_ALL], true)) {
+        if (!in_array($mode, self::MODES, true)) {
             $mode = self::MODE_WATCHED;
+        }
+        $ceiling = $this->ceiling();
+        if (self::wider($mode, $ceiling)) {
+            $mode = $ceiling;
         }
         $folders = [];
         foreach (is_array($decoded['folders'] ?? null) ? $decoded['folders'] : [] as $folder) {
@@ -69,11 +134,15 @@ class ReadScope
     }
 
     /**
-     * A folder the person named. `cap` when the administrator's limit is
-     * full, `folder` when the name cannot be used.
+     * A folder the person named. `ceiling` when the administrator lets
+     * Synaplan read only watched folders, `cap` when the administrator's
+     * limit is full, `folder` when the name cannot be used.
      */
     public function allow(string $uid, string $id, string $path): ?string
     {
+        if ($this->ceiling() === self::MODE_WATCHED) {
+            return 'ceiling';
+        }
         $path = self::clean($path);
         if ($path === '') {
             return 'folder';
@@ -109,8 +178,12 @@ class ReadScope
      */
     public function save(string $uid, string $mode, array $folders): void
     {
-        if (!in_array($mode, [self::MODE_WATCHED, self::MODE_ALLOWED, self::MODE_ALL], true)) {
+        if (!in_array($mode, self::MODES, true)) {
             $mode = self::MODE_WATCHED;
+        }
+        $ceiling = $this->ceiling();
+        if (self::wider($mode, $ceiling)) {
+            $mode = $ceiling;
         }
         $kept = [];
         foreach ($folders as $folder) {
