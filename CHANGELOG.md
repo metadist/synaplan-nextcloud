@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **The app's own files stay out of watches for good.** A file this app
+  wrote, such as a translation saved into a watched folder, counted as new
+  a week later, so a paused or late watch could take it again. Its mark now
+  lasts while the file keeps the app's version.
 - **A file moved into a paused folder is sent when the watch resumes.**
   Files that arrived while a watch was paused were only found by their
   modification time, so a file moved in with an older one was never sent.

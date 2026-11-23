@@ -15,12 +15,13 @@ use OCP\IDBConnection;
  * a watched folder is translated again. The version the app wrote is kept:
  * while the file still has it, a watch is told it is an own write, so its
  * ledger keeps it for good; once a person changed it, it is a file like any
- * other.
+ * other. A mark lasts while the file has that version, however long: a
+ * watch can be paused or reconciled long after the write.
  */
 class OwnWrites
 {
     private const TABLE = 'synaplan_own_writes';
-    private const KEEP_SECONDS = 7 * 86400;
+    private const PRUNE_BATCH = 1000;
 
     private ?bool $ready = null;
 
@@ -76,19 +77,47 @@ class OwnWrites
         $result = $qb->executeQuery();
         $written = $result->fetchOne();
         $result->closeCursor();
+        if (!is_string($written)) {
+            return false;
+        }
+        if ($written === $version) {
+            return true;
+        }
+        $delete = $this->db->getQueryBuilder();
+        $delete->delete(self::TABLE)
+            ->where($delete->expr()->eq('file_id', $delete->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($delete->expr()->eq('version', $delete->createNamedParameter($written)));
+        $delete->executeStatement();
 
-        return is_string($written) && $written === $version;
+        return false;
     }
 
-    public function prune(int $now): void
+    /**
+     * Forget the marks of files that are gone.
+     */
+    public function prune(): void
     {
         if (!$this->ready()) {
             return;
         }
         $qb = $this->db->getQueryBuilder();
-        $qb->delete(self::TABLE)
-            ->where($qb->expr()->lt('written', $qb->createNamedParameter($now - self::KEEP_SECONDS, IQueryBuilder::PARAM_INT)));
-        $qb->executeStatement();
+        $qb->select('o.file_id')->from(self::TABLE, 'o')
+            ->leftJoin('o', 'filecache', 'f', $qb->expr()->eq('f.fileid', 'o.file_id'))
+            ->where($qb->expr()->isNull('f.fileid'))
+            ->setMaxResults(self::PRUNE_BATCH);
+        $result = $qb->executeQuery();
+        $gone = [];
+        while (($id = $result->fetchOne()) !== false) {
+            $gone[] = (int) $id;
+        }
+        $result->closeCursor();
+        if ($gone === []) {
+            return;
+        }
+        $delete = $this->db->getQueryBuilder();
+        $delete->delete(self::TABLE)
+            ->where($delete->expr()->in('file_id', $delete->createNamedParameter($gone, IQueryBuilder::PARAM_INT_ARRAY)));
+        $delete->executeStatement();
     }
 
     private function ready(): bool

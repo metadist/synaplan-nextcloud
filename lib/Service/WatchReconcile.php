@@ -69,7 +69,7 @@ class WatchReconcile
             }
         }
         if (!$newOnly) {
-            $this->ownWrites->prune($now);
+            $this->ownWrites->prune();
         }
     }
 
