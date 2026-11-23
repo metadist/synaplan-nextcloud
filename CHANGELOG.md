@@ -155,9 +155,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for the answer.
 - **Synaplan hears of a person's file changes in the order they happened.**
   An event Synaplan could not take yet, such as a deletion while it was
-  down, now holds back the events after it, so a
-  restore can no longer arrive first and be ignored. It is tried again
-  after a minute, then 5, 15 and 60 minutes, and given up after that.
+  down, now holds back the events after it, so a restore can no longer
+  arrive first and be ignored. A change someone else made earlier to a file
+  shared with you reaches your copy before yours does. An event is tried
+  again after a minute, then 5, 15 and 60 minutes, and given up after that.
   Events go out in batches of up to 100 per call. The queue needs the new
   version number's database update.
 - **Synaplan also updates and forgets the copies of the people a file is

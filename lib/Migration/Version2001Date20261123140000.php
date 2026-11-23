@@ -40,6 +40,7 @@ class Version2001Date20261123140000 extends SimpleMigrationStep
             $table->addColumn('attempts', Types::INTEGER, ['notnull' => true, 'default' => 0]);
             $table->setPrimaryKey(['seq']);
             $table->addIndex(['uid', 'ord', 'seq'], 'synaplan_source_ev_order');
+            $table->addIndex(['step', 'ord'], 'synaplan_source_ev_step');
         }
 
         return $schema;

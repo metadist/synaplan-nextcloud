@@ -28,7 +28,12 @@ final class SourceEventsTableTest extends TestCase
             }
         );
         $table->expects(self::once())->method('setPrimaryKey')->with(['seq']);
-        $table->expects(self::once())->method('addIndex')->with(['uid', 'ord', 'seq'], 'synaplan_source_ev_order');
+        $indexes = [];
+        $table->method('addIndex')->willReturnCallback(function (array $columns, string $name) use (&$indexes, $table) {
+            $indexes[$name] = $columns;
+
+            return $table;
+        });
         $schema = $this->createMock(ISchemaWrapper::class);
         $schema->method('hasTable')->willReturn(false);
         $schema->expects(self::once())->method('createTable')->with('synaplan_source_events')->willReturn($table);
@@ -52,6 +57,7 @@ final class SourceEventsTableTest extends TestCase
             'due' => 'bigint',
             'attempts' => 'integer',
         ], $columns);
+        self::assertSame(['synaplan_source_ev_order' => ['uid', 'ord', 'seq'], 'synaplan_source_ev_step' => ['step', 'ord']], $indexes);
     }
 
     public function testATableThatIsThereAlreadyIsLeftAlone(): void

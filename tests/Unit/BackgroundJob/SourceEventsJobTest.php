@@ -349,6 +349,45 @@ class SourceEventsJobTest extends TestCase
         self::assertSame([], array_filter($this->jobsAdded, static fn (array $job): bool => $job[1] === ['uid' => 'carol']));
     }
 
+    public function testAnEventWaitsForAnOlderOneOfSomeoneElseToReachItsQueue(): void
+    {
+        $this->nodes['ada'][42] = $this->node(Node::class, '/ada/files/Specs/spec.pdf', 'ada');
+        $this->nodes['carol'][42] = $this->node(Node::class, '/carol/files/From Ada/spec.pdf', 'ada');
+        $this->sharedWith = ['carol'];
+        $this->queue->add('ada', ['id' => '42', 'event' => 'changed', 'version' => 'e2', 'path' => 'Specs/spec.pdf'], 10, SourceEventQueue::STEP_SHARE);
+        $this->queue('ada', '42', 'changed', 10, 'Specs/spec.pdf');
+        $this->queue('carol', '42', 'changed', 20, 'From Ada/spec.pdf');
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'carol']);
+
+        self::assertSame([], $this->sent, 'Ada changed the file first');
+        self::assertContains([SourceEventsJob::class, ['uid' => 'ada'], null], $this->jobsAdded);
+        self::assertSame([SourceEventsJob::class, ['uid' => 'carol'], 1_030], $this->jobsAdded[array_key_last($this->jobsAdded)]);
+
+        $this->runJob(['uid' => 'ada']);
+        $this->runJob(['uid' => 'carol']);
+
+        self::assertSame(['ada changed 42', 'carol changed 42', 'carol changed 42'], $this->sentEvents());
+        self::assertSame(['e2', 'e1'], array_column($this->sent[1][1], 'version'), 'Ada\'s version before Carol\'s');
+    }
+
+    public function testAPersonsEventsReachThePeopleTheyShareWithWhileTheirOwnWaitForARetry(): void
+    {
+        $this->nodes['ada'][42] = $this->node(Node::class, '/ada/files/Specs/spec.pdf', 'ada');
+        $this->nodes['carol'][42] = $this->node(Node::class, '/carol/files/From Ada/spec.pdf', 'ada');
+        $this->sharedWith = ['carol'];
+        $this->queue('ada', '7', 'changed', 5);
+        $this->queue->retryLater([1], 1, 2_000);
+        $this->queue->add('ada', ['id' => '42', 'event' => 'changed', 'version' => 'e2', 'path' => 'Specs/spec.pdf'], 10, SourceEventQueue::STEP_SHARE);
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'ada']);
+
+        self::assertSame(['ada send 7', 'carol send 42'], $this->queue->steps());
+        self::assertSame([], $this->sent);
+    }
+
     public function testAJobQueuedBeforeTheQueueSendsItsEvent(): void
     {
         $this->synaplanAnswers(static fn (): array => ['applied' => 1]);

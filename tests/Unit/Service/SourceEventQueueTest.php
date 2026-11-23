@@ -57,6 +57,15 @@ final class SourceEventQueueTest extends TestCase
         ], $this->statements[0]);
     }
 
+    public function testTheOldestEventStillToGoToOthersIsFoundAcrossPeople(): void
+    {
+        self::assertNull($this->queue()->oldestShare('carol'));
+        self::assertSame(
+            ['select synaplan_source_events', 'where step="share"', 'where uid<>"carol"', 'order ord ASC', 'limit 1'],
+            $this->statements[0],
+        );
+    }
+
     public function testARetryHoldsTheRowsBackUntilTheyAreDue(): void
     {
         $this->queue()->retryLater([3, 4], 2, 1_300);
