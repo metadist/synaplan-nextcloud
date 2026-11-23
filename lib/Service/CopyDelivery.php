@@ -142,16 +142,17 @@ class CopyDelivery
     }
 
     /**
-     * A folder a person typed. Empty means the Synaplan folder. `..` is refused.
+     * A folder a person typed. Empty, or only spaces, means the Synaplan
+     * folder. `..` and a blank folder name inside the path are refused.
      */
     public static function cleanFolder(string $folder): string
     {
-        $folder = trim(str_replace('\\', '/', $folder), '/');
-        if ($folder === '') {
+        $folder = trim(trim(str_replace('\\', '/', $folder)), '/');
+        if (trim($folder) === '') {
             return '';
         }
         foreach (explode('/', $folder) as $segment) {
-            if ($segment === '' || $segment === '.' || $segment === '..') {
+            if (trim($segment) === '' || $segment === '.' || $segment === '..') {
                 throw new \InvalidArgumentException('That folder cannot be used.');
             }
         }

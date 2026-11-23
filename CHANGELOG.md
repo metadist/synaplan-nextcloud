@@ -80,6 +80,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Also folders I allow** keeps the folders you watch readable. Allowing
   one more folder, also through **Let Synaplan read this folder**, stopped
   Synaplan reading the watched ones.
+- **A folder for files from Synaplan made of spaces** means the Synaplan
+  folder, and a path with a blank folder name in it, like `Projects/ /Q3`,
+  is refused. Both were saved, and copies went into a folder without a
+  visible name.
 
 ## 2.0.0 – 2026-11-16
 

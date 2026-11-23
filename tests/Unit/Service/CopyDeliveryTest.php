@@ -152,6 +152,22 @@ final class CopyDeliveryTest extends TestCase
         self::assertSame('unreachable', $this->failure());
     }
 
+    public function testAFolderIsCleanedOrRefused(): void
+    {
+        self::assertSame('', CopyDelivery::cleanFolder(''));
+        self::assertSame('', CopyDelivery::cleanFolder('   '));
+        self::assertSame('', CopyDelivery::cleanFolder(' / '));
+        self::assertSame('Projects/Q3', CopyDelivery::cleanFolder(' /Projects/Q3/ '));
+        self::assertSame('Projects/Q3', CopyDelivery::cleanFolder('Projects\\Q3'));
+        foreach (['Projects/ /Q3', 'Projects//Q3', 'Projects/../HR', './Q3'] as $refused) {
+            try {
+                CopyDelivery::cleanFolder($refused);
+                self::fail($refused . ' was accepted');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+    }
+
     public function testAFailedClaimIsTriedAgainInTheBackground(): void
     {
         $this->links->method('claimDelivery')->willThrowException(new \RuntimeException('connection refused'));
