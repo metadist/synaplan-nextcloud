@@ -240,12 +240,7 @@ class ReadScope
         $before = $scope;
         // A folder that moved is listed where it is now, never under the
         // name a new folder took.
-        foreach ($scope['folders'] as $i => $folder) {
-            $now = $folder['id'] !== '' ? $this->currentPath($uid, $folder) : null;
-            if ($now !== null) {
-                $scope['folders'][$i]['path'] = $now;
-            }
-        }
+        $scope['folders'] = $this->withCurrentPaths($uid, $scope['folders']);
         $id = $this->idAt($uid, $path);
         $at = $this->entryFor($uid, $scope['folders'], $id, $path);
         if ($at === null) {
@@ -302,8 +297,9 @@ class ReadScope
 
     /**
      * A folder the person kept stays the folder it was saved as, found or
-     * not, whatever now sits at its path; a folder added here is the one at
-     * its path now. An id the request carries only says which saved folder
+     * not, whatever now sits at its path, and is saved where it is now: a
+     * move the listener missed is put right here. A folder added here is
+     * the one at its path now. An id the request carries only says which saved folder
      * it keeps.
      *
      * @param list<array{id: string, path: string}> $folders
@@ -325,6 +321,7 @@ class ReadScope
                 continue;
             }
             $entry = self::savedEntry($saved, $folder['id'], $path) ?? ['id' => $this->idAt($uid, $path), 'path' => $path];
+            [$entry] = $this->withCurrentPaths($uid, [$entry]);
             if (in_array($entry, $kept, true)) {
                 continue;
             }
@@ -441,8 +438,8 @@ class ReadScope
     }
 
     /**
-     * Send the saved setting again after a report failed. True when Synaplan
-     * holds it now.
+     * Send the saved setting again after a report failed, each folder where
+     * it is now. True when Synaplan holds it now.
      */
     public function republish(string $uid): bool
     {
@@ -452,6 +449,10 @@ class ReadScope
     private function republishNow(string $uid): bool
     {
         $scope = $this->get($uid);
+        $folders = $this->withCurrentPaths($uid, $scope['folders']);
+        if ($folders !== $scope['folders']) {
+            return $this->store($uid, ['mode' => $scope['mode'], 'folders' => $folders]);
+        }
         if (!$this->report($uid, $scope)) {
             return false;
         }
@@ -474,25 +475,32 @@ class ReadScope
     private function followNow(string $uid): bool
     {
         $scope = $this->get($uid);
-        if ($scope['folders'] === []) {
+        $folders = $this->withCurrentPaths($uid, $scope['folders']);
+        if ($folders === $scope['folders']) {
             return false;
         }
-        $moved = false;
-        foreach ($scope['folders'] as $i => $folder) {
-            if ($folder['id'] === '') {
-                continue;
+        $this->store($uid, ['mode' => $scope['mode'], 'folders' => $folders]);
+
+        return true;
+    }
+
+    /**
+     * Each folder saved with an id at the path where it is now; one that
+     * cannot be found, or was saved without an id, keeps its saved path.
+     *
+     * @param list<array{id: string, path: string}> $folders
+     * @return list<array{id: string, path: string}>
+     */
+    private function withCurrentPaths(string $uid, array $folders): array
+    {
+        foreach ($folders as $i => $folder) {
+            $now = $folder['id'] !== '' ? $this->currentPath($uid, $folder) : null;
+            if ($now !== null) {
+                $folders[$i]['path'] = $now;
             }
-            $path = $this->currentPath($uid, $folder);
-            if ($path !== null && $path !== $folder['path']) {
-                $scope['folders'][$i]['path'] = $path;
-                $moved = true;
-            }
-        }
-        if ($moved) {
-            $this->store($uid, $scope);
         }
 
-        return $moved;
+        return $folders;
     }
 
     /**
@@ -543,9 +551,11 @@ class ReadScope
     }
 
     /**
+     * True when Synaplan took the setting too.
+     *
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
-    private function store(string $uid, array $scope): void
+    private function store(string $uid, array $scope): bool
     {
         $this->resolved = [];
         $this->config->setUserValue(
@@ -556,12 +566,15 @@ class ReadScope
         );
         if ($this->report($uid, $scope)) {
             $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
-        } else {
-            // The setting here is what a read checks, but Synaplan refuses a
-            // run from its copy before it asks. Keep the debt where the hourly
-            // job finds it instead of dropping it.
-            $this->config->setUserValue($uid, Application::APP_ID, self::PENDING, '1');
+
+            return true;
         }
+        // The setting here is what a read checks, but Synaplan refuses a
+        // run from its copy before it asks. Keep the debt where the hourly
+        // job finds it instead of dropping it.
+        $this->config->setUserValue($uid, Application::APP_ID, self::PENDING, '1');
+
+        return false;
     }
 
     /**

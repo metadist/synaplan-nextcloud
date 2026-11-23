@@ -121,7 +121,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refused without changing the saved setting.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
-  new path until the person saved their read setting again.
+  new path until the person saved their read setting again. A move that
+  could not be reported then is put right the next time the setting is
+  saved or the hourly job sends it again.
 - **A copy that cannot be written** tells Synaplan why: storage full, a
   folder the person may not write to, a target folder that is gone, twenty
   files with that name, or a file over 100 MB. Every failure used to read

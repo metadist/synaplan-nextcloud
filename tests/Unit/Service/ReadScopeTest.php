@@ -272,6 +272,38 @@ final class ReadScopeTest extends TestCase
         self::assertFalse($scope->mayRead('ada', 'Invoices'));
     }
 
+    public function testSavingTheSettingsPutsRightAMoveTheListenerMissed(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+        $this->reports = [];
+
+        // Invoices moved, and the listener could not report it.
+        $this->folders = ['Archive/Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+
+        $expected = [['id' => '3', 'path' => 'Archive/Invoices']];
+        self::assertSame([$expected], $this->reports);
+        self::assertSame($expected, $this->scope()->get('ada')['folders']);
+    }
+
+    public function testTheHourlyRepublishSendsEachFolderWhereItIsNow(): void
+    {
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALLOWED,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        $this->stored['ada' . ReadScope::PENDING] = '1';
+        $this->folders = ['Archive/Invoices' => 3];
+
+        self::assertTrue($this->scope()->republish('ada'));
+
+        $expected = [['id' => '3', 'path' => 'Archive/Invoices']];
+        self::assertSame([$expected], $this->reports);
+        self::assertSame($expected, $this->scope()->get('ada')['folders']);
+        self::assertArrayNotHasKey('ada' . ReadScope::PENDING, $this->stored);
+    }
+
     public function testAFolderThatCannotBeFoundWhenSavedKeepsItsId(): void
     {
         $this->folders = ['Invoices' => 3];
