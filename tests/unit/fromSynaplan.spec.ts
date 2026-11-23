@@ -63,6 +63,16 @@ describe('addFiles', () => {
 			'This file does not fit into your storage. Make room and try again.',
 		)
 	})
+
+	it('adds into a folder named Files, not the top folder', async () => {
+		post.mockResolvedValueOnce({
+			data: { success: true, name: 'cat.png', folder: 'Files' },
+		})
+
+		const result = await addFiles([chart], '/Files')
+
+		expect(result.added).toEqual([{ name: 'cat.png', path: '/Files/cat.png' }])
+	})
 })
 
 describe('folderLabel', () => {

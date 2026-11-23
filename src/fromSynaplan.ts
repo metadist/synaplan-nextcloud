@@ -44,6 +44,8 @@ export async function addFiles(
 	folder: string,
 ): Promise<AddResult> {
 	const url = generateUrl('/apps/synaplan_integration/api/v1/from-synaplan')
+	// The answer names the top folder "Files", like a folder of that name.
+	const into = folder.replace(/^\/+|\/+$/g, '')
 	const added: AddedFile[] = []
 	for (const file of files) {
 		try {
@@ -60,8 +62,10 @@ export async function addFiles(
 					},
 				}
 			}
-			const into = data.folder === 'Files' ? '' : `${data.folder}/`
-			added.push({ name: data.name, path: `/${into}${data.name}` })
+			added.push({
+				name: data.name,
+				path: into === '' ? `/${data.name}` : `/${into}/${data.name}`,
+			})
 		} catch (error: unknown) {
 			return { added, failure: failureFromError(error) }
 		}
