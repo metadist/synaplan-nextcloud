@@ -503,12 +503,17 @@ class ReadScope
     }
 
     /**
+     * The named folders stay here under the other choices, so switching back
+     * restores them, but Synaplan opens a read of any folder in its copy
+     * without looking at the mode.
+     *
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
     private function report(string $uid, array $scope): bool
     {
+        $folders = $scope['mode'] === self::MODE_ALLOWED ? $scope['folders'] : [];
         try {
-            return $this->links->reportReadScope($uid, $scope['mode'], $scope['folders']);
+            return $this->links->reportReadScope($uid, $scope['mode'], $folders);
         } catch (\Throwable) {
             return false;
         }

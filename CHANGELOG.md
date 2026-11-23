@@ -62,6 +62,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Notifications signed with a new key** make Synaplan's keys be read at most
   once a minute also when several arrive at once. Each used to read the old
   check time and fetch the keys itself.
+- **"Only what I watch" and "All my files"** no longer tell Synaplan the
+  folders named under "Also folders I allow". Synaplan opened reads of them
+  that the app then refused. The app keeps the list for when the person
+  switches back.
 - **The searchable files on the Synaplan page** are the newest hundred that
   came from Nextcloud. The app asked Synaplan for page 100 of all files, so
   the list was mostly empty.

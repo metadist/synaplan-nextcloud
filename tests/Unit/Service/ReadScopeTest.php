@@ -208,6 +208,19 @@ final class ReadScopeTest extends TestCase
         self::assertSame(ReadScope::MODE_ALLOWED, $this->scope()->get('ada')['mode']);
     }
 
+    public function testSynaplanHearsOfTheNamedFoldersOnlyUnderAlsoFoldersIAllow(): void
+    {
+        $this->folders = ['HR' => 4];
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'HR']]);
+        $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '4', 'path' => 'HR']]);
+        $scope->save('ada', ReadScope::MODE_ALL, [['id' => '4', 'path' => 'HR']]);
+
+        self::assertSame([[['id' => '4', 'path' => 'HR']], [], []], $this->reports);
+        self::assertSame([['id' => '4', 'path' => 'HR']], $scope->get('ada')['folders']);
+    }
+
     public function testAnAllowedFolderKeepsItsPermissionWhenRenamed(): void
     {
         $this->folders = ['Invoices' => 3];
