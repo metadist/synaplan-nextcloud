@@ -306,6 +306,47 @@ class ApiControllerTest extends TestCase
         $this->assertTrue($data['vectorized']);
     }
 
+    /**
+     * Ada's Shelf/plan.pdf, as Nextcloud gives its path below her files.
+     */
+    private function adasPlan(): void
+    {
+        $user = $this->createStub(IUser::class);
+        $user->method('getUID')->willReturn('ada');
+        $this->userSession->method('getUser')->willReturn($user);
+        $file = $this->createStub(File::class);
+        $file->method('getContent')->willReturn('%PDF-1.7');
+        $file->method('getMimeType')->willReturn('application/pdf');
+        $file->method('getName')->willReturn('plan.pdf');
+        $file->method('getSize')->willReturn(8);
+        $file->method('getEtag')->willReturn('e1');
+        $file->method('getPath')->willReturn('/ada/files/Shelf/plan.pdf');
+        $userFolder = $this->createStub(Folder::class);
+        $userFolder->method('getFirstNodeById')->willReturn($file);
+        $userFolder->method('getRelativePath')->willReturn('/Shelf/plan.pdf');
+        $this->rootFolder->method('getUserFolder')->willReturn($userFolder);
+    }
+
+    public function testAFileMadeSearchableIsNamedAsItsMovesAndNewVersionsNameIt(): void
+    {
+        $this->adasPlan();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with('plan.pdf', '%PDF-1.7', 'DOCS', 'vectorize', 'Shelf/plan.pdf')
+            ->willReturn(['success' => true, 'files' => [['chunks_created' => 1, 'vectorized' => true]]]);
+
+        $this->assertTrue($this->controller->uploadToKnowledge(42, 'DOCS')->getData()['success']);
+    }
+
+    public function testAFileSummarizedIsNamedWithoutALeadingSlash(): void
+    {
+        $this->adasPlan();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with('plan.pdf', '%PDF-1.7', '_nextcloud_temp', 'extract', 'Shelf/plan.pdf')
+            ->willThrowException(new \RuntimeException('stop after the upload'));
+
+        $this->controller->summarize(42);
+    }
+
     public function testAFileSynaplanRefusesIsAFailureWithSynaplansReason(): void
     {
         $user = $this->createMock(IUser::class);

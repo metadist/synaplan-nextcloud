@@ -283,7 +283,7 @@ class ApiController extends Controller
             $filename = $node->getName();
             // Preserve the user-relative source path as provenance (falls back
             // to the basename) so Synaplan can show where this file came from.
-            $originalName = $userFolder->getRelativePath($node->getPath()) ?? $filename;
+            $originalName = ltrim($userFolder->getRelativePath($node->getPath()) ?? $filename, '/');
 
             // CORE-4: key the knowledge entry on the Nextcloud file id + etag and
             // always overwrite, so re-adding (or adding a changed) file updates
@@ -536,7 +536,7 @@ class ApiController extends Controller
                 $node->getContent(),
                 '_nextcloud_temp',
                 'extract',
-                $userFolder->getRelativePath($node->getPath()) ?? $node->getName(),
+                ltrim($userFolder->getRelativePath($node->getPath()) ?? $node->getName(), '/'),
             );
 
             $fileInfo = $uploadResult['files'][0] ?? null;

@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **A file made searchable keeps one name in Synaplan.** Make searchable,
+  summaries and translations sent its path with a leading slash
+  (`/Shelf/plan.txt`), and its first move or new version without one
+  (`Shelf/plan.txt`). They now send it without.
 - **A removed file's bird stays away.** A slow answer asked for before
   Remove could arrive after the answer asked for after it and bring the
   bird back. Such an answer is now dropped and asked for again.
