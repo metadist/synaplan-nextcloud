@@ -97,8 +97,11 @@ class PlatformLinkService
      */
     public function reportSourceEvents(array $events, string $uid): array
     {
-        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '' || !$this->canActFor($uid)) {
+        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '') {
             return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
+        }
+        if (!$this->canActFor($uid)) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => []] + ($this->canActForLater($uid) ? ['retry' => true] : []);
         }
         try {
             $decoded = $this->request(

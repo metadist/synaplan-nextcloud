@@ -52,6 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **A file change made while your connection cannot be renewed** reaches
+  Synaplan once it can. With Synaplan briefly unreachable and your access
+  token expired, the change or deletion used to be dropped.
 - **Withdrawing consent while a token refresh is under way** no longer lets
   the refresh's answer store the grant again, also when the withdrawal
   could not wait for the refresh. Revoking waits for the refresh and ends

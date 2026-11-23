@@ -580,4 +580,16 @@ class PlatformLinkServiceTest extends TestCase
 
         $this->service()->disconnectUid('jdoe');
     }
+
+    public function testAnEventWaitsWhileAHeldGrantsTokenCannotBeRenewed(): void
+    {
+        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('inst-1');
+        $this->userAccounts->method('getStoredApiKey')->willReturn('');
+        $this->userAccounts->method('holdsGrant')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->httpClient->expects($this->never())->method('post');
+        $events = [['id' => '42', 'event' => 'deleted', 'version' => 'e1', 'path' => '']];
+
+        self::assertSame(['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true], $this->service()->reportSourceEvents($events, 'ada'));
+        self::assertSame(['applied' => 0, 'ignored' => 0, 'reupload' => []], $this->service()->reportSourceEvents($events, 'bob'), 'Bob holds no grant');
+    }
 }
