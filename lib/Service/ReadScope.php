@@ -8,7 +8,10 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\Files\Folder;
 use OCP\Config\IUserConfig;
 use OCP\Files\IRootFolder;
+use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 
 /**
  * What this person lets Synaplan read. The app decides; Synaplan only keeps
@@ -31,6 +34,8 @@ class ReadScope
     /** Narrowest first. */
     public const MODES = [self::MODE_WATCHED, self::MODE_ALLOWED, self::MODE_ALL];
 
+    private const LOCK_WAIT_SECONDS = 10;
+
     /** @var array<string, ?string> */
     private array $resolved = [];
 
@@ -40,6 +45,8 @@ class ReadScope
         private WatchIndex $watches,
         private IRootFolder $rootFolder,
         private IUserConfig $userConfig,
+        private IAppConfig $appConfig,
+        private ILockingProvider $locks,
     ) {
     }
 
@@ -63,26 +70,94 @@ class ReadScope
      * it, so raising it later widens nobody without their saying so. Synaplan
      * learns the narrowed choices from the hourly job. Returns how many
      * people were narrowed.
+     *
+     * No personal change runs meanwhile: one that began earlier is saved
+     * before the sweep reads it, one that begins later sees the new ceiling.
+     *
+     * @throws LockedException when personal changes keep running
      */
     public function setCeiling(string $ceiling): int
     {
         if (!in_array($ceiling, self::MODES, true)) {
             throw new \InvalidArgumentException('Unknown read ceiling.');
         }
-        $this->config->setAppValue(Application::APP_ID, self::CEILING, $ceiling);
-        $narrowed = 0;
-        foreach ($this->userConfig->getValuesByUsers(Application::APP_ID, self::PREF) as $uid => $raw) {
-            $decoded = is_string($raw) ? json_decode($raw, true) : null;
-            if (!is_array($decoded) || !self::wider((string) ($decoded['mode'] ?? ''), $ceiling)) {
-                continue;
+        $this->acquire(self::ceilingLock(), ILockingProvider::LOCK_EXCLUSIVE);
+        try {
+            $this->config->setAppValue(Application::APP_ID, self::CEILING, $ceiling);
+            $narrowed = 0;
+            foreach ($this->userConfig->getValuesByUsers(Application::APP_ID, self::PREF) as $uid => $raw) {
+                $decoded = is_string($raw) ? json_decode($raw, true) : null;
+                if (!is_array($decoded) || !self::wider((string) ($decoded['mode'] ?? ''), $ceiling)) {
+                    continue;
+                }
+                $decoded['mode'] = $ceiling;
+                $this->config->setUserValue((string) $uid, Application::APP_ID, self::PREF, (string) json_encode($decoded, JSON_UNESCAPED_SLASHES));
+                $this->config->setUserValue((string) $uid, Application::APP_ID, self::PENDING, '1');
+                $narrowed++;
             }
-            $decoded['mode'] = $ceiling;
-            $this->config->setUserValue((string) $uid, Application::APP_ID, self::PREF, (string) json_encode($decoded, JSON_UNESCAPED_SLASHES));
-            $this->config->setUserValue((string) $uid, Application::APP_ID, self::PENDING, '1');
-            $narrowed++;
-        }
+            $this->userConfig->clearCacheAll();
 
-        return $narrowed;
+            return $narrowed;
+        } finally {
+            $this->locks->releaseLock(self::ceilingLock(), ILockingProvider::LOCK_EXCLUSIVE);
+        }
+    }
+
+    /**
+     * Run a change of the person's choice and its report to Synaplan alone:
+     * after any ceiling change under way, after any other change of theirs,
+     * and on the values saved now rather than those this request read
+     * earlier.
+     *
+     * @template T
+     * @param callable(): T $change
+     * @return T
+     * @throws LockedException when a ceiling change or another change of theirs keeps running
+     */
+    private function changing(string $uid, callable $change): mixed
+    {
+        $person = Application::APP_ID . '/read-scope/' . $uid;
+        $this->acquire(self::ceilingLock(), ILockingProvider::LOCK_SHARED);
+        try {
+            $this->acquire($person, ILockingProvider::LOCK_EXCLUSIVE);
+            try {
+                $this->appConfig->clearCache();
+                $this->userConfig->clearCache($uid);
+                $this->resolved = [];
+
+                return $change();
+            } finally {
+                $this->locks->releaseLock($person, ILockingProvider::LOCK_EXCLUSIVE);
+            }
+        } finally {
+            $this->locks->releaseLock(self::ceilingLock(), ILockingProvider::LOCK_SHARED);
+        }
+    }
+
+    private static function ceilingLock(): string
+    {
+        return Application::APP_ID . '/read-scope-ceiling';
+    }
+
+    /**
+     * @param ILockingProvider::LOCK_* $type
+     * @throws LockedException
+     */
+    private function acquire(string $lock, int $type): void
+    {
+        $deadline = microtime(true) + self::LOCK_WAIT_SECONDS;
+        while (true) {
+            try {
+                $this->locks->acquireLock($lock, $type);
+
+                return;
+            } catch (LockedException $e) {
+                if (microtime(true) >= $deadline) {
+                    throw $e;
+                }
+                usleep(100_000);
+            }
+        }
     }
 
     /**
@@ -140,6 +215,11 @@ class ReadScope
      */
     public function allow(string $uid, string $id, string $path): ?string
     {
+        return $this->changing($uid, fn (): ?string => $this->allowNow($uid, $id, $path));
+    }
+
+    private function allowNow(string $uid, string $id, string $path): ?string
+    {
         if ($this->ceiling() === self::MODE_WATCHED) {
             return 'ceiling';
         }
@@ -177,6 +257,14 @@ class ReadScope
      * @param list<array{id: string, path: string}> $folders
      */
     public function save(string $uid, string $mode, array $folders): void
+    {
+        $this->changing($uid, fn () => $this->saveNow($uid, $mode, $folders));
+    }
+
+    /**
+     * @param list<array{id: string, path: string}> $folders
+     */
+    private function saveNow(string $uid, string $mode, array $folders): void
     {
         if (!in_array($mode, self::MODES, true)) {
             $mode = self::MODE_WATCHED;
@@ -283,6 +371,11 @@ class ReadScope
      */
     public function republish(string $uid): bool
     {
+        return $this->changing($uid, fn (): bool => $this->republishNow($uid));
+    }
+
+    private function republishNow(string $uid): bool
+    {
         $scope = $this->get($uid);
         if (!$this->report($uid, $scope)) {
             return false;
@@ -300,11 +393,15 @@ class ReadScope
      */
     public function follow(string $uid): bool
     {
+        return $this->changing($uid, fn (): bool => $this->followNow($uid));
+    }
+
+    private function followNow(string $uid): bool
+    {
         $scope = $this->get($uid);
         if ($scope['folders'] === []) {
             return false;
         }
-        $this->resolved = [];
         $moved = false;
         foreach ($scope['folders'] as $i => $folder) {
             if ($folder['id'] === '') {
