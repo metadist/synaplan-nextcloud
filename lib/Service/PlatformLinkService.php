@@ -197,6 +197,15 @@ class PlatformLinkService
     }
 
     /**
+     * Whether this Synaplan takes watches: it lists them only while its cloud
+     * files are on.
+     */
+    public function takesWatches(): bool
+    {
+        return in_array('watches', $this->offers(), true);
+    }
+
+    /**
      * What this Synaplan offers clouds, as its configuration lists it. With
      * platform links off it offers nothing. While Synaplan gives no answer,
      * its last answer of the past day stands in, else it offers nothing, and

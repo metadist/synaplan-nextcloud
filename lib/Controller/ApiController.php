@@ -128,7 +128,7 @@ class ApiController extends Controller
     {
         return new JSONResponse([
             'translation' => $this->synaplanClient->offersSummaryType('translation'),
-            'watches' => WatchPolicy::watchingAllowedIn($this->config),
+            'watches' => WatchPolicy::watchingAllowedIn($this->config) && $this->links->takesWatches(),
             'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
             'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED
                 && $this->links->readsFolders(),

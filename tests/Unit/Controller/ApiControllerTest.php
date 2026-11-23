@@ -34,6 +34,7 @@ class ApiControllerTest extends TestCase
     private LoggerInterface&MockObject $logger;
     private bool $readsFolders = true;
     private bool $followsChanges = true;
+    private bool $takesWatches = true;
     private ApiController $controller;
 
     protected function setUp(): void
@@ -56,6 +57,7 @@ class ApiControllerTest extends TestCase
         $links = $this->createStub(PlatformLinkService::class);
         $links->method('readsFolders')->willReturnCallback(fn (): bool => $this->readsFolders);
         $links->method('followsChanges')->willReturnCallback(fn (): bool => $this->followsChanges);
+        $links->method('takesWatches')->willReturnCallback(fn (): bool => $this->takesWatches);
 
         $this->controller = new ApiController(
             $this->request,
@@ -404,6 +406,14 @@ class ApiControllerTest extends TestCase
 
         $this->followsChanges = false;
         $this->assertFalse($this->controller->features()->getData()['followsChanges']);
+    }
+
+    public function testWatchIsOfferedOnlyWhereSynaplanTakesWatches(): void
+    {
+        $this->assertTrue($this->controller->features()->getData()['watches']);
+
+        $this->takesWatches = false;
+        $this->assertFalse($this->controller->features()->getData()['watches']);
     }
 
     public function testUploadToKnowledgeFileNotFound(): void

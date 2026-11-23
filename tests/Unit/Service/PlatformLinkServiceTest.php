@@ -144,6 +144,29 @@ class PlatformLinkServiceTest extends TestCase
         self::assertSame($follows, $this->service()->followsChanges());
     }
 
+    /**
+     * @return iterable<string, array{list<string>, bool}>
+     */
+    public static function watchOffers(): iterable
+    {
+        yield 'cloud files on' => [['deliveries', 'pickups', 'read_scope', 'cloud_status', 'source_events', 'watches'], true];
+        yield 'cloud files off' => [['deliveries', 'pickups', 'read_scope'], false];
+    }
+
+    /**
+     * @param list<string> $capabilities
+     */
+    #[DataProvider('watchOffers')]
+    public function testSynaplanTakesWatchesOnlyWhileItListsThem(array $capabilities, bool $takes): void
+    {
+        $this->httpClient->method('get')->willReturn($this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => $capabilities,
+        ])));
+
+        self::assertSame($takes, $this->service()->takesWatches());
+    }
+
     public function testWhileSynaplanGivesNoAnswerItsLastAnswerStandsInAndItIsAskedAgainSoon(): void
     {
         $answer = fn (): IResponse => $this->answer(200, (string) json_encode([

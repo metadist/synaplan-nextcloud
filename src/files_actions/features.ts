@@ -51,8 +51,8 @@ export function translationOffered(): boolean {
 }
 
 /**
- * Whether the administrator allows watching folders at all, as far as is
- * known yet.
+ * Whether the administrator allows watching folders at all and Synaplan
+ * takes watches, as far as is known yet.
  */
 export function watchingAllowed(): boolean {
 	return features.watches
