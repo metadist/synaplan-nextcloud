@@ -147,6 +147,25 @@ final class WatchReconcileTest extends TestCase
         self::assertSame([500, 1], $sizes);
     }
 
+    public function testAPassThatRunsOutOfTimeStopsBetweenQuestionsAndIsTriedAgain(): void
+    {
+        $files = [];
+        for ($id = 1; $id <= 501; $id++) {
+            $files[] = $this->file($id, 'e' . $id, self::NOW);
+        }
+        $this->watching(self::WATCH, $this->folder($files));
+        $this->links->expects($this->once())->method('reconcileWatch')->willReturnCallback(
+            static function (): array {
+                usleep(50000);
+
+                return ['process' => [], 'forget' => []];
+            },
+        );
+        $this->index->expects($this->never())->method('markReconciled');
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 0.02, false);
+    }
+
     public function testAWatchReconciledWithinTheIntervalWaits(): void
     {
         $this->index->method('active')->willReturn([['reconciled' => self::NOW - 1800] + self::WATCH]);

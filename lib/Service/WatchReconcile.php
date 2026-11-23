@@ -99,6 +99,9 @@ class WatchReconcile
         $quiet = WatchFeed::quietSecondsIn($this->config);
         $files = $this->candidates($watch);
         foreach (array_chunk(array_map(WatchSender::version(...), $files), self::BATCH, true) as $batch) {
+            if (microtime(true) > $deadline) {
+                return false;
+            }
             try {
                 $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
             } catch (\Throwable $e) {
