@@ -90,6 +90,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   folder, and a path with a blank folder name in it, like `Projects/ /Q3`,
   is refused. Both were saved, and copies went into a folder without a
   visible name.
+- **The table of notifications already seen** comes with the app's
+  migrations, like its other tables. It was created at the first
+  notification with SQL that Oracle does not accept, so no copy arrived
+  there.
 
 ## 2.0.0 – 2026-11-16
 

@@ -19,8 +19,6 @@ class SeenNotifications implements SeenNotificationStore
     private const TABLE = 'synaplan_seen';
     private const TTL = 600;
 
-    private bool $tableReady = false;
-
     public function __construct(
         private IDBConnection $db,
     ) {
@@ -28,7 +26,6 @@ class SeenNotifications implements SeenNotificationStore
 
     public function alreadySeen(string $type, string $id): bool
     {
-        $this->ensureTable();
         $now = time();
         $hash = hash('sha256', $type . '|' . $id);
         $this->forgetExpired($now);
@@ -56,22 +53,5 @@ class SeenNotifications implements SeenNotificationStore
         $delete->delete(self::TABLE)
             ->where($delete->expr()->lt('expires', $delete->createNamedParameter($now, IQueryBuilder::PARAM_INT)));
         $delete->executeStatement();
-    }
-
-    private function ensureTable(): void
-    {
-        if ($this->tableReady || $this->db->tableExists(self::TABLE)) {
-            $this->tableReady = true;
-
-            return;
-        }
-        $this->db->executeStatement(
-            'CREATE TABLE IF NOT EXISTS `*PREFIX*synaplan_seen` (
-                `notice_hash` VARCHAR(64) NOT NULL,
-                `expires` BIGINT NOT NULL,
-                PRIMARY KEY (`notice_hash`)
-            )'
-        );
-        $this->tableReady = true;
     }
 }
