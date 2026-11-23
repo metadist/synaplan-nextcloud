@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCP\Http\Client\IClientService;
+use OCP\ICacheFactory;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -16,12 +17,17 @@ use Psr\Log\LoggerInterface;
 class CloudStateService
 {
     private const TIMEOUT = 15;
+    /** How long the glyphs Synaplan sets are kept; they change with its white-label settings only. */
+    private const GLYPHS_TTL = 300;
+    /** How soon a Synaplan that gave no glyph answer is asked again. */
+    private const GLYPHS_RETRY_TTL = 60;
 
     public function __construct(
         private IClientService $clientService,
         private SynaplanConfig $synaplanConfig,
         private SynaplanClient $synaplanClient,
         private LoggerInterface $logger,
+        private ICacheFactory $cacheFactory,
     ) {
     }
 
@@ -106,24 +112,37 @@ class CloudStateService
     }
 
     /**
-     * Optional white-label glyph URLs from /api/v1/config/runtime.
+     * Optional white-label glyph URLs from /api/v1/config/runtime, the same
+     * for everyone, so one answer serves every page for a while.
      *
      * @return array{bird: string|null, bird_eyes: string|null}
      */
     public function glyphOverrides(): array
     {
+        $cache = $this->cacheFactory->createDistributed(Application::APP_ID);
+        $key = 'glyphs/' . md5($this->synaplanConfig->getBaseUrl());
+        $kept = json_decode((string) $cache->get($key), true);
+        if (is_array($kept) && array_key_exists('bird', $kept) && array_key_exists('bird_eyes', $kept)) {
+            return ['bird' => self::url($kept['bird']), 'bird_eyes' => self::url($kept['bird_eyes'])];
+        }
+
         try {
             $decoded = $this->request('GET', '/api/v1/config/runtime', null, null);
         } catch (\Throwable) {
-            return ['bird' => null, 'bird_eyes' => null];
+            $decoded = ['status_code' => 503];
         }
-
-        $cloudFiles = is_array($decoded['cloud_files'] ?? null) ? $decoded['cloud_files'] : [];
+        $answered = (int) ($decoded['status_code'] ?? 200) < 400;
+        $cloudFiles = $answered && is_array($decoded['cloud_files'] ?? null) ? $decoded['cloud_files'] : [];
         $glyphs = is_array($cloudFiles['glyphs'] ?? null) ? $cloudFiles['glyphs'] : [];
-        $bird = is_string($glyphs['bird'] ?? null) && $glyphs['bird'] !== '' ? $glyphs['bird'] : null;
-        $eyes = is_string($glyphs['bird_eyes'] ?? null) && $glyphs['bird_eyes'] !== '' ? $glyphs['bird_eyes'] : null;
+        $overrides = ['bird' => self::url($glyphs['bird'] ?? null), 'bird_eyes' => self::url($glyphs['bird_eyes'] ?? null)];
+        $cache->set($key, (string) json_encode($overrides), $answered ? self::GLYPHS_TTL : self::GLYPHS_RETRY_TTL);
 
-        return ['bird' => $bird, 'bird_eyes' => $eyes];
+        return $overrides;
+    }
+
+    private static function url(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**

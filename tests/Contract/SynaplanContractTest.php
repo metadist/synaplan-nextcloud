@@ -227,7 +227,7 @@ final class SynaplanContractTest extends TestCase
         $oauth = $this->oauthClient($config, $synaplanConfig);
         $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $oauth);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
-        $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
+        $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger(), new ArrayCacheFactory());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,

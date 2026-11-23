@@ -130,6 +130,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the upload says nothing about keeping the file, so Synaplan keeps what it
   had. The file was stored as kept anyway, so after its first change it
   read as updating for good, and deleting it here left it in Synaplan.
+- **The glyphs Synaplan sets for the bird** are asked for once every five
+  minutes, and a minute after Synaplan gave no answer. Every folder view
+  and every opened sidebar asked for them again and waited up to 15 seconds
+  for the answer.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that
