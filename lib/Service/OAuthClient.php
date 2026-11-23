@@ -39,6 +39,8 @@ class OAuthClient
     /** The client id the grant belongs to: a new registration voids it. */
     private const GRANT_CLIENT = 'synaplan_oauth_client';
     private const REFRESH_WAIT_SECONDS = 10;
+    /** Counts withdrawals, so a refresh sees one that did not wait for its lock. */
+    private const WITHDRAWALS = 'synaplan_oauth_withdrawals';
 
     public function __construct(
         private IClientService $clientService,
@@ -244,6 +246,7 @@ class OAuthClient
             if ($access !== '' || $refresh === '') {
                 return $access;
             }
+            $withdrawals = $this->withdrawals($uid);
             try {
                 $tokens = $this->refresh($refresh);
             } catch (PlatformLinkException $e) {
@@ -253,15 +256,25 @@ class OAuthClient
 
                 return '';
             }
-            // A withdrawal that could not wait for this refresh forgot the
-            // grant while Synaplan answered: the answer must not bring it back.
+            // A withdrawal that could not wait for this refresh may forget the
+            // grant while Synaplan answers, or between this check and the
+            // write: the answer must not bring it back. A withdrawal counts
+            // before it deletes, so one the second check misses deletes after
+            // the write.
             $this->userConfig->clearCache($uid);
-            if ($this->secret($uid, self::REFRESH) !== $refresh) {
+            if ($this->secret($uid, self::REFRESH) !== $refresh || $this->withdrawals($uid) !== $withdrawals) {
                 $this->revokeQuietly($uid, (string) ($tokens['refresh_token'] ?? ''));
 
                 return '';
             }
             $this->remember($uid, $tokens);
+            $this->userConfig->clearCache($uid);
+            if ($this->withdrawals($uid) !== $withdrawals) {
+                $this->drop($uid);
+                $this->revokeQuietly($uid, (string) ($tokens['refresh_token'] ?? ''));
+
+                return '';
+            }
 
             return (string) ($tokens['access_token'] ?? '');
         } finally {
@@ -348,19 +361,19 @@ class OAuthClient
                     }
                 }
             }
-            $this->drop($uid);
+            $this->withdraw($uid);
         });
     }
 
     public function forget(string $uid): void
     {
-        $this->whileRefreshing($uid, fn () => $this->drop($uid));
+        $this->whileRefreshing($uid, fn () => $this->withdraw($uid));
     }
 
     /**
      * Run while no refresh of this person's grant is under way. A refresh
-     * that outlasts the wait finds the grant gone and does not keep its
-     * answer.
+     * that outlasts the wait sees the withdrawal counted and does not keep
+     * its answer.
      *
      * @param \Closure(): void $work
      */
@@ -375,6 +388,21 @@ class OAuthClient
                 $this->locks->releaseLock($lock, ILockingProvider::LOCK_EXCLUSIVE);
             }
         }
+    }
+
+    private function withdraw(string $uid): void
+    {
+        $this->userConfig->clearCache($uid);
+        $this->userConfig->setValueString($uid, Application::APP_ID, self::WITHDRAWALS, (string) ($this->withdrawals($uid) + 1));
+        $this->drop($uid);
+    }
+
+    /**
+     * @phpstan-impure a withdrawal in another request counts up
+     */
+    private function withdrawals(string $uid): int
+    {
+        return (int) $this->userConfig->getValueString($uid, Application::APP_ID, self::WITHDRAWALS, '0');
     }
 
     private function drop(string $uid): void
