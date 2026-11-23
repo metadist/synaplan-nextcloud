@@ -55,6 +55,12 @@ class WatchFeed
             }
             if ($row['event'] !== '') {
                 $result = $this->sender->targetEvent($watch, $row['event'], $now);
+                // Restored while the deletion was on its way: the listener
+                // found nothing left to take back.
+                if ($result === WatchSender::SENT && $row['event'] === 'deleted'
+                    && $this->sender->ownerNode($watch['uid'], $watch['target']) !== null) {
+                    $this->sender->targetEvent($watch, 'restored', $now);
+                }
                 if ($result === WatchSender::SENT) {
                     $this->sync->request($watch['uid']);
                 }

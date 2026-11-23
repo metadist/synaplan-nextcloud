@@ -90,6 +90,17 @@ final class WatchEventListenerTest extends TestCase
         $this->listener()->handle(new NodeRenamedEvent($folder, $folder));
     }
 
+    public function testAFolderRestoredBeforeItsDeletionWentOutTakesTheDeletionBack(): void
+    {
+        $folder = $this->createStub(Folder::class);
+        $folder->method('getId')->willReturn(30);
+        $this->index->method('on')->with([30])->willReturn([self::FOLDER_WATCH]);
+        $this->index->expects($this->never())->method('enqueue');
+        $this->index->expects($this->once())->method('cancelEvent')->with(5, 30, 'deleted');
+
+        $this->listener()->handle(new NodeRenamedEvent($folder, $folder));
+    }
+
     public function testNothingIsQueuedWhileMutedOrUnregistered(): void
     {
         $this->index->expects($this->never())->method('activeOn');

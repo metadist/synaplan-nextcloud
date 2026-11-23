@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\Service\WatchFeed;
 use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCA\SynaplanIntegration\Service\WatchSender;
 use OCA\SynaplanIntegration\Service\WatchSync;
+use OCP\Files\Folder;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -80,6 +81,31 @@ final class WatchFeedTest extends TestCase
         $this->queue(['watch' => 5, 'file' => 30, 'event' => 'restored', 'changed' => self::NOW, 'attempts' => 0], $watch);
         $this->sender->expects($this->once())->method('targetEvent')->with($watch, 'restored', self::NOW)->willReturn(WatchSender::SENT);
         $this->sync->expects($this->once())->method('request')->with('ada');
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+    }
+
+    public function testATargetRestoredWhileItsDeletionWasOnItsWayIsReportedRestored(): void
+    {
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'attempts' => 0], self::WATCH);
+        $this->sender->method('ownerNode')->with('ada', 30)->willReturn($this->createStub(Folder::class));
+        $events = [];
+        $this->sender->method('targetEvent')->willReturnCallback(function (array $watch, string $event) use (&$events): string {
+            $events[] = $event;
+
+            return WatchSender::SENT;
+        });
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+
+        self::assertSame(['deleted', 'restored'], $events);
+    }
+
+    public function testADeletedTargetThatStaysGoneIsOnlyReportedDeleted(): void
+    {
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'attempts' => 0], self::WATCH);
+        $this->sender->method('ownerNode')->willReturn(null);
+        $this->sender->expects($this->once())->method('targetEvent')->with(self::WATCH, 'deleted', self::NOW)->willReturn(WatchSender::SENT);
 
         $this->feed()->run(self::NOW, microtime(true) + 60);
     }
