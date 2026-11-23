@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Listener;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\BackgroundJob\SourceEventsJob;
+use OCA\SynaplanIntegration\Service\ShareRecipients;
 use OCA\SynaplanIntegration\Service\SourceEventQueue;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\BackgroundJob\IJobList;
@@ -41,6 +42,7 @@ class SourceEventListener implements IEventListener
         private IJobList $jobs,
         private IRootFolder $rootFolder,
         private SourceEventQueue $queue,
+        private ShareRecipients $recipients,
     ) {
     }
 
@@ -55,20 +57,18 @@ class SourceEventListener implements IEventListener
 
         $ord = SourceEventQueue::now();
         if ($event instanceof BeforeNodeDeletedEvent) {
-            $node = $event->getNode();
-            $folder = $node instanceof Folder ? $this->payload($node, 'deleted', true) : null;
-            if ($folder !== null) {
-                foreach ($this->perPerson($folder) as $row) {
-                    $this->queueDescendants($row['uid'], $node, 'deleted', $ord, SourceEventQueue::STEP_HELD, (int) $node->getId());
-                }
-            }
+            $this->holdDeletion($event->getNode(), $ord);
 
             return;
         }
 
         $people = [];
         foreach ($this->mapEvents($event) as [$mapped, $node]) {
-            foreach ($this->perPerson($mapped) as $row) {
+            $rows = $this->perPerson($mapped);
+            if ($rows !== [] && $mapped['event'] !== 'deleted') {
+                $this->queue->add($rows[0]['uid'], $rows[0], $ord, SourceEventQueue::STEP_SHARE);
+            }
+            foreach ($rows as $row) {
                 $this->queue->add($row['uid'], $row, $ord);
                 $people[$row['uid']] = true;
                 if (!$node instanceof Folder) {
@@ -82,10 +82,36 @@ class SourceEventListener implements IEventListener
             }
         }
         if ($event instanceof NodeDeletedEvent) {
-            $this->queue->release((int) $event->getNode()->getId());
+            foreach ($this->queue->release((int) $event->getNode()->getId()) as $uid) {
+                $people[$uid] = true;
+            }
         }
         foreach (array_keys($people) as $uid) {
             $this->jobs->add(SourceEventsJob::class, ['uid' => (string) $uid]);
+        }
+    }
+
+    /**
+     * Before a deletion the shares still say who else holds the file: their
+     * rows go in now, held until the deletion happens, as do the files below
+     * a folder for everyone.
+     */
+    private function holdDeletion(Node $node, int $ord): void
+    {
+        $mapped = $this->payload($node, 'deleted', true);
+        if ($mapped === null) {
+            return;
+        }
+        $id = (int) $mapped['id'];
+        $told = array_values(array_filter([$mapped['uid'], $mapped['owner']], static fn (string $uid): bool => $uid !== ''));
+        $recipients = $this->recipients->of($node, $told);
+        foreach ([...array_unique($told), ...$recipients] as $uid) {
+            if ($node instanceof Folder) {
+                $this->queueDescendants($uid, $node, 'deleted', $ord, SourceEventQueue::STEP_HELD, $id);
+            }
+        }
+        foreach ($recipients as $uid) {
+            $this->queue->add($uid, ['id' => $mapped['id'], 'event' => 'deleted', 'version' => $mapped['version'], 'path' => ''], $ord, SourceEventQueue::STEP_HELD, $id);
         }
     }
 

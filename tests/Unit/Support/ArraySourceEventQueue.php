@@ -48,6 +48,19 @@ final class ArraySourceEventQueue extends SourceEventQueue
     }
 
     /**
+     * The steps of the rows waiting, oldest first, as `uid step file_id`.
+     *
+     * @return list<string>
+     */
+    public function steps(): array
+    {
+        $rows = array_values($this->rows);
+        usort($rows, static fn (array $a, array $b): int => [$a['ord'], $a['seq']] <=> [$b['ord'], $b['seq']]);
+
+        return array_map(static fn (array $row): string => $row['uid'] . ' ' . $row['step'] . ' ' . $row['file_id'], $rows);
+    }
+
+    /**
      * Put a file or folder into the fake file cache.
      */
     public function cache(int $storage, string $path, int $id, string $etag = 'e1'): void
@@ -107,13 +120,17 @@ final class ArraySourceEventQueue extends SourceEventQueue
         return $out;
     }
 
-    public function release(int $folderId): void
+    public function release(int $folderId): array
     {
+        $people = [];
         foreach ($this->rows as $seq => $row) {
             if ($row['step'] === self::STEP_HELD && $row['walked'] === $folderId) {
                 $this->rows[$seq]['step'] = self::STEP_SEND;
+                $people[$row['uid']] = true;
             }
         }
+
+        return array_map('strval', array_keys($people));
     }
 
     public function removeHeld(string $uid, int $folderId): void
@@ -146,13 +163,14 @@ final class ArraySourceEventQueue extends SourceEventQueue
     }
 
     /**
-     * Each row as `uid`, then the event Synaplan gets, oldest first.
+     * Each row ready to send as `uid`, then the event Synaplan gets, oldest
+     * first.
      *
      * @return list<array{uid: string, id: string, event: string, version: string, path: string}>
      */
     public function events(): array
     {
-        $rows = array_values($this->rows);
+        $rows = array_values(array_filter($this->rows, static fn (array $row): bool => $row['step'] === self::STEP_SEND));
         usort($rows, static fn (array $a, array $b): int => [$a['ord'], $a['seq']] <=> [$b['ord'], $b['seq']]);
 
         return array_map(static fn (array $row): array => [

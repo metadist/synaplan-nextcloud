@@ -141,6 +141,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   after a minute, then 5, 15 and 60 minutes, and given up after that.
   Events go out in batches of up to 100 per call. The queue needs the new
   version number's database update.
+- **Synaplan also updates and forgets the copies of the people a file is
+  shared with.** A change, move, deletion or restore is told for each
+  person who can reach the file and holds a Synaplan connection, with the
+  path they see; for a deletion they are noted before the shares go. Only
+  the person who acted and the owner were told, so a copy someone made of a
+  file shared with them stayed old, and stayed after the file was deleted.
 - **Moving, deleting or restoring a large folder answers at once.** The
   files inside are queued for Synaplan from the file cache in one statement,
   or, for a move, by the background job 500 at a time. The request went

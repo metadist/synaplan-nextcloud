@@ -25,6 +25,8 @@ final class SourceEventQueueTest extends TestCase
     private array $sql = [];
     /** The file cache path of folder 50 on storage 3, null when it is not there. */
     private ?string $folderPath = null;
+    /** @var list<array<string, mixed>> the people with held rows */
+    private array $heldFor = [];
     /** @var list<array<string, mixed>> the page the file cache answers */
     private array $cacheRows = [];
 
@@ -108,9 +110,11 @@ final class SourceEventQueueTest extends TestCase
 
     public function testADeletionThatHappenedReleasesItsHeldRows(): void
     {
-        $this->queue()->release(50);
+        $this->heldFor = [['uid' => 'bob']];
 
-        self::assertSame(['update synaplan_source_events', 'set step="send"', 'where step="held"', 'where walked=50'], $this->statements[0]);
+        self::assertSame(['bob'], $this->queue()->release(50));
+        self::assertSame(['select synaplan_source_events', 'where step="held"', 'where walked=50'], $this->statements[0]);
+        self::assertSame(['update synaplan_source_events', 'set step="send"', 'where step="held"', 'where walked=50'], $this->statements[1]);
     }
 
     private function queue(): SourceEventQueue
@@ -165,6 +169,7 @@ final class SourceEventQueueTest extends TestCase
                 return $qb;
             });
         }
+        $qb->method('selectDistinct')->willReturn($qb);
         $qb->method('select')->willReturnCallback(static function (mixed ...$columns) use ($qb, $record): IQueryBuilder {
             if (array_filter($columns, static fn (mixed $column): bool => !is_string($column)) !== []) {
                 $record('select ' . implode(',', array_map(static fn (mixed $column): string => (string) $column, $columns)));
@@ -211,6 +216,7 @@ final class SourceEventQueueTest extends TestCase
             $rows = match (true) {
                 in_array('where fileid=50', $lines, true) => $this->folderPath === null ? [] : [['storage' => 3, 'path' => $this->folderPath]],
                 ($lines[0] ?? '') === 'select filecache' => $this->cacheRows,
+                in_array('where step="held"', $lines, true) => $this->heldFor,
                 default => [],
             };
             $result = $this->createStub(IResult::class);

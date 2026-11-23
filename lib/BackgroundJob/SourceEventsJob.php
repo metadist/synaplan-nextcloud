@@ -6,10 +6,14 @@ namespace OCA\SynaplanIntegration\BackgroundJob;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCA\SynaplanIntegration\Service\ShareRecipients;
 use OCA\SynaplanIntegration\Service\SourceEventQueue;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\BackgroundJob\QueuedJob;
+use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
+use OCP\Files\Node;
 use OCP\Lock\ILockingProvider;
 use OCP\Lock\LockedException;
 use Psr\Log\LoggerInterface;
@@ -42,6 +46,8 @@ class SourceEventsJob extends QueuedJob
         private SourceEventQueue $queue,
         private ILockingProvider $locks,
         private LoggerInterface $logger,
+        private IRootFolder $rootFolder,
+        private ShareRecipients $recipients,
     ) {
         parent::__construct($time);
     }
@@ -96,6 +102,9 @@ class SourceEventsJob extends QueuedJob
                     return;
                 }
                 $this->queue->removeHeld($uid, $head['walked']);
+            } elseif ($head['step'] === SourceEventQueue::STEP_SHARE) {
+                $this->share($head);
+                $this->queue->remove([$head['seq']]);
             } elseif ($head['step'] === SourceEventQueue::STEP_SEND) {
                 $this->send($uid, $this->leadingSends($rows), $now);
             } else {
@@ -107,6 +116,51 @@ class SourceEventsJob extends QueuedJob
                 return;
             }
         }
+    }
+
+    /**
+     * Queue the event for each person the file is shared with, with the path
+     * they see it at, in their own queue and with the same order.
+     *
+     * @param QueuedEvent $row
+     */
+    private function share(array $row): void
+    {
+        $node = $this->nodeOf($row['uid'], $row['file_id']);
+        if ($node === null) {
+            return;
+        }
+        try {
+            $owner = (string) $node->getOwner()?->getUID();
+        } catch (\Throwable) {
+            $owner = '';
+        }
+        $event = ['id' => (string) $row['file_id'], 'event' => $row['event'], 'version' => $row['version']];
+        foreach ($this->recipients->of($node, [$row['uid'], $owner]) as $uid) {
+            $theirs = $this->nodeOf($uid, $row['file_id']);
+            if ($theirs === null) {
+                continue;
+            }
+            $path = preg_match('#^/[^/]+/files/(.+)$#', $theirs->getPath(), $match) === 1 ? trim($match[1], '/') : '';
+            $this->queue->add($uid, $event + ['path' => strlen($path) <= 255 ? $path : ''], $row['ord']);
+            if ($theirs instanceof Folder && $row['event'] === 'moved') {
+                $this->queue->add($uid, $event + ['path' => strlen($path) <= 255 ? $path : ''], $row['ord'], SourceEventQueue::STEP_WALK);
+            } elseif ($theirs instanceof Folder && $row['event'] === 'restored') {
+                $this->queue->addDescendants($uid, $row['file_id'], 'restored', $row['ord'], SourceEventQueue::STEP_SEND);
+            }
+            $this->jobs->add(self::class, ['uid' => $uid]);
+        }
+    }
+
+    private function nodeOf(string $uid, int $id): ?Node
+    {
+        try {
+            $node = $this->rootFolder->getUserFolder($uid)->getFirstNodeById($id);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $node instanceof Node ? $node : null;
     }
 
     /**
