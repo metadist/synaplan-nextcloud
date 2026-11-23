@@ -122,7 +122,7 @@ class WatchReconcile
                 }
                 $changed = (int) $files[$fileId]->getMTime();
                 if ($changed > $now - $quiet || microtime(true) > $deadline) {
-                    $this->index->enqueue($watch['id'], $fileId, '', min($changed, $now));
+                    $this->index->enqueueIfAbsent($watch['id'], $fileId, '', min($changed, $now));
                     continue;
                 }
                 $result = $this->sender->file($watch, $fileId);
@@ -132,7 +132,7 @@ class WatchReconcile
                     return true;
                 }
                 if ($result === WatchSender::RETRY) {
-                    $this->index->enqueue($watch['id'], $fileId, '', $changed, $now + 60);
+                    $this->index->enqueueIfAbsent($watch['id'], $fileId, '', $changed, $now + 60);
                 }
             }
         }

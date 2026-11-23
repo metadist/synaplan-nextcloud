@@ -208,40 +208,53 @@ class WatchIndex
     /**
      * Queue a file, or an event of the watch's target, as changed at
      * $changed. A file waits out the quiet period from then; an event goes
-     * at once. Nothing goes before $due.
+     * at once. Nothing goes before $due. A change already queued for the file
+     * is replaced.
      */
     public function enqueue(int $watchId, int $fileId, string $event, int $changed, int $due = 0): void
     {
-        $generation = bin2hex(random_bytes(16));
+        if ($this->enqueueIfAbsent($watchId, $fileId, $event, $changed, $due)) {
+            return;
+        }
+        $update = $this->db->getQueryBuilder();
+        $update->update(self::QUEUE)
+            ->set('event', $update->createNamedParameter($event !== '' ? $event : null))
+            ->set('changed', $update->createNamedParameter($changed, IQueryBuilder::PARAM_INT))
+            ->set('generation', $update->createNamedParameter(self::generation()))
+            ->set('due', $update->createNamedParameter($due, IQueryBuilder::PARAM_INT))
+            ->set('attempts', $update->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+            ->where($update->expr()->eq('watch_id', $update->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($update->expr()->eq('file_id', $update->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
+        $update->executeStatement();
+    }
+
+    /**
+     * Like enqueue(), but a change already queued for the file stays as it
+     * is: it is at least as new. False when one was there.
+     */
+    public function enqueueIfAbsent(int $watchId, int $fileId, string $event, int $changed, int $due = 0): bool
+    {
         $insert = $this->db->getQueryBuilder();
         $insert->insert(self::QUEUE)->values([
             'watch_id' => $insert->createNamedParameter($watchId, IQueryBuilder::PARAM_INT),
             'file_id' => $insert->createNamedParameter($fileId, IQueryBuilder::PARAM_INT),
             'event' => $insert->createNamedParameter($event !== '' ? $event : null),
             'changed' => $insert->createNamedParameter($changed, IQueryBuilder::PARAM_INT),
-            'generation' => $insert->createNamedParameter($generation),
+            'generation' => $insert->createNamedParameter(self::generation()),
             'due' => $insert->createNamedParameter($due, IQueryBuilder::PARAM_INT),
             'attempts' => $insert->createNamedParameter(0, IQueryBuilder::PARAM_INT),
         ]);
         try {
             $insert->executeStatement();
 
-            return;
+            return true;
         } catch (DBException $e) {
             if ($e->getReason() !== DBException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
                 throw $e;
             }
         }
-        $update = $this->db->getQueryBuilder();
-        $update->update(self::QUEUE)
-            ->set('event', $update->createNamedParameter($event !== '' ? $event : null))
-            ->set('changed', $update->createNamedParameter($changed, IQueryBuilder::PARAM_INT))
-            ->set('generation', $update->createNamedParameter($generation))
-            ->set('due', $update->createNamedParameter($due, IQueryBuilder::PARAM_INT))
-            ->set('attempts', $update->createNamedParameter(0, IQueryBuilder::PARAM_INT))
-            ->where($update->expr()->eq('watch_id', $update->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
-            ->andWhere($update->expr()->eq('file_id', $update->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
-        $update->executeStatement();
+
+        return false;
     }
 
     public function queued(int $watchId, int $fileId): bool
@@ -361,6 +374,11 @@ class WatchIndex
             ->andWhere($row['event'] === ''
                 ? $qb->expr()->isNull('event')
                 : $qb->expr()->eq('event', $qb->createNamedParameter($row['event'])));
+    }
+
+    private static function generation(): string
+    {
+        return bin2hex(random_bytes(16));
     }
 
     /**

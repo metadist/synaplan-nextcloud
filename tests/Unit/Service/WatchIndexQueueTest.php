@@ -37,6 +37,20 @@ final class WatchIndexQueueTest extends TestCase
         self::assertContains('set generation=' . json_encode($replaced), $this->last());
     }
 
+    public function testAChangeAlreadyQueuedStaysWhenReconciliationQueuesAnOlderOne(): void
+    {
+        $this->rowExists = true;
+
+        self::assertFalse($this->index()->enqueueIfAbsent(5, 7, '', 100, 160));
+        self::assertSame('insert synaplan_watch_queue', $this->last()[0]);
+    }
+
+    public function testAFileNotQueuedYetIsQueued(): void
+    {
+        self::assertTrue($this->index()->enqueueIfAbsent(5, 7, '', 100, 160));
+        self::assertContains('value due=160', $this->last());
+    }
+
     public function testSettlingARowMatchesItsGenerationOnly(): void
     {
         $this->index()->done(['watch' => 5, 'file' => 7, 'event' => 'deleted', 'changed' => 100, 'generation' => 'g1', 'attempts' => 0]);
