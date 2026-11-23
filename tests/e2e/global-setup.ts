@@ -1,6 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 
 import { expect, request } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import {
 	APP,
 	FILE,
@@ -89,9 +90,44 @@ async function register(admin: APIRequestContext, token: string): Promise<string
  * without AI access and gets the file the journeys work on, so the suite
  * also runs again on the same stacks.
  */
+const SYNAPLAN_REDIS_CONTAINER =
+	process.env.SYNAPLAN_REDIS_CONTAINER ?? 'synaplan-redis-test'
+
+/**
+ * Synaplan allows a registered client 30 updates an hour and has no setting
+ * to lift that. Every saved admin setting is one update, so a test stack
+ * that stays up between runs locks this Nextcloud out within a few runs.
+ * Clear those counters on the test stack's Redis before each run.
+ */
+function resetClientUpdateLimit(): void {
+	const redis = (...args: string[]) =>
+		execFileSync('docker', [
+			'exec',
+			SYNAPLAN_REDIS_CONTAINER,
+			'redis-cli',
+			...args,
+		])
+			.toString()
+			.split('\n')
+			.filter((line) => line.trim() !== '')
+	let keys: string[]
+	try {
+		keys = redis('--scan', '--pattern', '*oauth:client-update:*')
+	} catch (error) {
+		throw new Error(
+			`Could not reach the Synaplan test Redis in ${SYNAPLAN_REDIS_CONTAINER}; set SYNAPLAN_REDIS_CONTAINER.`,
+			{ cause: error },
+		)
+	}
+	if (keys.length > 0) {
+		redis('del', ...keys)
+	}
+}
+
 export default async function globalSetup(): Promise<void> {
 	await waitUntilReady(`${SYNAPLAN_URL}/api/health`)
 	await waitUntilReady(`${NC_URL}/status.php`)
+	resetClientUpdateLimit()
 
 	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
 	const created = await synaplan.post('/api/v1/apikeys', {

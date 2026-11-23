@@ -5,8 +5,11 @@ import {
 	loadFeatures,
 	resetFeatures,
 	translationOffered,
+	watchingAllowed,
+	watchSharedAllowed,
 } from '@/files_actions/features'
 import { translateAction } from '@/files_actions/translateAction'
+import { watchAction } from '@/files_actions/watchAction'
 
 vi.mock('@nextcloud/axios', () => ({ default: { get: vi.fn() } }))
 vi.mock('@nextcloud/router', () => ({
@@ -63,5 +66,57 @@ describe('translate', () => {
 		get.mockResolvedValue({ data: { translation: true } })
 		await Promise.all([loadFeatures(), loadFeatures()])
 		expect(get).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe('watch on a shared folder', () => {
+	const folder = {
+		fileid: 8,
+		basename: 'Incoming',
+		type: 'folder',
+		permissions: Permission.READ | Permission.CREATE,
+	}
+
+	/**
+	 * Whether the watch action is offered for one folder.
+	 *
+	 * @param attributes the folder's Files attributes
+	 */
+	function watchOffered(attributes: Record<string, unknown>): boolean {
+		return (watchAction.enabled as (...a: unknown[]) => boolean)({
+			nodes: [{ ...folder, attributes }],
+		})
+	}
+
+	it('is offered while the administrator allows it', async () => {
+		get.mockResolvedValue({ data: { translation: true, watchShared: true } })
+		await loadFeatures()
+
+		expect(watchSharedAllowed()).toBe(true)
+		expect(watchOffered({ 'mount-type': 'shared-root' })).toBe(true)
+	})
+
+	it('is hidden everywhere while the administrator turned off watching folders', async () => {
+		get.mockResolvedValue({
+			data: { translation: true, watches: false, watchShared: true },
+		})
+		await loadFeatures()
+
+		expect(watchingAllowed()).toBe(false)
+		expect(watchOffered({ 'mount-type': '' })).toBe(false)
+		expect(watchOffered({ 'mount-type': 'shared-root' })).toBe(false)
+	})
+
+	it('is hidden for a shared folder when the administrator turned it off', async () => {
+		get.mockResolvedValue({ data: { translation: true, watchShared: false } })
+		await loadFeatures()
+
+		expect(watchOffered({ 'mount-type': 'shared-root' })).toBe(false)
+		expect(watchOffered({ 'mount-type': 'shared' })).toBe(false)
+		expect(watchOffered({ 'share-types': { 'share-type': 0 } })).toBe(false)
+		expect(watchOffered({ 'share-types': [3] })).toBe(false)
+		expect(watchOffered({ 'share-types': '' })).toBe(true)
+		expect(watchOffered({ 'share-types': [] })).toBe(true)
+		expect(watchOffered({ 'mount-type': '' })).toBe(true)
 	})
 })

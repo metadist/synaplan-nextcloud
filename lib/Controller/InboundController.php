@@ -13,6 +13,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Service\WatchSync;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
@@ -43,6 +44,7 @@ class InboundController extends Controller
         private ICacheFactory $cacheFactory,
         private ITimeFactory $time,
         private LoggerInterface $logger,
+        private WatchSync $watches,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -79,6 +81,7 @@ class InboundController extends Controller
             'delivery' => $this->delivered($this->copies->handle($id, $person)),
             'identity_revoked' => $this->revoked($person),
             'pickup' => $this->read($id, $person),
+            'watches_changed' => $this->watchesChanged($person),
             default => new JSONResponse([], Http::STATUS_NO_CONTENT),
         };
     }
@@ -140,11 +143,25 @@ class InboundController extends Controller
     }
 
     /**
+     * The person's watches are listed again on the next cron run, with
+     * their own credential; the notice itself carries nothing to trust.
+     *
+     * @return JSONResponse<Http::STATUS_NO_CONTENT, array<string, mixed>, array{}>
+     */
+    private function watchesChanged(string $person): JSONResponse
+    {
+        $this->watches->request($person);
+
+        return new JSONResponse([], Http::STATUS_NO_CONTENT);
+    }
+
+    /**
      * @return JSONResponse<Http::STATUS_NO_CONTENT, array<string, mixed>, array{}>
      */
     private function revoked(string $person): JSONResponse
     {
         $this->accounts->linkEnded($person);
+        $this->watches->request($person);
 
         return new JSONResponse([], Http::STATUS_NO_CONTENT);
     }

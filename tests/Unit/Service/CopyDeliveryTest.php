@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\BackgroundJob\DeliveryRetryJob;
 use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\OwnWrites;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
@@ -241,6 +242,7 @@ final class CopyDeliveryTest extends TestCase
             new NullLogger(),
             $this->jobs,
             $time,
+            $this->createStub(OwnWrites::class),
         );
     }
 }

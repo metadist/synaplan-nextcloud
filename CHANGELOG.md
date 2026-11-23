@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Watches are fed from here.** A file that arrives in a watched folder, or
+  a new version of a watched file, goes to its watch once it has been quiet
+  for a minute. Once an hour each watch asks Synaplan which files it still
+  needs. The app's own copies don't start a watch again. Starting a folder
+  watch asks whether the files already there go too. "Only what I watch"
+  lets Synaplan read the folders you watch. The release needs a new version
+  number so that updated servers get the new tables and background jobs.
+- **Only people who may edit a folder or a file can watch it.** The Watch
+  action is hidden for anything the person may only read, and the server
+  refuses it.
+- **Allow watching folders** and **Allow watching shared folders** on the
+  admin screen. While one is off, nobody can start a watch it covers, and the
+  watches already running get no files and say why. With watching off, the
+  app also stops telling Synaplan it can watch.
+- **Pause, Resume and Stop watching** for the owner, in the Synaplan sidebar
+  of a watched folder and in the new **Watched folders** list on the app
+  page. Stop asks once. Resuming a task watch asks whether the files that
+  arrived while it was paused go too.
+- **A warning on the admin screen and in the watch dialog** while background
+  jobs run in AJAX mode, because watches then only move on while someone has
+  a page open. In webcron mode the admin screen says watches get new files
+  only as often as the outside service calls.
+
 ### Fixed
 
 - **Deactivate** in the admin's AI Users panel pauses a person whose account

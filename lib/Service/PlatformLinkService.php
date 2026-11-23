@@ -16,14 +16,15 @@ use Psr\Log\LoggerInterface;
 /**
  * The calls this Nextcloud makes to Synaplan's platform-links API for one
  * person (copies, folder reads, read scope, source events), with that
- * person's own credential, and the registration's lifecycle.
+ * person's own credential, the files that person's watches get, and the
+ * registration's lifecycle.
  *
  * Talks via IClientService (never SynaplanClient) so a 401 on a person's
  * credential cannot re-enter connecting.
  */
 class PlatformLinkService
 {
-    public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events'];
+    public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events', 'watches'];
     private const REGISTRATION_STATUS = 'link_registration_status';
     private const DOWNLOAD_TIMEOUT = 300;
     /** Synaplan no longer accepts this registration; its own statuses are pending and active. */
@@ -286,6 +287,70 @@ class PlatformLinkService
     }
 
     /**
+     * This person's watches as Synaplan lists them: every one not stopped.
+     *
+     * @return list<mixed>
+     */
+    public function listWatches(string $uid): array
+    {
+        $answer = $this->request('GET', '/api/v1/cloud/watches', null, $this->personHeaders($uid));
+
+        return is_array($answer['items'] ?? null) ? array_values($answer['items']) : [];
+    }
+
+    /**
+     * Which of these files the watch still has to get, and which it has.
+     *
+     * @param list<array{id: string, version: string}> $items 1 to 500
+     * @return array{process: list<string>, forget: list<string>}
+     */
+    public function reconcileWatch(string $uid, int $watchId, array $items): array
+    {
+        $answer = $this->request(
+            'POST',
+            '/api/v1/cloud/watches/' . $watchId . '/reconcile',
+            ['items' => $items],
+            array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
+        );
+        $ids = static fn (mixed $list): array => is_array($list) ? array_values(array_filter($list, 'is_string')) : [];
+
+        return ['process' => $ids($answer['process'] ?? null), 'forget' => $ids($answer['forget'] ?? null)];
+    }
+
+    /**
+     * Hand one file to a watch, or tell it its target was deleted or restored
+     * (then without the file). Synaplan's refusals come back with their status.
+     *
+     * @param array<string, string> $fields id, version, name, path; event or own_write
+     * @param array{bytes: resource|string, name: string, mime: string}|null $file
+     * @return array<string, mixed> the answer, with `status_code`
+     */
+    public function sendWatchFile(string $uid, int $watchId, array $fields, ?array $file, int $timeoutSeconds = 120): array
+    {
+        $multipart = [];
+        foreach ($fields as $name => $value) {
+            $multipart[] = ['name' => $name, 'contents' => $value];
+        }
+        if ($file !== null) {
+            $multipart[] = ['name' => 'file', 'contents' => $file['bytes'], 'filename' => $file['name'], 'headers' => ['Content-Type' => $file['mime']]];
+        }
+        $path = '/api/v1/cloud/watches/' . $watchId . '/files';
+        $response = $this->clientService->newClient()->post(
+            $this->synaplanConfig->getBaseUrl() . $path,
+            [
+                'headers' => $this->personHeaders($uid),
+                'multipart' => $multipart,
+                'timeout' => max(1, $timeoutSeconds),
+                'http_errors' => false,
+                'nextcloud' => ['allow_local_address' => true],
+            ],
+        );
+        $decoded = json_decode($response->getBody(), true);
+
+        return ['status_code' => (int) $response->getStatusCode()] + (is_array($decoded) ? $decoded : []);
+    }
+
+    /**
      * @param array<string, mixed> $result
      */
     public function reportPickupResult(string $id, string $uid, array $result): void
@@ -415,7 +480,7 @@ class PlatformLinkService
             'client_uri' => $this->urlGenerator->getAbsoluteURL('/'),
             'redirect_uri' => $this->callbackUrl(),
             'delivery_url' => $this->defaultDeliveryUrl(),
-            'capabilities' => self::CAPABILITIES,
+            'capabilities' => $this->capabilities(),
             'server_id' => $this->synaplanConfig->getInstanceId(),
             'version' => $this->appManager->getAppVersion(Application::APP_ID),
         ], $registrationToken);
@@ -483,6 +548,22 @@ class PlatformLinkService
     }
 
     /**
+     * What this app does. Synaplan offers watching only for clouds that
+     * report `watches`, so it is left out while the administrator has
+     * turned watching folders off.
+     *
+     * @return list<string>
+     */
+    public function capabilities(): array
+    {
+        if (WatchPolicy::watchingAllowedIn($this->config)) {
+            return self::CAPABILITIES;
+        }
+
+        return array_values(array_diff(self::CAPABILITIES, ['watches']));
+    }
+
+    /**
      * Tell Synaplan where to call, which server this is, and what this app
      * does (client configuration, RFC 7592).
      */
@@ -494,7 +575,7 @@ class PlatformLinkService
         $this->oauth->updateConfiguration([
             'delivery_url' => $deliveryUrl,
             'server_id' => $this->synaplanConfig->getInstanceId(),
-            'app_capabilities' => self::CAPABILITIES,
+            'app_capabilities' => $this->capabilities(),
             'software_version' => $this->appManager->getAppVersion(Application::APP_ID),
         ]);
     }

@@ -17,6 +17,7 @@ export interface NodeCompat {
 	permissions: number
 	type?: string
 	path?: string
+	attributes?: Record<string, unknown>
 }
 
 /**

@@ -74,11 +74,51 @@
 				<p class="sp-hint">
 					{{ consequence }}
 				</p>
+				<template v-if="kind === 'folder' && existing > 0">
+					<NcCheckboxRadioSwitch
+						:modelValue="backfill"
+						:disabled="saving"
+						@update:modelValue="onBackfill">
+						{{
+							t(
+								'synaplan_integration',
+								'Also the files already in this folder ({count})',
+								{ count: existing },
+							)
+						}}
+					</NcCheckboxRadioSwitch>
+					<p v-if="backfill && existing > MANY_FILES" class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'Synaplan takes the {count} files one after the other. This can take about an hour.',
+								{ count: existing },
+							)
+						}}
+					</p>
+				</template>
 				<p v-if="kind === 'folder'" class="sp-hint">
 					{{
 						t(
 							'synaplan_integration',
 							'Everyone who can open this folder sees that it is watched.',
+						)
+					}}
+				</p>
+				<p
+					v-if="!jobsOnSchedule"
+					class="sp-hint"
+					data-testid="synaplan-watch-jobs-note">
+					{{
+						t(
+							'synaplan_integration',
+							'Watched folders need background jobs that run on a schedule.',
+						)
+					}}
+					{{
+						t(
+							'synaplan_integration',
+							'Until your administrator sets that up, Synaplan only gets new files while someone has a page of this Nextcloud open.',
 						)
 					}}
 				</p>
@@ -117,7 +157,7 @@ import type { Failure } from '../failures'
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -137,6 +177,7 @@ const emit = defineEmits<{
 }>()
 
 const FOLDER_NAME_LIMIT = 64
+const MANY_FILES = 200
 
 const opened = ref(true)
 const loading = ref(true)
@@ -149,6 +190,18 @@ const groupKey = ref('')
 const folderOptions = ref<string[]>([])
 const task = ref<{ id: number; name: string } | null>(null)
 const tasks = ref<Array<{ id: number; name: string }>>([])
+const existing = ref(0)
+const jobsOnSchedule = ref(true)
+const backfill = ref(true)
+const backfillChosen = ref(false)
+
+// Making a folder searchable usually means all of it; a task usually only
+// the files to come. An explicit choice stays.
+watch(preset, (value) => {
+	if (!backfillChosen.value) {
+		backfill.value = value === 'keep_searchable'
+	}
+})
 
 const clip = (value: string): string => value.trim().slice(0, FOLDER_NAME_LIMIT)
 
@@ -200,6 +253,16 @@ function onClose() {
 }
 
 /**
+ * Keep the person's own choice about the files already in the folder.
+ *
+ * @param value whether they go too
+ */
+function onBackfill(value: boolean) {
+	backfillChosen.value = true
+	backfill.value = value
+}
+
+/**
  * Take a new folder typed into the folder picker.
  *
  * @param tag the folder name
@@ -227,6 +290,7 @@ async function loadOptions() {
 	try {
 		const { data } = await axios.get(
 			generateUrl('/apps/synaplan_integration/api/v1/watches/options'),
+			{ params: props.kind === 'folder' ? { targetId: props.fileId } : {} },
 		)
 		if (mine !== optionsRequest) {
 			return
@@ -241,6 +305,11 @@ async function loadOptions() {
 				typeof item?.id === 'number' && typeof item?.name === 'string',
 		)
 		task.value = tasks.value[0] ?? null
+		jobsOnSchedule.value = data.jobsOnSchedule !== false
+		existing.value =
+			typeof data.existing === 'number' && data.existing > 0
+				? data.existing
+				: 0
 		const folders = Array.isArray(data.folders) ? data.folders : []
 		const names = folders
 			.map((item: { group_key?: unknown }) =>
@@ -288,6 +357,8 @@ async function start() {
 					preset.value === 'keep_searchable'
 						? clip(groupKey.value)
 						: undefined,
+				backfill:
+					props.kind === 'folder' && existing.value > 0 && backfill.value,
 			},
 		)
 		if (!data.success) {

@@ -42,6 +42,8 @@ Requires a Synaplan with the OAuth2 server for clouds. Three ways to connect: on
 		<job>OCA\SynaplanIntegration\BackgroundJob\SourceEventsJob</job>
 		<job>OCA\SynaplanIntegration\BackgroundJob\ReuploadJob</job>
 		<job>OCA\SynaplanIntegration\BackgroundJob\AdoptIdentitiesJob</job>
+		<job>OCA\SynaplanIntegration\BackgroundJob\WatchFeedJob</job>
+		<job>OCA\SynaplanIntegration\BackgroundJob\WatchReconcileJob</job>
 	</background-jobs>
 	<settings>
 		<admin>OCA\SynaplanIntegration\Settings\SynaplanAdmin</admin>

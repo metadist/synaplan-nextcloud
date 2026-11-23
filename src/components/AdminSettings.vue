@@ -53,6 +53,59 @@
 				</a>
 			</div>
 
+			<NcNoteCard
+				v-if="jobsMode === 'ajax'"
+				type="warning"
+				class="sp-jobs-note"
+				data-testid="synaplan-admin-jobs-note">
+				<p>
+					{{
+						t(
+							'synaplan_integration',
+							'Background jobs run only when someone opens a page.',
+						)
+					}}
+					{{
+						t(
+							'synaplan_integration',
+							'Watched folders need background jobs that run on a schedule.',
+						)
+					}}
+					<a
+						href="https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/background_jobs_configuration.html"
+						target="_blank"
+						rel="noopener noreferrer">
+						{{ t('synaplan_integration', 'How to set it up') }} ↗
+					</a>
+				</p>
+			</NcNoteCard>
+			<NcNoteCard
+				v-else-if="jobsMode === 'webcron'"
+				type="info"
+				class="sp-jobs-note"
+				data-testid="synaplan-admin-jobs-note">
+				<p>
+					{{
+						t(
+							'synaplan_integration',
+							'Background jobs run only as often as an outside service calls this Nextcloud.',
+						)
+					}}
+					{{
+						t(
+							'synaplan_integration',
+							'Watched folders get new files only that often, so have it call every 5 minutes.',
+						)
+					}}
+					<a
+						href="https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/background_jobs_configuration.html"
+						target="_blank"
+						rel="noopener noreferrer">
+						{{ t('synaplan_integration', 'How to set it up') }} ↗
+					</a>
+				</p>
+			</NcNoteCard>
+
 			<NcSettingsSection
 				:name="t('synaplan_integration', 'Connection Settings')"
 				:description="
@@ -133,6 +186,36 @@
 							:style="{ width: '100%' }" />
 					</div>
 				</div>
+
+				<NcCheckboxRadioSwitch
+					v-model="watchFolders"
+					type="switch"
+					:disabled="saving">
+					{{ t('synaplan_integration', 'Allow watching folders') }}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When this is off, nobody can start watching a folder or file, the watches already running stop, and Synaplan no longer offers watching for this Nextcloud.',
+						)
+					}}
+				</p>
+
+				<NcCheckboxRadioSwitch
+					v-model="watchSharedFolders"
+					type="switch"
+					:disabled="saving || !watchFolders">
+					{{ t('synaplan_integration', 'Allow watching shared folders') }}
+				</NcCheckboxRadioSwitch>
+				<p class="sp-hint sp-switch-hint">
+					{{
+						t(
+							'synaplan_integration',
+							'When this is off, nobody can start watching a shared folder or file, and the watches already on one stop.',
+						)
+					}}
+				</p>
 
 				<div :style="{ height: '20px' }" />
 
@@ -464,6 +547,9 @@ const linkRegistered = ref(false)
 const linkInstanceId = ref('')
 const deliveryUrl = ref('')
 const readFolderCap = ref('20')
+const watchFolders = ref(true)
+const watchSharedFolders = ref(true)
+const jobsMode = ref<'ajax' | 'webcron' | 'cron'>('cron')
 const linkInstance = ref<{ status?: string; host?: string; error?: string } | null>(
 	null,
 )
@@ -644,6 +730,13 @@ async function loadSettings() {
 		linkInstance.value = data.link_instance || null
 		deliveryUrl.value = data.delivery_url || ''
 		readFolderCap.value = String(data.read_folder_cap || 20)
+		watchFolders.value = data.watch_folders !== false
+		watchSharedFolders.value = data.watch_shared_folders !== false
+		jobsMode.value =
+			data.background_jobs_mode === 'ajax'
+			|| data.background_jobs_mode === 'webcron'
+				? data.background_jobs_mode
+				: 'cron'
 	} catch {
 		showMessage(t('synaplan_integration', 'Failed to load settings.'), 'error')
 	}
@@ -671,6 +764,8 @@ async function save() {
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
 			read_folder_cap: Number(readFolderCap.value) || 20,
+			watch_folders: watchFolders.value,
+			watch_shared_folders: watchSharedFolders.value,
 			...(mode.value === 'link' || mode.value === 'provision'
 				? { delivery_url: deliveryUrl.value }
 				: {}),

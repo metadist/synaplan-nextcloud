@@ -283,6 +283,30 @@ class SynaplanClient
     }
 
     /**
+     * Pause or resume one of this person's watches. Synaplan resumes only a
+     * watch its owner paused and answers 409 with the reason otherwise.
+     *
+     * @param 'paused'|'active' $state
+     * @return array<string, mixed> the watch
+     * @throws \Exception on API error
+     */
+    public function updateWatch(int $id, string $state): array
+    {
+        return $this->request('PATCH', '/api/v1/cloud/watches/' . $id, ['state' => $state]);
+    }
+
+    /**
+     * Stop one of this person's watches. Files and results stay.
+     *
+     * @return array<string, mixed> the watch
+     * @throws \Exception on API error
+     */
+    public function stopWatch(int $id): array
+    {
+        return $this->request('DELETE', '/api/v1/cloud/watches/' . $id);
+    }
+
+    /**
      * Get the extracted text content of an uploaded file.
      *
      * @param int $fileId Synaplan file ID (returned from uploadFile)
@@ -886,6 +910,7 @@ class SynaplanClient
             'GET' => $client->get($url, $options),
             'POST' => $client->post($url, $options),
             'PUT' => $client->put($url, $options),
+            'PATCH' => $client->patch($url, $options),
             'DELETE' => $client->delete($url, $options),
             default => throw new \InvalidArgumentException("Unsupported HTTP method: {$method}"),
         };

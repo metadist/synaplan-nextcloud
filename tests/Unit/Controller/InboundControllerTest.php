@@ -13,6 +13,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SeenNotificationStore;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Service\WatchSync;
 use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCacheFactory;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -31,6 +32,7 @@ final class InboundControllerTest extends TestCase
     private FolderRead&MockObject $reads;
     private PlatformLinkService&MockObject $links;
     private UserAccountService&MockObject $accounts;
+    private WatchSync&MockObject $watches;
     private InboundController $controller;
 
     /** @var array<string, mixed> */
@@ -53,6 +55,7 @@ final class InboundControllerTest extends TestCase
         $this->links = $this->createMock(PlatformLinkService::class);
         $this->links->method('canActFor')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
         $this->accounts = $this->createMock(UserAccountService::class);
+        $this->watches = $this->createMock(WatchSync::class);
 
         $time = $this->createMock(ITimeFactory::class);
         $time->method('getTime')->willReturn(self::NOW);
@@ -69,6 +72,7 @@ final class InboundControllerTest extends TestCase
             new ArrayCacheFactory(),
             $time,
             new NullLogger(),
+            $this->watches,
         );
     }
 
@@ -176,6 +180,17 @@ final class InboundControllerTest extends TestCase
         self::assertSame(Http::STATUS_NO_CONTENT, $response->getStatus());
     }
 
+    public function testWatchesChangedListsThePersonsWatchesAgainLater(): void
+    {
+        $this->watches->expects($this->once())->method('request')->with('ada');
+        $this->links->expects($this->never())->method('listWatches');
+
+        $body = $this->signed($this->notice('watches_changed', '31', 'ada'));
+        $response = $this->controller->receive($body);
+
+        self::assertSame(Http::STATUS_NO_CONTENT, $response->getStatus());
+    }
+
     public function testIdentityRevokedWithoutAPersonEndsNoLink(): void
     {
         $this->accounts->expects($this->once())->method('linkEnded')->with('');
@@ -249,6 +264,7 @@ final class InboundControllerTest extends TestCase
             new ArrayCacheFactory(),
             $time,
             new NullLogger(),
+            $this->watches,
         );
     }
 
@@ -285,6 +301,7 @@ final class InboundControllerTest extends TestCase
             new ArrayCacheFactory(),
             $time,
             new NullLogger(),
+            $this->watches,
         );
 
         return $signingInput . '.' . $b64(sodium_crypto_sign_detached($signingInput, $secret));

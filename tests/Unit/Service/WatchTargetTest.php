@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCA\SynaplanIntegration\Service\WatchTarget;
 use OCP\Constants;
 use OCP\Files\File;
@@ -18,7 +21,7 @@ final class WatchTargetTest extends TestCase
 {
     public function testAReadableFileKeepsItsOwnPath(): void
     {
-        $target = $this->target($this->file('Documents/Notes.md', Constants::PERMISSION_READ));
+        $target = $this->target($this->file('Documents/Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE));
 
         self::assertSame([
             'target_kind' => 'file',
@@ -30,7 +33,7 @@ final class WatchTargetTest extends TestCase
     public function testALongPathIsCutOnACharacterBoundary(): void
     {
         $relative = str_repeat('ä', 200) . '.md';
-        $target = $this->target($this->file($relative, Constants::PERMISSION_READ), $relative);
+        $target = $this->target($this->file($relative, Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE), $relative);
 
         $path = $target->resolve('file', '7')['target_path'];
 
@@ -42,7 +45,7 @@ final class WatchTargetTest extends TestCase
     public function testAFolderIsAcceptedAsAFolder(): void
     {
         $node = $this->createStub(Folder::class);
-        $node->method('getPermissions')->willReturn(Constants::PERMISSION_READ);
+        $node->method('getPermissions')->willReturn(Constants::PERMISSION_READ | Constants::PERMISSION_CREATE);
         $node->method('getId')->willReturn(8);
         $node->method('getName')->willReturn('Invoices');
         $node->method('getPath')->willReturn('/ada/files/Invoices');
@@ -58,9 +61,59 @@ final class WatchTargetTest extends TestCase
         $target->resolve('file', '7');
     }
 
+    public function testAFileThePersonMayOnlyReadCannotBeWatched(): void
+    {
+        $target = $this->target($this->file('Shared/Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_SHARE));
+
+        try {
+            $target->resolve('file', '7');
+            self::fail('A read-only file was accepted');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::WATCH_NEEDS_EDIT, $e->failure->code);
+        }
+    }
+
+    public function testAFolderThePersonMayOnlyReadCannotBeWatched(): void
+    {
+        $node = $this->createStub(Folder::class);
+        $node->method('getPermissions')->willReturn(Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE | Constants::PERMISSION_DELETE);
+        $node->method('getId')->willReturn(8);
+        $node->method('getPath')->willReturn('/ada/files/Shared');
+
+        $this->expectException(FailureException::class);
+        $this->target($node, 'Shared')->resolve('folder', '8');
+    }
+
+    public function testASharedTargetCannotBeWatchedWhileTheAdministratorTurnedThatOff(): void
+    {
+        $target = $this->target($this->file('Shared/Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE), 'Shared/Notes.md', true);
+
+        try {
+            $target->resolve('file', '7');
+            self::fail('A shared file was accepted');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::WATCH_SHARED_OFF, $e->failure->code);
+        }
+    }
+
+    public function testNothingCanBeWatchedWhileTheAdministratorTurnedWatchingOff(): void
+    {
+        $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE), 'Notes.md', watchingOff: true);
+
+        try {
+            $target->resolve('file', '7');
+            self::fail('A file was accepted with watching off');
+        } catch (FailureException $e) {
+            self::assertSame(403, $e->failure->status);
+            self::assertSame(Failure::WATCHES_OFF, $e->failure->code);
+        }
+    }
+
     public function testAKindThatDoesNotMatchTheNodeIsNotFound(): void
     {
-        $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ));
+        $target = $this->target($this->file('Notes.md', Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE));
 
         $this->expectException(NotFoundException::class);
         $target->resolve('folder', '7');
@@ -85,7 +138,7 @@ final class WatchTargetTest extends TestCase
         return $file;
     }
 
-    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md'): WatchTarget
+    private function target(File|Folder|null $node, string $relative = 'Documents/Notes.md', bool $sharedOff = false, bool $watchingOff = false): WatchTarget
     {
         $user = $this->createStub(IUser::class);
         $user->method('getUID')->willReturn('ada');
@@ -99,6 +152,9 @@ final class WatchTargetTest extends TestCase
         $root = $this->createStub(IRootFolder::class);
         $root->method('getUserFolder')->willReturn($home);
 
-        return new WatchTarget($root, $session);
+        $policy = $this->createStub(WatchPolicy::class);
+        $policy->method('heldBy')->willReturn($watchingOff ? WatchPolicy::OFF_WATCHES : ($sharedOff ? WatchPolicy::OFF_SHARED : null));
+
+        return new WatchTarget($root, $session, $policy);
     }
 }

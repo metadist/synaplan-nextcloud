@@ -19,6 +19,7 @@ class LibraryImport
         private SynaplanClient $client,
         private IRootFolder $rootFolder,
         private LoggerInterface $logger,
+        private OwnWrites $ownWrites,
     ) {
     }
 
@@ -120,6 +121,7 @@ class LibraryImport
         }
         $file = $folder->newFile($target);
         $file->putContent($bytes);
+        $this->ownWrites->note((int) $file->getId(), time());
 
         return $file;
     }

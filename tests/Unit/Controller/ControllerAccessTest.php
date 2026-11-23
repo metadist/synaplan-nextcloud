@@ -63,6 +63,10 @@ final class ControllerAccessTest extends TestCase
         'settings#testConnection' => [],
         'watch#options' => ['NoAdminRequired'],
         'watch#start' => ['NoAdminRequired'],
+        'watch#index' => ['NoAdminRequired'],
+        'watch#waiting' => ['NoAdminRequired'],
+        'watch#update' => ['NoAdminRequired'],
+        'watch#stop' => ['NoAdminRequired'],
     ];
 
     public function testEveryRouteHasAnAccessEntry(): void

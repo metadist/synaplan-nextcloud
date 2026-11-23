@@ -114,9 +114,17 @@
 			</div>
 
 			<div v-if="watches.length > 0" class="sp-sidebar-watches">
-				<div v-for="item in watches" :key="item.id" class="sp-watch-box">
+				<div
+					v-for="item in watches"
+					:key="item.id"
+					class="sp-watch-box"
+					data-testid="synaplan-sidebar-watch">
 					<div class="sp-watch-sentence">
-						{{ item.sentence }}
+						{{
+							item.policy_off
+								? policyStopped(item.policy_off)
+								: item.sentence
+						}}
 					</div>
 					<div class="sp-watch-hint">
 						{{
@@ -125,6 +133,32 @@
 								'Everyone who can open this folder sees that it is watched.',
 							)
 						}}
+					</div>
+					<div class="sp-watch-controls">
+						<NcButton
+							v-if="controlsFor(item.state, item.policy_off).pause"
+							variant="secondary"
+							:disabled="busyWatch === item.id"
+							data-testid="synaplan-sidebar-watch-pause"
+							@click="changeWatch(item.id, 'paused')">
+							{{ t('synaplan_integration', 'Pause') }}
+						</NcButton>
+						<NcButton
+							v-if="controlsFor(item.state, item.policy_off).resume"
+							variant="secondary"
+							:disabled="busyWatch === item.id"
+							data-testid="synaplan-sidebar-watch-resume"
+							@click="changeWatch(item.id, 'active')">
+							{{ t('synaplan_integration', 'Resume') }}
+						</NcButton>
+						<NcButton
+							v-if="controlsFor(item.state, item.policy_off).stop"
+							variant="tertiary"
+							:disabled="busyWatch === item.id"
+							data-testid="synaplan-sidebar-watch-stop"
+							@click="endWatch(item.id)">
+							{{ t('synaplan_integration', 'Stop watching') }}
+						</NcButton>
 					</div>
 				</div>
 			</div>
@@ -197,6 +231,8 @@ import {
 	invalidateCloudStatusCache,
 	onCloudStatusInvalidated,
 } from '../cloud_state/statusBatcher'
+import { controlsFor, policyStopped } from '../watchControls'
+import { resumeWatch, setWatchState, stopWatch } from '../watches'
 
 const props = defineProps<{
 	fileIdRef: Ref<number>
@@ -215,6 +251,7 @@ const keptUpToDate = ref(false)
 const watches = ref<CloudWatchSummary[]>([])
 const glyphs = ref<GlyphOverrides>({})
 const openSynaplanUrl = ref('')
+const busyWatch = ref<number | null>(null)
 let loadSeq = 0
 
 const fileName = computed(() => props.fileNameRef.value)
@@ -331,6 +368,41 @@ async function removeFromSynaplan(): Promise<void> {
 		showError(t('synaplan_integration', "Couldn't check Synaplan right now"))
 	} finally {
 		removing.value = false
+	}
+}
+
+/**
+ * Pause or resume one of the person's watches on this folder or file.
+ *
+ * @param id Synaplan watch id
+ * @param next The state the owner asked for
+ */
+async function changeWatch(id: number, next: 'paused' | 'active'): Promise<void> {
+	busyWatch.value = id
+	try {
+		const now =
+			next === 'active' ? await resumeWatch(id) : await setWatchState(id, next)
+		if (now) {
+			invalidateCloudStatusCache()
+		}
+	} finally {
+		busyWatch.value = null
+	}
+}
+
+/**
+ * Stop one of the person's watches on this folder or file, after asking once.
+ *
+ * @param id Synaplan watch id
+ */
+async function endWatch(id: number): Promise<void> {
+	busyWatch.value = id
+	try {
+		if (await stopWatch(id, fileName.value)) {
+			invalidateCloudStatusCache()
+		}
+	} finally {
+		busyWatch.value = null
 	}
 }
 
@@ -540,6 +612,13 @@ onCloudStatusInvalidated(() => {
 	margin: 0;
 	font-size: 12.5px;
 	color: var(--color-text-maxcontrast, #767676);
+}
+
+.sp-watch-controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
 }
 
 .sp-sidebar-actions {

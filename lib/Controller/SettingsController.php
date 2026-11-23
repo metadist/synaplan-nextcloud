@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Service\NotifyKeyCache;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
+use OCA\SynaplanIntegration\Service\WatchPolicy;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -109,6 +110,9 @@ class SettingsController extends Controller
                 'read_folder_cap',
                 '20',
             ))),
+            'watch_folders' => WatchPolicy::watchingAllowedIn($this->config),
+            'watch_shared_folders' => WatchPolicy::sharedAllowedIn($this->config),
+            'background_jobs_mode' => WatchPolicy::jobsModeIn($this->config),
         ]);
     }
 
@@ -190,6 +194,12 @@ class SettingsController extends Controller
                 if (isset($decoded['read_folder_cap'])) {
                     $cap = max(1, min(500, (int) $decoded['read_folder_cap']));
                     $this->config->setAppValue(Application::APP_ID, 'read_folder_cap', (string) $cap);
+                }
+                if (isset($decoded['watch_folders']) && is_bool($decoded['watch_folders'])) {
+                    $this->config->setAppValue(Application::APP_ID, WatchPolicy::WATCHES_KEY, $decoded['watch_folders'] ? 'yes' : 'no');
+                }
+                if (isset($decoded['watch_shared_folders']) && is_bool($decoded['watch_shared_folders'])) {
+                    $this->config->setAppValue(Application::APP_ID, WatchPolicy::SHARED_KEY, $decoded['watch_shared_folders'] ? 'yes' : 'no');
                 }
             }
         }

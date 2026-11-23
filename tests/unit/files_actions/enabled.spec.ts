@@ -74,20 +74,36 @@ describe('watch', () => {
 		basename: 'Invoices',
 		type: 'folder',
 		mime: 'httpd/unix-directory',
-		permissions: Permission.READ,
+		permissions: Permission.READ | Permission.CREATE,
 	}
+	const editable = Permission.READ | Permission.UPDATE
 
-	it('is offered for a readable file and a folder, in both call shapes', () => {
-		expect(enabled(watchAction, { nodes: [file(PNG)] })).toBe(true)
-		expect(enabled(watchAction, [file(PNG)], {})).toBe(true)
+	it('is offered for a file and a folder the person may edit, in both call shapes', () => {
+		expect(enabled(watchAction, { nodes: [file(PNG, editable)] })).toBe(true)
+		expect(enabled(watchAction, [file(PNG, editable)], {})).toBe(true)
 		expect(enabled(watchAction, { nodes: [folder] })).toBe(true)
 	})
 
+	it('is not offered for what the person may only read', () => {
+		expect(enabled(watchAction, { nodes: [file(PNG)] })).toBe(false)
+		expect(
+			enabled(watchAction, {
+				nodes: [
+					{ ...folder, permissions: Permission.READ | Permission.UPDATE },
+				],
+			}),
+		).toBe(false)
+	})
+
 	it('needs read permission and exactly one item', () => {
-		expect(enabled(watchAction, { nodes: [file(PNG, Permission.NONE)] })).toBe(
+		expect(enabled(watchAction, { nodes: [file(PNG, Permission.UPDATE)] })).toBe(
 			false,
 		)
-		expect(enabled(watchAction, { nodes: [file(PNG), file(PDF)] })).toBe(false)
+		expect(
+			enabled(watchAction, {
+				nodes: [file(PNG, editable), file(PDF, editable)],
+			}),
+		).toBe(false)
 		expect(enabled(watchAction, { nodes: [] })).toBe(false)
 	})
 })

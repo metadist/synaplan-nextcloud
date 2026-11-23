@@ -186,6 +186,27 @@ export function describeFailure(code?: string, message?: string): Failure {
 					'Synaplan found no text in this file. It may be a scan or protected by a password.',
 				),
 			}
+		case 'watch_needs_edit':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Only people who may edit a folder or a file can watch it.',
+				),
+			}
+		case 'watches_off':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Your administrator turned off watching folders.',
+				),
+			}
+		case 'watch_shared_off':
+			return {
+				text: t(
+					'synaplan_integration',
+					'Your administrator turned off watching shared folders.',
+				),
+			}
 		case 'translation_unavailable':
 			return {
 				text: t(

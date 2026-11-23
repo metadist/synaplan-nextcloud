@@ -47,6 +47,9 @@ describe('describeFailure', () => {
 		'file_empty',
 		'no_text',
 		'translation_unavailable',
+		'watch_needs_edit',
+		'watches_off',
+		'watch_shared_off',
 	])('gives %s a sentence of its own', (code) => {
 		const { text } = describeFailure(code)
 

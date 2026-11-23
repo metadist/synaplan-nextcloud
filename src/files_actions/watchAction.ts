@@ -1,4 +1,5 @@
 import type { IFileAction } from '@nextcloud/files'
+import type { NodeCompat } from './compat'
 
 import EyePlusOutlineSvg from '@mdi/svg/svg/eye-plus-outline.svg?raw'
 import { Permission } from '@nextcloud/files'
@@ -6,6 +7,7 @@ import { t } from '@nextcloud/l10n'
 import { spawnDialog } from '@nextcloud/vue/functions/dialog'
 import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
+import { watchingAllowed, watchSharedAllowed } from './features'
 
 /**
  * Whether a node is a folder.
@@ -18,6 +20,28 @@ function isFolder(node: { type?: string; mime?: string }): boolean {
 	return node.type === 'folder' || node.mime === 'httpd/unix-directory'
 }
 
+/**
+ * Whether the Files app shows the node as shared: shared with the person,
+ * or shared by them. A folder below one of their shares is not marked; the
+ * dialog then says why it cannot start.
+ *
+ * @param node the file list node
+ */
+function isShared(node: NodeCompat): boolean {
+	const mountType = node.attributes?.['mount-type']
+	if (typeof mountType === 'string' && mountType.startsWith('shared')) {
+		return true
+	}
+	const shareTypes = node.attributes?.['share-types']
+	if (Array.isArray(shareTypes)) {
+		return shareTypes.length > 0
+	}
+	return (
+		typeof shareTypes === 'number'
+		|| (typeof shareTypes === 'object' && shareTypes !== null)
+	)
+}
+
 export const watchAction: IFileAction = {
 	id: 'synaplan:watch',
 	displayName: () => t('synaplan_integration', 'Watch with Synaplan…'),
@@ -25,10 +49,17 @@ export const watchAction: IFileAction = {
 
 	enabled(...args: unknown[]) {
 		const nodes = extractNodesFromEnabled(...args)
-		if (nodes.length !== 1) {
+		if (nodes.length !== 1 || !watchingAllowed()) {
 			return false
 		}
-		return (nodes[0].permissions & Permission.READ) !== 0
+		// A share's root always carries UPDATE because its mount point can be
+		// renamed; adding files is what editing a folder means.
+		const edit = isFolder(nodes[0]) ? Permission.CREATE : Permission.UPDATE
+		const needed = Permission.READ | edit
+		if ((nodes[0].permissions & needed) !== needed) {
+			return false
+		}
+		return watchSharedAllowed() || !isShared(nodes[0])
 	},
 
 	async exec(...args: unknown[]) {
