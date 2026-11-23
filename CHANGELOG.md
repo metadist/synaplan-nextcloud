@@ -98,6 +98,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   server's own address, also when that is `localhost`. It was the dev
   stack's `http://nextcloud`, which Synaplan was then told to call; the dev
   and test stacks now set that address themselves.
+- **Open in Nextcloud** in Synaplan and the link in the notice about a copy
+  go to the address people use, not the one Synaplan called. On a server
+  without `overwritehost`, both pointed at the internal address entered for
+  Synaplan.
 
 ## 2.0.0 – 2026-11-16
 

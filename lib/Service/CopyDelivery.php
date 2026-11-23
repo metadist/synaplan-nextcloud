@@ -205,13 +205,12 @@ class CopyDelivery
         $relative = $userFolder->getRelativePath($file->getPath()) ?? $file->getName();
         $relative = ltrim((string) $relative, '/');
         $this->rememberOwnWrite($uid, (int) $file->getId());
-        $openUrl = $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $file->getId()]);
+        $openUrl = $this->openUrl((int) $file->getId());
         $this->notify(
             $uid,
             $file->getName(),
             dirname($relative) === '.' ? '' : dirname($relative),
             (int) $file->getId(),
-            $openUrl,
         );
 
         return [
@@ -341,7 +340,26 @@ class CopyDelivery
         return 'own_' . hash('sha256', $uid) . '_' . $fileId;
     }
 
-    private function notify(string $uid, string $name, string $folder, int $fileId, string $link): void
+    /**
+     * Where people open the copy. This runs in Synaplan's request, whose host
+     * is the address Synaplan calls, which a browser may not reach.
+     */
+    private function openUrl(int $fileId): string
+    {
+        $base = rtrim($this->config->getSystemValueString('overwrite.cli.url', ''), '/');
+        if ($base === '') {
+            return $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $fileId]);
+        }
+        $route = $this->urls->linkToRoute('files.View.showFile', ['fileid' => $fileId]);
+        $webroot = $this->urls->getWebroot();
+        if ($webroot !== '' && str_starts_with($route, $webroot)) {
+            $route = substr($route, strlen($webroot));
+        }
+
+        return $base . $route;
+    }
+
+    private function notify(string $uid, string $name, string $folder, int $fileId): void
     {
         try {
             $notification = $this->notifications->createNotification();
@@ -349,7 +367,7 @@ class CopyDelivery
                 ->setUser($uid)
                 ->setDateTime(new \DateTime())
                 ->setObject('file', (string) $fileId)
-                ->setSubject('copied', ['name' => $name, 'folder' => $folder, 'link' => $link]);
+                ->setSubject('copied', ['name' => $name, 'folder' => $folder]);
             $this->notifications->notify($notification);
         } catch (\Throwable $e) {
             $this->logger->info('Could not notify {uid} about a Synaplan copy: {message}', [

@@ -21,6 +21,7 @@ use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\Notification\IManager;
+use OCP\Notification\INotification;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -41,6 +42,10 @@ final class CopyDeliveryTest extends TestCase
 
     private IJobList&MockObject $jobs;
     private int $now = 1_800_000_000;
+    private string $cliUrl = '';
+
+    /** @var array<string, mixed> */
+    private array $notified = [];
 
     protected function setUp(): void
     {
@@ -86,6 +91,26 @@ final class CopyDeliveryTest extends TestCase
         self::assertSame('delivered', $answer['body']['status']);
         self::assertSame('/Synaplan/Documents/Q3 plan.docx', $answer['body']['remote_path']);
         self::assertSame($answer['body'], $this->reported);
+    }
+
+    public function testACopyOpensAtTheAddressPeopleUseNotTheOneSynaplanCalled(): void
+    {
+        $this->claim();
+        $this->cliUrl = 'https://files.example.org/cloud/';
+
+        $answer = $this->delivery()->handle('9', 'ada');
+
+        self::assertSame('https://files.example.org/cloud/index.php/f/42', $answer['body']['open_url']);
+        self::assertArrayNotHasKey('link', $this->notified);
+    }
+
+    public function testWithoutACommandLineAddressACopyOpensAtThisServersAddress(): void
+    {
+        $this->claim();
+
+        $answer = $this->delivery()->handle('9', 'ada');
+
+        self::assertSame('http://nextcloud/cloud/index.php/f/42', $answer['body']['open_url']);
     }
 
     public function testAFullStorageIsQuotaExceeded(): void
@@ -242,8 +267,26 @@ final class CopyDeliveryTest extends TestCase
         $config->method('getUserValue')->willReturn('');
         $caches = $this->createMock(ICacheFactory::class);
         $caches->method('createDistributed')->willReturn($this->createMock(ICache::class));
+        $config->method('getSystemValueString')->willReturnCallback(
+            fn (string $key, string $default = ''): string => $key === 'overwrite.cli.url' ? $this->cliUrl : $default,
+        );
         $urls = $this->createMock(IURLGenerator::class);
-        $urls->method('linkToRouteAbsolute')->willReturn('https://cloud.example/f/42');
+        $urls->method('linkToRouteAbsolute')->willReturn('http://nextcloud/cloud/index.php/f/42');
+        $urls->method('linkToRoute')->willReturn('/cloud/index.php/f/42');
+        $urls->method('getWebroot')->willReturn('/cloud');
+        $notification = $this->createMock(INotification::class);
+        foreach (['setApp', 'setUser', 'setDateTime', 'setObject'] as $setter) {
+            $notification->method($setter)->willReturnSelf();
+        }
+        $notification->method('setSubject')->willReturnCallback(
+            function (string $subject, array $parameters) use ($notification): INotification {
+                $this->notified = $parameters;
+
+                return $notification;
+            },
+        );
+        $notifications = $this->createMock(IManager::class);
+        $notifications->method('createNotification')->willReturn($notification);
         $time = $this->createMock(ITimeFactory::class);
         $time->method('getTime')->willReturnCallback(fn (): int => $this->now);
 
@@ -254,7 +297,7 @@ final class CopyDeliveryTest extends TestCase
             $config,
             $caches,
             $urls,
-            $this->createMock(IManager::class),
+            $notifications,
             new NullLogger(),
             $this->jobs,
             $time,

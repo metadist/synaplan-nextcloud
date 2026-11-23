@@ -57,10 +57,14 @@ test('a copy from Synaplan lands in Synaplan/Documents of the person it names', 
 	})
 	const body = (await sent.json()) as {
 		reference?: string
-		context?: { state?: string }
+		context?: { state?: string; open_url?: string }
 	}
 	expect(sent.status(), JSON.stringify(body)).toBe(200)
 	expect(body.context?.state).toBe('delivered')
+	expect(
+		new URL(body.context?.open_url ?? 'about:blank').origin,
+		'the copy opens where people reach this Nextcloud',
+	).toBe(new URL(NC_URL).origin)
 	expect(body.reference).toBe(`/Synaplan/Documents/${name}`)
 
 	const person = await nextcloudAs(UID)
