@@ -132,7 +132,8 @@ class ReadScope
      *
      * "Only what I watch" allows the folders the person's own watches look
      * at (that folder, not its sub-folders: a watch looks at that folder
-     * only), and never falls back to the named folders.
+     * only), and never falls back to the named folders. "Also folders I
+     * allow" adds the named folders to those.
      */
     public function mayRead(string $uid, string $folder): bool
     {
@@ -141,8 +142,8 @@ class ReadScope
             return true;
         }
         $folder = self::clean($folder);
-        if ($scope['mode'] === self::MODE_WATCHED) {
-            return $folder !== '' && in_array($folder, $this->watchedFolders($uid), true);
+        if ($folder !== '' && in_array($folder, $this->watchedFolders($uid), true)) {
+            return true;
         }
         if ($scope['mode'] !== self::MODE_ALLOWED) {
             return false;

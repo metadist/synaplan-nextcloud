@@ -44,6 +44,23 @@ final class ReadScopeTest extends TestCase
         self::assertFalse($scope->mayRead('ada', 'Specs/brief.pdf'));
     }
 
+    public function testAWatchedFolderStaysReadableWhenThePersonAllowsAFolderToo(): void
+    {
+        $this->folders = ['Invoices' => 30, 'HR' => 9];
+        $this->watches = [
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+        ];
+        $scope = $this->scope();
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+
+        self::assertNull($scope->allow('ada', '9', 'HR'));
+
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'Invoices/2026'));
+        self::assertTrue($scope->mayRead('ada', 'HR'));
+    }
+
     public function testNothingAllowedMeansNothingMayBeRead(): void
     {
         $scope = $this->scope();

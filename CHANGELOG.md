@@ -77,6 +77,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Saving what Synaplan may read** keeps the folder for files from
   Synaplan. A save that left that folder out put it back to `Synaplan`, and
   the read setting's Save stored an unsaved edit of the folder field.
+- **Also folders I allow** keeps the folders you watch readable. Allowing
+  one more folder, also through **Let Synaplan read this folder**, stopped
+  Synaplan reading the watched ones.
 
 ## 2.0.0 – 2026-11-16
 
