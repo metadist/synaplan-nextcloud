@@ -140,8 +140,18 @@ export function ownIdentities(uid: string): string {
  * @param uid Nextcloud user id
  */
 export function ownedAccountIds(uid: string): number[] {
-	const sql = `SELECT CONCAT('owned:', COALESCE(GROUP_CONCAT(DISTINCT i.BUSERID), '')) AS owned
-		FROM BEXTERNALIDENTITIES i WHERE i.BID IN (${ownIdentities(uid)})
+	return [...ownedAccounts(uid).keys()]
+}
+
+/**
+ * The accounts of ownedAccountIds, each with its email in the database.
+ *
+ * @param uid Nextcloud user id
+ */
+function ownedAccounts(uid: string): Map<number, string> {
+	const sql = `SELECT CONCAT('owned:', COALESCE(GROUP_CONCAT(DISTINCT CONCAT(u.BID, '=', u.BMAIL) SEPARATOR ';'), '')) AS owned
+		FROM BEXTERNALIDENTITIES i JOIN BUSER u ON u.BID = i.BUSERID
+		WHERE i.BID IN (${ownIdentities(uid)})
 		AND i.BUSERID NOT IN (SELECT o.BUSERID FROM BEXTERNALIDENTITIES o
 			LEFT JOIN BPLATFORMINSTANCES p ON p.BINSTANCEID = o.BINSTANCEID
 			WHERE p.BID IS NULL OR NOT (${OURS}))`
@@ -153,11 +163,16 @@ export function ownedAccountIds(uid: string): number[] {
 		'dbal:run-sql',
 		sql.replace(/\s+/g, ' '),
 	]).toString()
-	const match = /owned:([\d,]*)/.exec(out)
+	const match = /owned:(\S*)/.exec(out)
 	if (match === null) {
 		throw new Error(`could not read the accounts of ${uid}: ${out}`)
 	}
-	return match[1] === '' ? [] : match[1].split(',').map(Number)
+	const accounts = new Map<number, string>()
+	for (const pair of match[1].split(';').filter((entry) => entry !== '')) {
+		const at = pair.indexOf('=')
+		accounts.set(Number(pair.slice(0, at)), pair.slice(at + 1))
+	}
+	return accounts
 }
 
 /**
@@ -183,9 +198,25 @@ export async function accountEmail(id: number): Promise<string> {
  * @param uid Nextcloud user id
  */
 export async function deleteSynaplanAccount(uid: string): Promise<void> {
-	const ids = ownedAccountIds(uid)
+	const accounts = ownedAccounts(uid)
 	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
-	for (const id of ids) {
+	for (const [id, email] of accounts) {
+		// The database is read in SYNAPLAN_APP_CONTAINER, the deletion goes to
+		// E2E_SYNAPLAN_URL: an account that differs between them means two
+		// stacks, where the id may name someone else's account.
+		const found = await synaplan.get(`/api/v1/admin/users/${id}/usage`)
+		const seen = found.ok()
+			? (((await found.json()) as { user?: { email?: string } }).user?.email
+				?? '')
+			: ''
+		if (seen !== email) {
+			await synaplan.dispose()
+			throw new Error(
+				`Synaplan account ${id} is ${email} in ${SYNAPLAN_CONTAINER} but ${seen || 'missing'} at ${SYNAPLAN_URL}: they are different stacks, so nothing was deleted. Point SYNAPLAN_APP_CONTAINER and E2E_SYNAPLAN_URL at one.`,
+			)
+		}
+	}
+	for (const id of accounts.keys()) {
 		const deleted = await synaplan.delete(`/api/v1/admin/users/${id}`)
 		expect(deleted.ok(), `deleting ${uid}'s account ${id} from Synaplan`).toBe(
 			true,
