@@ -256,6 +256,46 @@ final class ReadScopeTest extends TestCase
         self::assertFalse($this->scope()->mayRead('ada', 'Invoices'));
     }
 
+    public function testSavingTheSettingsKeepsEachFolderAllowedAndGivesNoneToItsReplacement(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+
+        // Invoices moved into Archive and a new Invoices took its name. The
+        // settings page still shows the old path when Ada saves.
+        $this->folders = ['Archive/Invoices' => 3, 'Invoices' => 8];
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+
+        self::assertSame('3', $scope->get('ada')['folders'][0]['id']);
+        self::assertTrue($scope->mayRead('ada', 'Archive/Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAFolderThatCannotBeFoundWhenSavedKeepsItsId(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+
+        // Its storage is away while Ada saves.
+        $this->folders = [];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+        self::assertSame([['id' => '3', 'path' => 'Invoices']], $this->scope()->get('ada')['folders']);
+
+        $this->folders = ['Invoices' => 8];
+        self::assertFalse($this->scope()->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAnIdTheSettingsPageSendsNeverNamesAnotherFolder(): void
+    {
+        $this->folders = ['Invoices' => 3, 'HR' => 4];
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_ALLOWED, [['id' => '4', 'path' => 'Invoices']]);
+
+        self::assertSame([['id' => '3', 'path' => 'Invoices']], $scope->get('ada')['folders']);
+        self::assertFalse($scope->mayRead('ada', 'HR'));
+    }
+
     public function testAFolderSavedWithoutAnIdIsMatchedByPath(): void
     {
         $this->stored['ada' . ReadScope::PREF] = (string) json_encode([

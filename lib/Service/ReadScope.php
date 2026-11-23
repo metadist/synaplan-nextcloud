@@ -253,7 +253,7 @@ class ReadScope
         if (count($scope['folders']) >= $this->cap()) {
             return 'cap';
         }
-        $scope['folders'][] = ['id' => $id, 'path' => $path];
+        $scope['folders'][] = ['id' => $this->idAt($uid, $path), 'path' => $path];
         if ($scope['mode'] === self::MODE_WATCHED) {
             $scope['mode'] = self::MODE_ALLOWED;
         }
@@ -271,6 +271,11 @@ class ReadScope
     }
 
     /**
+     * A folder the person kept stays the folder it was saved as, found or
+     * not, whatever now sits at its path; a folder added here is the one at
+     * its path now. An id the request carries only says which saved folder
+     * it keeps.
+     *
      * @param list<array{id: string, path: string}> $folders
      */
     private function saveNow(string $uid, string $mode, array $folders): void
@@ -282,18 +287,42 @@ class ReadScope
         if (self::wider($mode, $ceiling)) {
             $mode = $ceiling;
         }
+        $saved = $this->get($uid)['folders'];
         $kept = [];
         foreach ($folders as $folder) {
             $path = self::clean($folder['path']);
             if ($path === '') {
                 continue;
             }
-            $kept[] = ['id' => $folder['id'], 'path' => $path];
+            $entry = self::savedEntry($saved, $folder['id'], $path) ?? ['id' => $this->idAt($uid, $path), 'path' => $path];
+            if (in_array($entry, $kept, true)) {
+                continue;
+            }
+            $kept[] = $entry;
             if (count($kept) >= $this->cap()) {
                 break;
             }
         }
         $this->store($uid, ['mode' => $mode, 'folders' => $kept]);
+    }
+
+    /**
+     * The saved entry a row of the settings page stands for: the page sends
+     * a saved folder back with its id, and a folder saved without one, or
+     * added on the page, without an id.
+     *
+     * @param list<array{id: string, path: string}> $saved
+     * @return array{id: string, path: string}|null
+     */
+    private static function savedEntry(array $saved, string $id, string $path): ?array
+    {
+        foreach ($saved as $entry) {
+            if ($id !== '' ? $entry['id'] === $id : $entry['id'] === '' && $entry['path'] === $path) {
+                return $entry;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -469,30 +498,18 @@ class ReadScope
     }
 
     /**
-     * The id of each folder as this Nextcloud knows it, whatever id the
-     * request carried. A path that names no folder keeps an empty id.
-     *
-     * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
-     * @return array{mode: string, folders: list<array{id: string, path: string}>}
+     * The id of the folder at this path as this Nextcloud knows it, or ''
+     * when no folder is there.
      */
-    private function withIds(string $uid, array $scope): array
+    private function idAt(string $uid, string $path): string
     {
         try {
-            $userFolder = $this->rootFolder->getUserFolder($uid);
+            $node = $this->rootFolder->getUserFolder($uid)->get($path);
         } catch (\Throwable) {
-            return $scope;
-        }
-        foreach ($scope['folders'] as $i => $folder) {
-            try {
-                $node = $userFolder->get($folder['path']);
-                $id = $node instanceof Folder ? (string) $node->getId() : '';
-            } catch (\Throwable) {
-                $id = '';
-            }
-            $scope['folders'][$i]['id'] = $id;
+            return '';
         }
 
-        return $scope;
+        return $node instanceof Folder ? (string) $node->getId() : '';
     }
 
     /**
@@ -500,7 +517,6 @@ class ReadScope
      */
     private function store(string $uid, array $scope): void
     {
-        $scope = $this->withIds($uid, $scope);
         $this->resolved = [];
         $this->config->setUserValue(
             $uid,

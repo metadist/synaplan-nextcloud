@@ -95,7 +95,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   With **All my files** allowed, it read the person's whole home folder.
 - **A folder a person let Synaplan read** stays readable when it is renamed
   or moved, and a new folder created under its old name is not readable.
-  The permission followed the name only.
+  The permission followed the name only. Saving the read setting keeps each
+  allowed folder, also while it cannot be found; it looked every folder up
+  by its name again and gave the permission to whatever folder had it.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again.
