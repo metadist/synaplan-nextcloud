@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\PreferencesController;
-use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCP\IConfig;
 use OCP\IRequest;
@@ -23,13 +23,13 @@ final class PreferencesControllerTest extends TestCase
 
     public function testSavingOnlyTheReadSettingKeepsTheCopyFolder(): void
     {
-        $this->stored[CopyDelivery::COPY_FOLDER] = 'Projects/From AI';
+        $this->stored[SynaplanFolders::COPY_FOLDER] = 'Projects/From AI';
 
         $response = $this->controller(['read_scope' => ['mode' => 'allowed', 'folders' => [['id' => '', 'path' => 'HR']]]])
             ->save();
 
         self::assertSame(200, $response->getStatus());
-        self::assertSame('Projects/From AI', $this->stored[CopyDelivery::COPY_FOLDER]);
+        self::assertSame('Projects/From AI', $this->stored[SynaplanFolders::COPY_FOLDER]);
         self::assertSame('Projects/From AI', $response->getData()['copy_folder']);
         self::assertSame([['allowed', [['id' => '', 'path' => 'HR']]]], $this->scopes);
     }
@@ -39,18 +39,18 @@ final class PreferencesControllerTest extends TestCase
         $response = $this->controller([])->save('Projects/From AI');
 
         self::assertSame(200, $response->getStatus());
-        self::assertSame('Projects/From AI', $this->stored[CopyDelivery::COPY_FOLDER]);
+        self::assertSame('Projects/From AI', $this->stored[SynaplanFolders::COPY_FOLDER]);
         self::assertSame([], $this->scopes);
     }
 
     public function testARefusedFolderStoresNothing(): void
     {
-        $this->stored[CopyDelivery::COPY_FOLDER] = 'Projects';
+        $this->stored[SynaplanFolders::COPY_FOLDER] = 'Projects';
 
         $response = $this->controller(['read_scope' => ['mode' => 'all', 'folders' => []]])->save('../elsewhere');
 
         self::assertSame(400, $response->getStatus());
-        self::assertSame('Projects', $this->stored[CopyDelivery::COPY_FOLDER]);
+        self::assertSame('Projects', $this->stored[SynaplanFolders::COPY_FOLDER]);
         self::assertSame([], $this->scopes);
     }
 

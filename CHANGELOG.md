@@ -102,6 +102,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   go to the address people use, not the one Synaplan called. On a server
   without `overwritehost`, both pointed at the internal address entered for
   Synaplan.
+- **Save in the chat** puts the file into the folder you chose under "Save
+  files from Synaplan to", in its kind folder, like a copy Synaplan sends.
+  It always used `Synaplan/`.
 
 ## 2.0.0 – 2026-11-16
 

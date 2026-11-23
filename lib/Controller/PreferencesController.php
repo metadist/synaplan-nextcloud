@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
-use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -42,7 +42,7 @@ class PreferencesController extends Controller
         }
 
         return new JSONResponse([
-            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, ''),
+            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
             'read_folder_cap' => $this->scope->cap(),
             'read_scope_ceiling' => $this->scope->ceiling(),
@@ -106,7 +106,7 @@ class PreferencesController extends Controller
         $folder = null;
         if ($copy_folder !== null) {
             try {
-                $folder = CopyDelivery::cleanFolder($copy_folder);
+                $folder = SynaplanFolders::cleanFolder($copy_folder);
             } catch (\InvalidArgumentException) {
                 return new JSONResponse(
                     ['success' => false, 'error' => 'Could not save that folder.'],
@@ -130,12 +130,12 @@ class PreferencesController extends Controller
             $this->scope->save($uid, $mode, $folders);
         }
         if ($folder !== null) {
-            $this->config->setUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, $folder);
+            $this->config->setUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, $folder);
         }
 
         return new JSONResponse([
             'success' => true,
-            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, ''),
+            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
         ]);
     }

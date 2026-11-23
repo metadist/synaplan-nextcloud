@@ -67,7 +67,7 @@ class LibraryImport
         if ($fileId < 1) {
             throw new \InvalidArgumentException('Missing file.');
         }
-        $destination = CopyDelivery::cleanFolder($folder);
+        $destination = SynaplanFolders::cleanFolder($folder);
         $bytes = $this->client->downloadStoredFile($fileId);
         $name = basename(str_replace('\\', '/', trim($name)));
         if ($name === '' || $name === '.' || $name === '..') {
