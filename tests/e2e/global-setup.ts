@@ -52,6 +52,20 @@ async function waitUntilReady(url: string): Promise<void> {
 	await context.dispose()
 }
 
+/**
+ * The address under which the Nextcloud container reaches a URL the host
+ * reaches: localhost is the Docker host there.
+ *
+ * @param url an address on the host
+ */
+function fromContainers(url: string): string {
+	const address = new URL(url)
+	if (['localhost', '127.0.0.1'].includes(address.hostname)) {
+		address.hostname = 'host.docker.internal'
+	}
+	return address.toString().replace(/\/+$/, '')
+}
+
 /** The initial access token the Synaplan test stack accepts (synaplan-test-stack.yml). */
 const REGISTRATION_TOKEN = 'nextcloud-e2e-initial-access-token-0001'
 
@@ -144,7 +158,11 @@ export default async function globalSetup(): Promise<void> {
 	// a name Synaplan's test environment accepts for plain-http delivery.
 	const inbound = new URL(`${APP}/api/v1/inbound`, NC_URL)
 	inbound.hostname = 'host.docker.internal'
+	// The key is created at E2E_SYNAPLAN_URL, so Nextcloud must call that
+	// stack too, whatever address it was installed with.
 	await saveSettings({
+		synaplan_url_local: fromContainers(SYNAPLAN_URL),
+		synaplan_public_url_local: SYNAPLAN_URL.replace(/\/+$/, ''),
 		api_key_local: apiKey.key,
 		active_env: 'local',
 		mode: 'link',

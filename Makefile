@@ -137,7 +137,7 @@ dev-up: docker-compose.dev.yml ## Start Nextcloud on :8081 with MariaDB, cron an
 	$(NC_EXEC) sh /mnt/synaplan_integration/docker/dev-seed.sh
 	@echo ""
 	@echo "Nextcloud:  http://localhost:8081  (admin / admin; ada, bob, carol / <name>-dev-pass)"
-	@echo "Synaplan:   $(if $(filter test,$(DEV_SYNAPLAN)),$(E2E_SYNAPLAN_URL)  (the test stack; from the Nextcloud containers: http://host.docker.internal:8001),http://localhost:5173  (from the Nextcloud containers: http://backend))"
+	@echo "Synaplan:   $(if $(filter test,$(DEV_SYNAPLAN)),$(E2E_SYNAPLAN_URL)  (the test stack; from the Nextcloud containers: http://host.docker.internal:$(E2E_SYNAPLAN_PORT)),http://localhost:5173  (from the Nextcloud containers: http://backend))"
 
 dev-down: docker-compose.dev.yml ## Stop local Nextcloud (keeps the volumes)
 	$(COMPOSE_DEV) down
@@ -167,9 +167,12 @@ dev-shell: docker-compose.dev.yml ## Open a shell in the Nextcloud container as 
 SYNAPLAN_DIR ?= ../synaplan
 E2E_NC_PORT ?= 8091
 E2E_SYNAPLAN_URL ?= http://localhost:8001
+# The Nextcloud containers reach the stack at the same port on the Docker host.
+E2E_SYNAPLAN_PORT := $(shell echo '$(E2E_SYNAPLAN_URL)' | sed -nE 's,^http://(localhost|127\.0\.0\.1):([0-9]+)/?$$,\2,p')
+export SYNAPLAN_PORT := $(E2E_SYNAPLAN_PORT)
 export APP_IMAGE ?= ghcr.io/metadist/synaplan@$(shell grep -oE 'SYNAPLAN_IMAGE_DIGEST:[[:space:]]+sha256:[a-f0-9]+' .github/workflows/ci.yml | awk '{print $$2}')
 export NC_PORT := $(E2E_NC_PORT)
-export WSLENV := $(WSLENV):APP_IMAGE:NC_PORT
+export WSLENV := $(WSLENV):APP_IMAGE:NC_PORT:SYNAPLAN_PORT
 COMPOSE_E2E := docker compose -p synaplan-nextcloud-e2e -f docker-compose.ci.yml
 COMPOSE_E2E_SYNAPLAN := docker compose -p synaplan-nextcloud-e2e-synaplan \
 	-f $(SYNAPLAN_DIR)/docker-compose.test.yml \
@@ -177,9 +180,11 @@ COMPOSE_E2E_SYNAPLAN := docker compose -p synaplan-nextcloud-e2e-synaplan \
 	-f tests/e2e/synaplan-test-stack.yml $(foreach file,$(E2E_SYNAPLAN_FILES),-f $(file))
 
 e2e-up: build ## Start the e2e stacks: Synaplan test stack on :8001 (or reuse a running one), Nextcloud (NC_IMAGE) on E2E_NC_PORT
+	@test -n "$(E2E_SYNAPLAN_PORT)" || { echo "E2E_SYNAPLAN_URL must be http://localhost:<port>, the address of a Synaplan test stack on this Docker host."; exit 1; }
 	@if curl -fsS -o /dev/null --max-time 5 $(E2E_SYNAPLAN_URL)/api/health; then \
 		echo "A Synaplan test stack already answers at $(E2E_SYNAPLAN_URL): using it."; \
 	else \
+		test "$(E2E_SYNAPLAN_PORT)" = 8001 || { echo "No Synaplan test stack answers at $(E2E_SYNAPLAN_URL), and the one e2e-up starts listens on :8001."; exit 1; }; \
 		test -f $(SYNAPLAN_DIR)/docker-compose.test.yml || { echo "No Synaplan checkout at $(SYNAPLAN_DIR) (README, End-to-end journeys)."; exit 1; }; \
 		docker image inspect $(APP_IMAGE) >/dev/null 2>&1 || docker pull -q $(APP_IMAGE); \
 		$(COMPOSE_E2E_SYNAPLAN) up -d --wait; \
