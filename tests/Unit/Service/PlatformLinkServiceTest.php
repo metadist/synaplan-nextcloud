@@ -417,11 +417,11 @@ class PlatformLinkServiceTest extends TestCase
         }
     }
 
-    public function testAFolderReadsClaimAndListingWaitNoLongerThanTheyAreGiven(): void
+    public function testAFolderReadsClaimListingAndResultWaitNoLongerThanTheyAreGiven(): void
     {
         $this->userAccounts->method('credentialFor')->willReturn('sk_ada');
         $timeouts = [];
-        $this->httpClient->expects($this->exactly(2))->method('post')->willReturnCallback(
+        $this->httpClient->expects($this->exactly(3))->method('post')->willReturnCallback(
             function (string $url, array $options) use (&$timeouts): IResponse {
                 $timeouts[] = $options['timeout'];
 
@@ -431,8 +431,9 @@ class PlatformLinkServiceTest extends TestCase
 
         $this->service()->claimPickup('15', 'ada', 12);
         $this->service()->submitPickupListing('15', 'ada', [], 3);
+        $this->service()->reportPickupResult('15', 'ada', ['status' => 'done'], 4);
 
-        self::assertSame([12, 3], $timeouts);
+        self::assertSame([12, 3, 4], $timeouts);
     }
 
     public function testWatchesAreListedWithThePersonsOwnCredential(): void

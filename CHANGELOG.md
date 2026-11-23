@@ -107,10 +107,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   files after it were never sent and Synaplan waited for a result in vain.
 - **A folder read answers within its 20 seconds**, also for a large folder,
   slow storage or a slow Synaplan. Going through the folder, file by file,
-  and every call to Synaplan count against that time; when it runs out
-  before Synaplan has said what to send, a background job reads the folder
-  again. Going through the folder had no limit and each listing call could
-  wait 30 seconds, well past the 30 seconds Synaplan waits for the answer.
+  reading each file sent and every call to Synaplan, the result included,
+  count against that time; when it runs out before Synaplan has said what
+  to send, a background job reads the folder again, and what is left after
+  that, uploads or only the result, goes from the job too. Going through
+  the folder had no limit and each listing call could wait 30 seconds, well
+  past the 30 seconds Synaplan waits for the answer.
 - **Folder reads are offered only where Synaplan reads folders.** The read
   setting, **Let Synaplan read this folder** and its menu entry appear when
   Synaplan's configuration offers both folder reads and the read setting.

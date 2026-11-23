@@ -474,6 +474,87 @@ final class FolderReadTest extends TestCase
         self::assertSame([20, 8, 30, 30, 30], $listingSeconds);
     }
 
+    public function testAFileThatTakesTheRestOfTheTimeToReadIsSentByTheJob(): void
+    {
+        $checks = 0;
+        $this->scope->method('mayRead')->willReturnCallback(function () use (&$checks): bool {
+            if (++$checks === 2) {
+                $this->now += 19;
+            }
+
+            return true;
+        });
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
+        $uploadSeconds = [];
+        $this->links->method('uploadPickupFile')->willReturnCallback(
+            function (string $id, string $uid, string $remoteId, string $version, string $bytes, string $name, string $mime, int $seconds) use (&$uploadSeconds): array {
+                $uploadSeconds[] = $seconds;
+
+                return ['status_code' => 200];
+            },
+        );
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $this->links->expects($this->once())->method('reportPickupResult')->with('15', 'ada', $this->callback(
+            static fn (array $body): bool => $body['status'] === 'done' && $body['sent'] === 1,
+        ));
+
+        $this->reads->handle('15', 'ada');
+        self::assertSame([], $uploadSeconds);
+
+        $this->reads->finish('15');
+        self::assertSame([120], $uploadSeconds);
+    }
+
+    public function testAResultTheRequestHasNoTimeLeftForIsSentByTheJob(): void
+    {
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->method('submitPickupListing')->willReturn(['upload' => ['7'], 'reuse' => [], 'skip' => []]);
+        $this->links->expects($this->once())->method('uploadPickupFile')->willReturnCallback(function (): array {
+            $this->now += 20;
+
+            return ['status_code' => 200];
+        });
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $reports = [];
+        $this->links->method('reportPickupResult')->willReturnCallback(
+            function (string $id, string $uid, array $body, int $seconds) use (&$reports): void {
+                $reports[] = [$body['status'], $body['sent'], $seconds];
+            },
+        );
+
+        $this->reads->handle('15', 'ada');
+        self::assertSame([], $reports);
+
+        $this->reads->finish('15');
+        self::assertSame([['done', 1, 30]], $reports);
+        self::assertSame([], $this->stored);
+    }
+
+    public function testARefusalTheRequestHasNoTimeLeftForIsSentByTheJob(): void
+    {
+        $this->scope->method('mayRead')->willReturn(false);
+        $this->links->method('claimPickup')->willReturnCallback(function (): array {
+            $this->now += 20;
+
+            return $this->claim();
+        });
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $reports = [];
+        $this->links->method('reportPickupResult')->willReturnCallback(
+            function (string $id, string $uid, array $body, int $seconds) use (&$reports): void {
+                $reports[] = [$body['error_code'] ?? null, $seconds];
+            },
+        );
+
+        $this->reads->handle('15', 'ada');
+        self::assertSame([], $reports);
+
+        $this->reads->finish('15');
+        self::assertSame([['outside_scope', 30]], $reports);
+    }
+
     public function testAJobThatCannotReadTheFolderAgainStillReports(): void
     {
         $this->scope->method('mayRead')->willReturnOnConsecutiveCalls(true, $this->throwException(new \RuntimeException('Deadlock found')));
