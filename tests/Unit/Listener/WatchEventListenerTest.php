@@ -22,7 +22,7 @@ use PHPUnit\Framework\TestCase;
 final class WatchEventListenerTest extends TestCase
 {
     private const NOW = 1700000000;
-    private const FOLDER_WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+    private const FOLDER_WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
 
     private WatchIndex&MockObject $index;
     private OwnWrites&Stub $ownWrites;
@@ -93,7 +93,12 @@ final class WatchEventListenerTest extends TestCase
     {
         $folder = $this->createStub(Folder::class);
         $folder->method('getId')->willReturn(30);
-        $this->index->method('on')->with([30])->willReturn([self::FOLDER_WATCH, ['id' => 8, 'state' => 'attention'] + self::FOLDER_WATCH]);
+        $this->index->method('on')->with([30])->willReturn([
+            self::FOLDER_WATCH,
+            ['id' => 7, 'state' => 'paused', 'reason' => 'by_owner'] + self::FOLDER_WATCH,
+            ['id' => 8, 'state' => 'attention', 'reason' => 'target_gone'] + self::FOLDER_WATCH,
+            ['id' => 9, 'state' => 'attention', 'reason' => 'no_access'] + self::FOLDER_WATCH,
+        ]);
         $this->index->expects($this->once())->method('enqueue')->with(8, 30, 'restored', self::NOW);
 
         $this->listener()->handle(new NodeRenamedEvent($folder, $folder));

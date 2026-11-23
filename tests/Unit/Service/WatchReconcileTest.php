@@ -21,7 +21,7 @@ use Psr\Log\NullLogger;
 final class WatchReconcileTest extends TestCase
 {
     private const NOW = 1700000000;
-    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
 
     private WatchIndex&MockObject $index;
     private WatchSender&MockObject $sender;

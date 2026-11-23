@@ -274,7 +274,7 @@ final class WatchControllerTest extends TestCase
     #[DataProvider('waitingFiles')]
     public function testResumeAsksAboutTheWaitingFilesOnlyForATaskWatch(string $preset, int $waiting, bool $ask): void
     {
-        $row = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'since' => 1, 'reconciled' => 1];
+        $row = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'reason' => '', 'since' => 1, 'reconciled' => 1];
         $this->index->method('find')->with(5)->willReturn($row);
         $this->reconcile->expects($this->once())->method('waiting')->with($row)->willReturn($waiting);
         $this->links->method('listWatches')->willReturn([['id' => 5, 'preset' => $preset]]);
@@ -287,7 +287,7 @@ final class WatchControllerTest extends TestCase
 
     public function testSomeoneElsesWatchHasNothingWaiting(): void
     {
-        $this->index->method('find')->willReturn(['id' => 5, 'uid' => 'bob', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'since' => 1, 'reconciled' => 1]);
+        $this->index->method('find')->willReturn(['id' => 5, 'uid' => 'bob', 'kind' => 'folder', 'target' => 30, 'state' => 'paused', 'reason' => '', 'since' => 1, 'reconciled' => 1]);
         $this->reconcile->expects($this->never())->method('waiting');
 
         $this->assertSame(0, $this->controller->waiting(5)->getData()['waiting']);

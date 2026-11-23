@@ -94,8 +94,7 @@ class WatchEventListener implements IEventListener
             if ($watch['target'] !== $id) {
                 continue;
             }
-            $running = $watch['state'] === WatchIndex::ACTIVE;
-            if ($event === 'deleted' ? $running : !$running) {
+            if ($event === 'deleted' ? $watch['state'] === WatchIndex::ACTIVE : WatchIndex::targetGone($watch)) {
                 $this->index->enqueue($watch['id'], $id, $event, $this->time->getTime());
             } elseif ($event === 'restored') {
                 $this->index->cancelEvent($watch['id'], $id, 'deleted');

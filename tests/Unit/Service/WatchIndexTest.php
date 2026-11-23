@@ -13,12 +13,12 @@ final class WatchIndexTest extends TestCase
     public function testAWatchAsSynaplanListsItIsKeptByItsTarget(): void
     {
         self::assertSame(
-            ['id' => 5, 'kind' => 'folder', 'target' => 30, 'state' => 'active'],
-            WatchIndex::parse(['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active', 'name' => 'Incoming']),
+            ['id' => 5, 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => ''],
+            WatchIndex::parse(['id' => 5, 'target_kind' => 'folder', 'target_id' => '30', 'state' => 'active', 'reason' => null, 'name' => 'Incoming']),
         );
         self::assertSame(
-            ['id' => 6, 'kind' => 'file', 'target' => 31, 'state' => 'paused'],
-            WatchIndex::parse(['id' => '6', 'target_kind' => 'file', 'target_id' => 31, 'state' => 'paused']),
+            ['id' => 6, 'kind' => 'file', 'target' => 31, 'state' => 'attention', 'reason' => 'target_gone'],
+            WatchIndex::parse(['id' => '6', 'target_kind' => 'file', 'target_id' => 31, 'state' => 'attention', 'reason' => 'target_gone']),
         );
     }
 

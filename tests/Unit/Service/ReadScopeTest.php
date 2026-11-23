@@ -45,8 +45,8 @@ final class ReadScopeTest extends TestCase
     {
         $this->folders = ['Incoming-DE' => 30, 'HR' => 9];
         $this->watches = [
-            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
-            ['id' => 6, 'uid' => 'ada', 'kind' => 'file', 'target' => 31, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
+            ['id' => 6, 'uid' => 'ada', 'kind' => 'file', 'target' => 31, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
         ];
         $scope = $this->scope();
         $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '9', 'path' => 'HR']]);
@@ -61,7 +61,7 @@ final class ReadScopeTest extends TestCase
     {
         $this->folders = ['Invoices' => 30, 'HR' => 9];
         $this->watches = [
-            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
         ];
         $scope = $this->scope();
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
