@@ -455,6 +455,17 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('', $service->credentialFor('ada'));
     }
 
+    public function testAGrantWhoseTokenCannotBeRenewedJustNowIsStillHeld(): void
+    {
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->oauth->method('accessToken')->willReturn('');
+
+        $service = $this->service();
+        $this->assertSame('', $service->credentialFor('ada'));
+        $this->assertTrue($service->holdsGrant('ada'));
+        $this->assertFalse($service->holdsGrant('carol'));
+    }
+
     public function testWithdrawnConsentForgetsTheGrantWhenSynaplanCannotBeTold(): void
     {
         $this->userConfig['ada|ai_consent'] = '1';

@@ -70,6 +70,19 @@ final class WatchSyncTest extends TestCase
         self::assertTrue($this->sync()->person('bob', self::NOW));
     }
 
+    public function testAGrantWhoseTokenCannotBeRenewedJustNowKeepsTheRows(): void
+    {
+        $this->links->method('canActFor')->willReturn(false);
+        $this->links->method('canActForLater')->with('ada')->willReturn(true);
+        $this->links->expects($this->never())->method('listWatches');
+        $this->index->expects($this->never())->method('forget');
+        $this->index->method('rowsOf')->willReturn([]);
+        $this->config->expects($this->once())->method('setUserValue')
+            ->with('ada', Application::APP_ID, WatchSync::PENDING, '1');
+
+        self::assertFalse($this->sync()->person('ada', self::NOW));
+    }
+
     public function testAFailedListKeepsTheRowsAndIsTriedAgain(): void
     {
         $this->links->method('canActFor')->willReturn(true);
