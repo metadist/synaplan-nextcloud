@@ -63,9 +63,9 @@ class SourceEventListener implements IEventListener
         }
 
         $people = [];
-        foreach ($this->mapEvents($event) as [$mapped, $node]) {
+        foreach ($this->mapEvents($event) as [$mapped, $node, $moverOnly]) {
             $rows = $this->perPerson($mapped);
-            if ($rows !== [] && $mapped['event'] !== 'deleted') {
+            if ($rows !== [] && $mapped['event'] !== 'deleted' && !$moverOnly) {
                 $this->queue->add($rows[0]['uid'], $rows[0], $ord, SourceEventQueue::STEP_SHARE);
             }
             foreach ($rows as $row) {
@@ -172,10 +172,11 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * The event of the node itself, and the node; the job and the file cache
-     * add what lies below a folder.
+     * The event of the node itself, the node, and whether the event changed
+     * the paths of the person who acted only; the job and the file cache add
+     * what lies below a folder.
      *
-     * @return list<array{array{id: string, event: string, version: string, path: string, uid: string, owner: string}, Node}>
+     * @return list<array{array{id: string, event: string, version: string, path: string, uid: string, owner: string}, Node, bool}>
      */
     private function mapEvents(Event $event): array
     {
@@ -194,8 +195,28 @@ class SourceEventListener implements IEventListener
             return [];
         }
         $one = $this->payload($node, $kind, $allowFolder);
+        if ($one === null) {
+            return [];
+        }
+        $moverOnly = $kind === 'moved' && self::isMountRoot($node);
+        if ($moverOnly) {
+            $one['owner'] = '';
+        }
 
-        return $one !== null ? [[$one, $node]] : [];
+        return [[$one, $node, $moverOnly]];
+    }
+
+    /**
+     * The root of a mount, such as a share as its recipient sees it: moving
+     * it renames it for that person only.
+     */
+    private static function isMountRoot(Node $node): bool
+    {
+        try {
+            return $node->getInternalPath() === '';
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

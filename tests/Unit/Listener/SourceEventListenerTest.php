@@ -85,7 +85,7 @@ class SourceEventListenerTest extends TestCase
      * Ada's folder `Specs` on storage 3, with two files below it in the file
      * cache, as seen at `$path`. Listing it fails the test.
      */
-    private function specsFolder(string $path = '/ada/files/Specs', string $internalPath = 'files/Specs'): Folder&MockObject
+    private function specsFolder(string $path = '/ada/files/Specs', string $internalPath = 'files/Specs', string $owner = ''): Folder&MockObject
     {
         $this->queue->cache(3, 'files/Specs', 50, 'ef');
         $this->queue->cache(3, 'files/Specs/a.pdf', 51, 'ea');
@@ -97,6 +97,11 @@ class SourceEventListenerTest extends TestCase
         $folder->method('getPath')->willReturn($path);
         $folder->method('getInternalPath')->willReturn($internalPath);
         $folder->method('getEtag')->willReturn('ef');
+        if ($owner !== '') {
+            $user = $this->createStub(IUser::class);
+            $user->method('getUID')->willReturn($owner);
+            $folder->method('getOwner')->willReturn($user);
+        }
         $folder->expects($this->never())->method('getDirectoryListing');
 
         return $folder;
@@ -135,6 +140,9 @@ class SourceEventListenerTest extends TestCase
         $folder->method('getPath')->willReturn('/bob/files/Specs/Old');
         $folder->method('getInternalPath')->willReturn('Old');
         $folder->method('getEtag')->willReturn('eo');
+        $ada = $this->createStub(IUser::class);
+        $ada->method('getUID')->willReturn('ada');
+        $folder->method('getOwner')->willReturn($ada);
         $folder->expects($this->never())->method('getDirectoryListing');
 
         return $folder;
@@ -155,17 +163,17 @@ class SourceEventListenerTest extends TestCase
         $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
         $this->listener()->handle(new NodeDeletedEvent($folder));
 
-        self::assertSame(['bob send 52', 'bob send 53'], $this->queue->steps());
+        self::assertSame(['bob send 52', 'ada send 52', 'bob send 53', 'ada send 53'], $this->queue->steps());
     }
 
     public function testASharedFolderTheRecipientRenamesIsWalkedFromItsOwnPath(): void
     {
         $source = $this->createStub(Node::class);
         $source->method('getPath')->willReturn('/bob/files/Specs');
-        $this->listener()->handle(new NodeRenamedEvent($source, $this->specsFolder('/bob/files/Specs 2026', '')));
+        $this->listener()->handle(new NodeRenamedEvent($source, $this->specsFolder('/bob/files/Specs 2026', '', 'ada')));
 
-        self::assertSame(['bob share 50', 'bob send 50', 'bob walk 50'], $this->queue->steps());
-        self::assertSame('Specs 2026', array_values($this->queue->rows)[2]['path']);
+        self::assertSame(['bob send 50', 'bob walk 50'], $this->queue->steps(), 'the folder keeps its path for Ada and everyone else');
+        self::assertSame('Specs 2026', array_values($this->queue->rows)[1]['path']);
         self::assertSame(0, $this->queue->cacheReads);
     }
 
@@ -175,7 +183,7 @@ class SourceEventListenerTest extends TestCase
         $source->method('getPath')->willReturn('/bob/files/Drafts/Old');
         $this->listener()->handle(new NodeRenamedEvent($source, $this->oldFolderSeenByBob()));
 
-        self::assertSame(['bob share 53', 'bob send 53', 'bob walk 53'], $this->queue->steps());
+        self::assertSame(['bob share 53', 'bob send 53', 'bob walk 53', 'ada send 53', 'ada walk 53'], $this->queue->steps());
         self::assertSame('Specs/Old', array_values($this->queue->rows)[2]['path']);
     }
 
