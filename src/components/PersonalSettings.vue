@@ -99,6 +99,7 @@
 				{{ t('synaplan_integration', 'Only what I watch') }}
 			</NcCheckboxRadioSwitch>
 			<NcCheckboxRadioSwitch
+				v-if="offered('allowed')"
 				v-model="readMode"
 				value="allowed"
 				type="radio"
@@ -131,6 +132,7 @@
 				</span>
 			</div>
 			<NcCheckboxRadioSwitch
+				v-if="offered('all')"
 				v-model="readMode"
 				value="all"
 				type="radio"
@@ -175,6 +177,10 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 
+type ReadMode = 'watched' | 'allowed' | 'all'
+
+const READ_MODES: ReadMode[] = ['watched', 'allowed', 'all']
+
 interface ReadFolder {
 	id: string
 	path: string
@@ -195,9 +201,10 @@ const busy = ref(false)
 const savingFolder = ref(false)
 const savingScope = ref(false)
 const copyFolder = ref('')
-const readMode = ref<'watched' | 'allowed' | 'all'>('watched')
+const readMode = ref<ReadMode>('watched')
 const readFolders = ref<ReadFolder[]>([])
 const readFolderCap = ref(20)
+const readCeiling = ref<ReadMode>('allowed')
 const status = ref<LinkStatus>({})
 const banner = ref('')
 const bannerType = ref<'success' | 'error' | 'warning'>('success')
@@ -287,6 +294,9 @@ async function loadFolder() {
 		if (typeof data.read_folder_cap === 'number') {
 			readFolderCap.value = data.read_folder_cap
 		}
+		if (READ_MODES.includes(data.read_scope_ceiling)) {
+			readCeiling.value = data.read_scope_ceiling
+		}
 	} catch {
 		banner.value = t(
 			'synaplan_integration',
@@ -294,6 +304,15 @@ async function loadFolder() {
 		)
 		bannerType.value = 'error'
 	}
+}
+
+/**
+ * Whether the administrator's ceiling leaves this choice to the person.
+ *
+ * @param mode one of the three choices
+ */
+function offered(mode: ReadMode): boolean {
+	return READ_MODES.indexOf(mode) <= READ_MODES.indexOf(readCeiling.value)
 }
 
 /**
@@ -376,11 +395,13 @@ async function saveScope() {
 	savingScope.value = true
 	try {
 		const { data } = await axios.put(`${baseUrl}/api/v1/preferences`, {
-			copy_folder: copyFolder.value,
 			read_scope: { mode: readMode.value, folders: readFolders.value },
 		})
 		if (data.success) {
 			readFolders.value = data.read_scope?.folders || readFolders.value
+			if (READ_MODES.includes(data.read_scope?.mode)) {
+				readMode.value = data.read_scope.mode
+			}
 			banner.value = t('synaplan_integration', 'Settings saved successfully.')
 			bannerType.value = 'success'
 		} else {

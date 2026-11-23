@@ -9,6 +9,7 @@ use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Service\KeyStorage;
 use OCA\SynaplanIntegration\Service\NotifyKeyCache;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
+use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\WatchPolicy;
@@ -34,6 +35,7 @@ class SettingsController extends Controller
         private KeyStorage $keys,
         private ?PlatformLinkService $platformLinks = null,
         private ?NotifyKeyCache $notifyKeys = null,
+        private ?ReadScope $readScope = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -110,6 +112,7 @@ class SettingsController extends Controller
                 'read_folder_cap',
                 '20',
             ))),
+            'read_scope_ceiling' => ReadScope::ceilingIn($this->config),
             'watch_folders' => WatchPolicy::watchingAllowedIn($this->config),
             'watch_shared_folders' => WatchPolicy::sharedAllowedIn($this->config),
             'background_jobs_mode' => WatchPolicy::jobsModeIn($this->config),
@@ -194,6 +197,10 @@ class SettingsController extends Controller
                 if (isset($decoded['read_folder_cap'])) {
                     $cap = max(1, min(500, (int) $decoded['read_folder_cap']));
                     $this->config->setAppValue(Application::APP_ID, 'read_folder_cap', (string) $cap);
+                }
+                $ceiling = $decoded['read_scope_ceiling'] ?? null;
+                if (is_string($ceiling) && in_array($ceiling, ReadScope::MODES, true) && $this->readScope !== null) {
+                    $this->readScope->setCeiling($ceiling);
                 }
                 if (isset($decoded['watch_folders']) && is_bool($decoded['watch_folders'])) {
                     $this->config->setAppValue(Application::APP_ID, WatchPolicy::WATCHES_KEY, $decoded['watch_folders'] ? 'yes' : 'no');

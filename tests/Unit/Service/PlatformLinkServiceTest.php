@@ -93,6 +93,19 @@ class PlatformLinkServiceTest extends TestCase
         );
     }
 
+    public function testTheDefaultAddressIsThisServersOwnRouteAlsoOnLocalhost(): void
+    {
+        $this->urlGenerator = $this->createMock(IURLGenerator::class);
+        $this->urlGenerator->method('linkToRouteAbsolute')
+            ->with('synaplan_integration.inbound.receive')
+            ->willReturn('http://localhost:8081/index.php/apps/synaplan_integration/api/v1/inbound');
+
+        $this->assertSame(
+            'http://localhost:8081/index.php/apps/synaplan_integration/api/v1/inbound',
+            $this->service()->defaultDeliveryUrl(),
+        );
+    }
+
     public function testRegistrationStatusReadsTheClientConfiguration(): void
     {
         $this->oauth->method('isRegistered')->willReturn(true);

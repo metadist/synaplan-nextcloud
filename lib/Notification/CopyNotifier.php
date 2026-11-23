@@ -46,9 +46,10 @@ class CopyNotifier implements INotifier
             $folder = (string) $l->t('Files');
         }
         $notification->setParsedSubject($this->sentence($l, $name, $folder));
-        $link = is_string($parameters['link'] ?? null) ? $parameters['link'] : '';
-        if ($link !== '') {
-            $notification->setLink($link);
+        if ($notification->getObjectType() === 'file' && $notification->getObjectId() !== '') {
+            $notification->setLink($this->urls->linkToRouteAbsolute('files.View.showFile', [
+                'fileid' => $notification->getObjectId(),
+            ]));
         }
         $notification->setIcon($this->urls->getAbsoluteURL($this->urls->imagePath(Application::APP_ID, 'app.svg')));
 

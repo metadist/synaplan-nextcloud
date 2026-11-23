@@ -31,32 +31,11 @@ use Psr\Log\LoggerInterface;
  */
 class CopyDelivery
 {
-    public const COPY_FOLDER = 'copy_folder';
-
     /** Remember a file this app wrote, so a later copy may replace only that. */
     private const OWN_WRITE_TTL = 600;
 
-    /** Synaplan's cap for a copy; it refuses larger files before sending. */
-    private const MAX_BYTES = 100 * 1024 * 1024;
-
     /** How long Synaplan keeps a copy's ticket and download path. */
     private const TICKET_TTL = 300;
-
-    /** `name.ext` and `name (2).ext` up to `name (20).ext`. */
-    private const MAX_SAME_NAME = 20;
-
-    private const KIND_FOLDERS = [
-        'docx' => 'Documents', 'doc' => 'Documents', 'pptx' => 'Documents',
-        'ppt' => 'Documents', 'xlsx' => 'Documents', 'xls' => 'Documents',
-        'csv' => 'Documents', 'pdf' => 'Documents', 'txt' => 'Documents',
-        'md' => 'Documents', 'odt' => 'Documents', 'rtf' => 'Documents',
-        'mp3' => 'Audio', 'wav' => 'Audio', 'ogg' => 'Audio',
-        'm4a' => 'Audio', 'flac' => 'Audio', 'aac' => 'Audio',
-        'ics' => 'Calendar',
-        'png' => 'Images', 'jpg' => 'Images', 'jpeg' => 'Images',
-        'gif' => 'Images', 'webp' => 'Images', 'svg' => 'Images',
-        'mp4' => 'Video', 'webm' => 'Video', 'mov' => 'Video', 'mkv' => 'Video',
-    ];
 
     public function __construct(
         private PlatformLinkService $links,
@@ -70,6 +49,7 @@ class CopyDelivery
         private IJobList $jobs,
         private ITimeFactory $time,
         private OwnWrites $ownWrites,
+        private SynaplanFolders $folders,
     ) {
     }
 
@@ -142,24 +122,6 @@ class CopyDelivery
     }
 
     /**
-     * A folder a person typed. Empty means the Synaplan folder. `..` is refused.
-     */
-    public static function cleanFolder(string $folder): string
-    {
-        $folder = trim(str_replace('\\', '/', $folder), '/');
-        if ($folder === '') {
-            return '';
-        }
-        foreach (explode('/', $folder) as $segment) {
-            if ($segment === '' || $segment === '.' || $segment === '..') {
-                throw new \InvalidArgumentException('That folder cannot be used.');
-            }
-        }
-
-        return $folder;
-    }
-
-    /**
      * @param array<string, mixed> $claim
      * @return array<string, mixed>
      */
@@ -169,14 +131,14 @@ class CopyDelivery
         if ($uid === '' || $this->users->get($uid) === null) {
             return ['status' => 'failed', 'error_code' => 'not_found'];
         }
-        if ((int) ($claim['size'] ?? 0) > self::MAX_BYTES) {
+        if ((int) ($claim['size'] ?? 0) > SynaplanFolders::MAX_BYTES) {
             return ['status' => 'failed', 'error_code' => 'too_large'];
         }
         $bytes = $this->links->downloadDelivery($id, (string) ($claim['download_path'] ?? ''), $uid);
         if ($bytes === null) {
             return ['status' => 'failed', 'error_code' => 'unreachable'];
         }
-        if (strlen($bytes) > self::MAX_BYTES) {
+        if (strlen($bytes) > SynaplanFolders::MAX_BYTES) {
             return ['status' => 'failed', 'error_code' => 'too_large'];
         }
 
@@ -185,10 +147,6 @@ class CopyDelivery
             $name = $this->fileName((string) ($claim['name'] ?? 'file'));
             $target = is_array($claim['target'] ?? null) ? $claim['target'] : [];
             $folder = $this->folder($userFolder, $uid, $name, $target);
-            $free = $folder->getFreeSpace();
-            if ($free >= 0 && $free < strlen($bytes)) {
-                throw new NotEnoughSpaceException('The copy does not fit in the person\'s storage.');
-            }
             $replace = ($claim['on_conflict'] ?? '') === 'replace_own';
             $file = $this->place($folder, $uid, $name, $bytes, $replace);
         } catch (\Throwable $e) {
@@ -204,13 +162,12 @@ class CopyDelivery
         $relative = $userFolder->getRelativePath($file->getPath()) ?? $file->getName();
         $relative = ltrim((string) $relative, '/');
         $this->rememberOwnWrite($uid, (int) $file->getId());
-        $openUrl = $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $file->getId()]);
+        $openUrl = $this->openUrl((int) $file->getId());
         $this->notify(
             $uid,
             $file->getName(),
             dirname($relative) === '.' ? '' : dirname($relative),
             (int) $file->getId(),
-            $openUrl,
         );
 
         return [
@@ -239,16 +196,7 @@ class CopyDelivery
             }
             throw new NotFoundException('The folder Synaplan named is not in this account.');
         }
-        try {
-            $root = self::cleanFolder((string) $this->config->getUserValue($uid, Application::APP_ID, self::COPY_FOLDER, ''));
-        } catch (\InvalidArgumentException) {
-            $root = '';
-        }
-        $root = $root !== '' ? $root : 'Synaplan';
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-        $sub = self::KIND_FOLDERS[$ext] ?? '';
-
-        return $this->ensure($userFolder, trim($root . '/' . $sub, '/'));
+        return $this->folders->kindFolder($userFolder, $uid, $name);
     }
 
     private function place(Folder $folder, string $uid, string $name, string $bytes, bool $replaceOwn): File
@@ -256,28 +204,15 @@ class CopyDelivery
         if ($replaceOwn && $folder->nodeExists($name)) {
             $existing = $folder->get($name);
             if ($existing instanceof File && $this->wrote($uid, (int) $existing->getId())) {
+                $this->folders->assertFits($folder, strlen($bytes));
                 $existing->putContent($bytes);
                 $this->ownWrites->note($existing, time());
 
                 return $existing;
             }
         }
-        $target = $name;
-        $stem = pathinfo($name, PATHINFO_FILENAME);
-        $ext = pathinfo($name, PATHINFO_EXTENSION);
-        $n = 2;
-        while ($folder->nodeExists($target)) {
-            if ($n > self::MAX_SAME_NAME) {
-                throw new AlreadyExistsException('Twenty files with this name already exist.');
-            }
-            $target = $stem . ' (' . $n . ')' . ($ext !== '' ? '.' . $ext : '');
-            $n++;
-        }
-        $file = $folder->newFile($target);
-        $file->putContent($bytes);
-        $this->ownWrites->note($file, time());
 
-        return $file;
+        return $this->folders->write($folder, $name, $bytes);
     }
 
     /**
@@ -293,27 +228,6 @@ class CopyDelivery
             $e instanceof EntityTooLargeException => 'too_large',
             default => 'unreachable',
         };
-    }
-
-    private function ensure(Folder $root, string $path): Folder
-    {
-        $current = $root;
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '' || $segment === '.' || $segment === '..') {
-                continue;
-            }
-            if ($current->nodeExists($segment)) {
-                $node = $current->get($segment);
-                if (!$node instanceof Folder) {
-                    throw new NotFoundException('A file is where a folder should be.');
-                }
-                $current = $node;
-            } else {
-                $current = $current->newFolder($segment);
-            }
-        }
-
-        return $current;
     }
 
     private function fileName(string $name): string
@@ -340,7 +254,26 @@ class CopyDelivery
         return 'own_' . hash('sha256', $uid) . '_' . $fileId;
     }
 
-    private function notify(string $uid, string $name, string $folder, int $fileId, string $link): void
+    /**
+     * Where people open the copy. This runs in Synaplan's request, whose host
+     * is the address Synaplan calls, which a browser may not reach.
+     */
+    private function openUrl(int $fileId): string
+    {
+        $base = rtrim($this->config->getSystemValueString('overwrite.cli.url', ''), '/');
+        if ($base === '') {
+            return $this->urls->linkToRouteAbsolute('files.View.showFile', ['fileid' => $fileId]);
+        }
+        $route = $this->urls->linkToRoute('files.View.showFile', ['fileid' => $fileId]);
+        $webroot = $this->urls->getWebroot();
+        if ($webroot !== '' && str_starts_with($route, $webroot)) {
+            $route = substr($route, strlen($webroot));
+        }
+
+        return $base . $route;
+    }
+
+    private function notify(string $uid, string $name, string $folder, int $fileId): void
     {
         try {
             $notification = $this->notifications->createNotification();
@@ -348,7 +281,7 @@ class CopyDelivery
                 ->setUser($uid)
                 ->setDateTime(new \DateTime())
                 ->setObject('file', (string) $fileId)
-                ->setSubject('copied', ['name' => $name, 'folder' => $folder, 'link' => $link]);
+                ->setSubject('copied', ['name' => $name, 'folder' => $folder]);
             $this->notifications->notify($notification);
         } catch (\Throwable $e) {
             $this->logger->info('Could not notify {uid} about a Synaplan copy: {message}', [

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
-use OCA\SynaplanIntegration\Service\CopyDelivery;
+use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -42,16 +42,17 @@ class PreferencesController extends Controller
         }
 
         return new JSONResponse([
-            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, ''),
+            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
             'read_folder_cap' => $this->scope->cap(),
+            'read_scope_ceiling' => $this->scope->ceiling(),
         ]);
     }
 
     /**
      * Add one folder the person lets Synaplan read.
      *
-     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_FORBIDDEN, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function allowFolder(string $fileId = '', string $path = ''): JSONResponse
@@ -71,6 +72,9 @@ class PreferencesController extends Controller
             }
         }
         $reason = $this->scope->allow($uid, $fileId, $path);
+        if ($reason === 'ceiling') {
+            return new JSONResponse(['success' => false, 'error' => 'ceiling'], Http::STATUS_FORBIDDEN);
+        }
         if ($reason === 'cap') {
             return new JSONResponse([
                 'success' => false,
@@ -95,30 +99,26 @@ class PreferencesController extends Controller
         if ($uid === null) {
             return new JSONResponse(['success' => false, 'error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
         }
-        // The framework hands copy_folder over as a named parameter, so the
-        // body has to be read either way: read_scope only travels in it.
-        $raw = file_get_contents('php://input');
-        $decoded = $raw !== false && $raw !== '' ? json_decode($raw, true) : [];
-        if (!is_array($decoded)) {
-            $decoded = [];
+        // Only what the body carries changes: a save of the read setting
+        // alone keeps the copy folder. Validate everything before anything
+        // is stored: a rejected folder must not leave a wider read setting
+        // behind.
+        $folder = null;
+        if ($copy_folder !== null) {
+            try {
+                $folder = SynaplanFolders::cleanFolder($copy_folder);
+            } catch (\InvalidArgumentException) {
+                return new JSONResponse(
+                    ['success' => false, 'error' => 'Could not save that folder.'],
+                    Http::STATUS_BAD_REQUEST,
+                );
+            }
         }
-        if ($copy_folder === null) {
-            $copy_folder = isset($decoded['copy_folder']) ? (string) $decoded['copy_folder'] : '';
-        }
-        // Validate everything this save carries before anything is stored:
-        // a rejected folder must not leave a wider read setting behind.
-        try {
-            $folder = CopyDelivery::cleanFolder($copy_folder);
-        } catch (\InvalidArgumentException) {
-            return new JSONResponse(
-                ['success' => false, 'error' => 'Could not save that folder.'],
-                Http::STATUS_BAD_REQUEST,
-            );
-        }
-        if (is_array($decoded['read_scope'] ?? null)) {
-            $mode = (string) ($decoded['read_scope']['mode'] ?? '');
+        $scope = $this->request->getParam('read_scope');
+        if (is_array($scope)) {
+            $mode = (string) ($scope['mode'] ?? '');
             $folders = [];
-            foreach (is_array($decoded['read_scope']['folders'] ?? null) ? $decoded['read_scope']['folders'] : [] as $named) {
+            foreach (is_array($scope['folders'] ?? null) ? $scope['folders'] : [] as $named) {
                 if (!is_array($named)) {
                     continue;
                 }
@@ -129,11 +129,13 @@ class PreferencesController extends Controller
             }
             $this->scope->save($uid, $mode, $folders);
         }
-        $this->config->setUserValue($uid, Application::APP_ID, CopyDelivery::COPY_FOLDER, $folder);
+        if ($folder !== null) {
+            $this->config->setUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, $folder);
+        }
 
         return new JSONResponse([
             'success' => true,
-            'copy_folder' => $folder,
+            'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
         ]);
     }

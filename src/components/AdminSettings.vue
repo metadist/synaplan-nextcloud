@@ -277,6 +277,46 @@
 
 				<div class="sp-field">
 					<strong>{{
+						t('synaplan_integration', 'Synaplan may read at most')
+					}}</strong>
+					<p class="sp-hint">
+						{{
+							t(
+								'synaplan_integration',
+								'People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody.',
+							)
+						}}
+					</p>
+					<NcCheckboxRadioSwitch
+						v-model="readCeiling"
+						value="watched"
+						name="sp-read-ceiling"
+						type="radio"
+						:disabled="saving">
+						{{ t('synaplan_integration', 'Watched folders') }}
+					</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch
+						v-model="readCeiling"
+						value="allowed"
+						name="sp-read-ceiling"
+						type="radio"
+						:disabled="saving">
+						{{ t('synaplan_integration', 'Folders people allow') }}
+					</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch
+						v-model="readCeiling"
+						value="all"
+						name="sp-read-ceiling"
+						type="radio"
+						:disabled="saving">
+						{{ t('synaplan_integration', 'All their files') }}
+					</NcCheckboxRadioSwitch>
+				</div>
+
+				<div :style="{ height: '20px' }" />
+
+				<div v-if="readCeiling !== 'watched'" class="sp-field">
+					<strong>{{
 						t('synaplan_integration', 'Folders one person may allow')
 					}}</strong>
 					<p class="sp-hint">
@@ -547,6 +587,7 @@ const linkRegistered = ref(false)
 const linkInstanceId = ref('')
 const deliveryUrl = ref('')
 const readFolderCap = ref('20')
+const readCeiling = ref<'watched' | 'allowed' | 'all'>('allowed')
 const watchFolders = ref(true)
 const watchSharedFolders = ref(true)
 const jobsMode = ref<'ajax' | 'webcron' | 'cron'>('cron')
@@ -730,6 +771,11 @@ async function loadSettings() {
 		linkInstance.value = data.link_instance || null
 		deliveryUrl.value = data.delivery_url || ''
 		readFolderCap.value = String(data.read_folder_cap || 20)
+		readCeiling.value =
+			data.read_scope_ceiling === 'watched'
+			|| data.read_scope_ceiling === 'all'
+				? data.read_scope_ceiling
+				: 'allowed'
 		watchFolders.value = data.watch_folders !== false
 		watchSharedFolders.value = data.watch_shared_folders !== false
 		jobsMode.value =
@@ -764,6 +810,7 @@ async function save() {
 			per_user_accounts: mode.value !== 'shared',
 			link_auto_provision: linkAutoProvision.value,
 			read_folder_cap: Number(readFolderCap.value) || 20,
+			read_scope_ceiling: readCeiling.value,
 			watch_folders: watchFolders.value,
 			watch_shared_folders: watchSharedFolders.value,
 			...(mode.value === 'link' || mode.value === 'provision'

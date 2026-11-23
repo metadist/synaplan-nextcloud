@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCA\SynaplanIntegration\Service\WatchPolicy;
@@ -127,6 +128,7 @@ class ApiController extends Controller
             'translation' => $this->synaplanClient->offersSummaryType('translation'),
             'watches' => WatchPolicy::watchingAllowedIn($this->config),
             'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
+            'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED,
         ]);
     }
 

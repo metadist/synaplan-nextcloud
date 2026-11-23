@@ -7,6 +7,9 @@ namespace OCA\SynaplanIntegration\Http;
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
+use OCP\Files\AlreadyExistsException;
+use OCP\Files\EntityTooLargeException;
+use OCP\Files\NotEnoughSpaceException;
 use OCP\Files\NotFoundException;
 
 /**
@@ -28,6 +31,9 @@ final class Failure
     /** Provision mode has no administrator key that can create accounts. */
     public const ADMIN_KEY_MISSING = 'admin_key_missing';
     public const FILE_TOO_LARGE = 'file_too_large';
+    public const COPY_TOO_LARGE = 'copy_too_large';
+    public const STORAGE_FULL = 'storage_full';
+    public const NAME_TAKEN = 'name_taken';
     public const UNSUPPORTED_TYPE = 'unsupported_type';
     public const FILE_EMPTY = 'file_empty';
     public const NO_TEXT = 'no_text';
@@ -64,6 +70,15 @@ final class Failure
         }
         if ($e instanceof NotFoundException) {
             return new self(Http::STATUS_NOT_FOUND, self::FILE_NOT_FOUND);
+        }
+        if ($e instanceof EntityTooLargeException) {
+            return new self(Http::STATUS_REQUEST_ENTITY_TOO_LARGE, self::COPY_TOO_LARGE);
+        }
+        if ($e instanceof NotEnoughSpaceException) {
+            return new self(Http::STATUS_CONFLICT, self::STORAGE_FULL);
+        }
+        if ($e instanceof AlreadyExistsException) {
+            return new self(Http::STATUS_CONFLICT, self::NAME_TAKEN);
         }
 
         $status = (int) $e->getCode();

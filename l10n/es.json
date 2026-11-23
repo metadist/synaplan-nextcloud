@@ -66,7 +66,6 @@
 		"Copied!": "¡Copiado!",
 		"Copies land in this folder. Leave empty to use the Synaplan folder.": "Las copias llegan a esta carpeta. Déjalo vacío para usar la carpeta Synaplan.",
 		"Copy": "Copiar",
-		"Copying…": "Copiando…",
 		"Could not be made searchable — open to see why": "No se pudo hacer consultable por IA — abrir para ver el motivo",
 		"Could not connect. Please try again.": "No se pudo conectar. Inténtalo de nuevo.",
 		"Could not copy this file.": "No se pudo copiar este archivo.",
@@ -103,11 +102,9 @@
 		"Failed to load settings.": "No se pudieron cargar los ajustes.",
 		"Failed to save settings.": "No se pudieron guardar los ajustes.",
 		"Files": "Archivos",
-		"Files in your Synaplan": "Archivos en tu Synaplan",
 		"Folder for files from Synaplan": "Carpeta para los archivos de Synaplan",
 		"Folders one person may allow": "Carpetas que una persona puede permitir",
 		"Forget registration": "Olvidar el registro",
-		"From Synaplan": "Desde Synaplan",
 		"From this Nextcloud ({name}).": "De este Nextcloud ({name}).",
 		"Generate a video": "Generar un vídeo",
 		"Generate an image": "Generar una imagen",
@@ -170,7 +167,6 @@
 		"Not for teams with private documents.": "No para equipos con documentos privados.",
 		"Not registered yet.": "Todavía no está registrado.",
 		"Not searchable by AI": "No consultable por IA",
-		"Nothing to copy yet.": "Todavía no hay nada que copiar.",
 		"Offer to create an account for users who have none": "Ofrecer crear una cuenta a quien no tenga ninguna",
 		"One shared account": "Una cuenta compartida",
 		"Only what I watch": "Solo lo que vigilo",
@@ -352,7 +348,33 @@
 		"Resume watching": "Reanudar la vigilancia",
 		"Also handle the files that arrived while paused ({count})?": "¿Procesar también los archivos que llegaron durante la pausa ({count})?",
 		"Handle them too": "Sí, también esos",
-		"Only new files": "Solo archivos nuevos"
+		"Only new files": "Solo archivos nuevos",
+		"Your administrator lets Synaplan read only the folders you watch.": "Tu administrador solo deja que Synaplan lea las carpetas que vigilas.",
+		"Synaplan may read at most": "Synaplan puede leer como máximo",
+		"People choose up to this in their personal settings. Lowering it narrows everyone who chose more; raising it widens nobody.": "Cada persona elige hasta aquí en su configuración personal. Bajarlo limita a quien eligió más; subirlo no amplía a nadie.",
+		"Folders people allow": "Carpetas que las personas permiten",
+		"All their files": "Todos sus archivos",
+		"This file is larger than 100 MB, more than Synaplan copies into your files.": "Este archivo supera los 100 MB, más de lo que Synaplan copia en tus archivos.",
+		"This file does not fit into your storage. Make room and try again.": "Este archivo no cabe en tu almacenamiento. Libera espacio e inténtalo de nuevo.",
+		"Twenty files with this name are already in that folder. Rename or remove one and try again.": "Esa carpeta ya tiene veinte archivos con este nombre. Cambia el nombre de uno o elimina uno e inténtalo de nuevo.",
+		"Add files": "Añadir archivos",
+		"Add from Synaplan": "Añadir desde Synaplan",
+		"All files": "Todos los archivos",
+		"Files Synaplan makes for you appear here.": "Aquí aparecen los archivos que Synaplan crea para ti.",
+		"From Synaplan…": "Desde Synaplan…",
+		"Generated": "Generado",
+		"No file matches your search.": "Ningún archivo coincide con tu búsqueda.",
+		"Saved into: {folder}": "Se guarda en: {folder}",
+		"Search…": "Buscar…",
+		"Show": "Mostrar",
+		"_Add %n file_::_Add %n files_": [
+			"Añadir %n archivo",
+			"Añadir %n archivos"
+		],
+		"_Synaplan copied %n file to {folder}._::_Synaplan copied %n files to {folder}._": [
+			"Synaplan copió %n archivo a {folder}.",
+			"Synaplan copió %n archivos a {folder}."
+		]
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

@@ -8,16 +8,23 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\WatchIndex;
+use OCP\Config\IUserConfig;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use PHPUnit\Framework\TestCase;
 
 final class ReadScopeTest extends TestCase
 {
-    /** @var array<string, string> */
+    /** @var array<string, string> uid . key => value */
     private array $stored = [];
+
+    /** @var array<string, string> */
+    private array $appValues = [];
 
     /** @var array<string, int> folder path => file id */
     private array $folders = [];
@@ -27,6 +34,12 @@ final class ReadScopeTest extends TestCase
 
     /** @var list<array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}> */
     private array $watches = [];
+
+    /** @var array<string, array{shared: int, exclusive: bool}> lock => holders */
+    private array $locks = [];
+
+    /** @var (callable(): void)|null what another request does when this one has to wait */
+    private $whileWaiting = null;
 
     public function testWatchedAllowsTheFoldersThePersonWatchesAndNothingBelowOrBeside(): void
     {
@@ -42,6 +55,23 @@ final class ReadScopeTest extends TestCase
         self::assertFalse($scope->mayRead('ada', 'Incoming-DE/2026'));
         self::assertFalse($scope->mayRead('ada', 'HR'));
         self::assertFalse($scope->mayRead('ada', 'Specs/brief.pdf'));
+    }
+
+    public function testAWatchedFolderStaysReadableWhenThePersonAllowsAFolderToo(): void
+    {
+        $this->folders = ['Invoices' => 30, 'HR' => 9];
+        $this->watches = [
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+        ];
+        $scope = $this->scope();
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+
+        self::assertNull($scope->allow('ada', '9', 'HR'));
+
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'Invoices/2026'));
+        self::assertTrue($scope->mayRead('ada', 'HR'));
     }
 
     public function testNothingAllowedMeansNothingMayBeRead(): void
@@ -85,12 +115,97 @@ final class ReadScopeTest extends TestCase
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
     }
 
-    public function testAllFilesMayBeRead(): void
+    public function testAllFilesMayBeReadWhenTheAdministratorAllowsIt(): void
     {
         $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_ALL);
         $scope->save('ada', ReadScope::MODE_ALL, []);
 
         self::assertTrue($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testByDefaultNobodyMayChooseAllTheirFiles(): void
+    {
+        $scope = $this->scope();
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->ceiling());
+
+        $scope->save('ada', ReadScope::MODE_ALL, [['id' => '', 'path' => 'Invoices']]);
+
+        self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testLoweringTheCeilingNarrowsEveryoneAboveItAndRaisingItWidensNobody(): void
+    {
+        $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_ALL);
+        $scope->save('ada', ReadScope::MODE_ALL, []);
+        $scope->save('bob', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'HR']]);
+        $scope->save('carol', ReadScope::MODE_WATCHED, []);
+
+        self::assertSame(2, $scope->setCeiling(ReadScope::MODE_WATCHED));
+
+        self::assertSame('1', $this->stored['ada' . ReadScope::PENDING] ?? null);
+        self::assertSame('1', $this->stored['bob' . ReadScope::PENDING] ?? null);
+        self::assertArrayNotHasKey('carol' . ReadScope::PENDING, $this->stored);
+        self::assertSame('HR', $scope->get('bob')['folders'][0]['path']);
+
+        self::assertSame(0, $scope->setCeiling(ReadScope::MODE_ALL));
+
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('bob')['mode']);
+        self::assertFalse($scope->mayRead('ada', 'HR/Contracts'));
+    }
+
+    public function testUnderTheWatchedCeilingNoFolderCanBeAllowed(): void
+    {
+        $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_WATCHED);
+
+        self::assertSame('ceiling', $scope->allow('ada', '3', 'Invoices'));
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
+        self::assertSame([], $scope->get('ada')['folders']);
+    }
+
+    public function testLoweringTheCeilingWaitsForAChangeUnderWayAndKeepsIt(): void
+    {
+        $this->folders = ['HR' => 4];
+        $scope = $this->scope();
+        $scope->setCeiling(ReadScope::MODE_ALL);
+        $scope->save('ada', ReadScope::MODE_ALL, [['id' => '', 'path' => 'HR']]);
+
+        // Ada's other request is switching to "Only what I watch" and
+        // dropping HR when the administrator lowers the ceiling.
+        $ceilingLock = Application::APP_ID . '/read-scope-ceiling';
+        $adaLock = Application::APP_ID . '/read-scope/ada';
+        $this->locks[$ceilingLock] = ['shared' => 1, 'exclusive' => false];
+        $this->locks[$adaLock] = ['shared' => 0, 'exclusive' => true];
+        $this->whileWaiting = function () use ($ceilingLock, $adaLock): void {
+            $this->stored['ada' . ReadScope::PREF] = (string) json_encode(['mode' => ReadScope::MODE_WATCHED, 'folders' => []]);
+            unset($this->locks[$ceilingLock], $this->locks[$adaLock]);
+        };
+
+        self::assertSame(0, $this->scope()->setCeiling(ReadScope::MODE_ALLOWED));
+
+        self::assertSame(
+            ['mode' => ReadScope::MODE_WATCHED, 'folders' => []],
+            json_decode($this->stored['ada' . ReadScope::PREF], true),
+        );
+    }
+
+    public function testAChoiceSavedAfterTheCeilingWasLoweredIsHeldToIt(): void
+    {
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
+        $scope = $this->scope();
+        self::assertSame(ReadScope::MODE_ALL, $scope->ceiling());
+
+        // The administrator lowers it while Ada's request is running.
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALLOWED;
+        $scope->save('ada', ReadScope::MODE_ALL, []);
+
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
+        self::assertSame(ReadScope::MODE_ALLOWED, $this->scope()->get('ada')['mode']);
     }
 
     public function testAnAllowedFolderKeepsItsPermissionWhenRenamed(): void
@@ -182,8 +297,28 @@ final class ReadScopeTest extends TestCase
 
     private function scope(int $cap = 20): ReadScope
     {
+        // What this request has read of the app config, until it clears it.
+        $appCache = null;
         $config = $this->createMock(IConfig::class);
-        $config->method('getAppValue')->willReturn((string) $cap);
+        $config->method('getAppValue')->willReturnCallback(
+            function (string $app, string $key, string $default = '') use ($cap, &$appCache): string {
+                $appCache ??= $this->appValues;
+
+                return $key === ReadScope::CAP ? (string) $cap : ($appCache[$key] ?? $default);
+            },
+        );
+        $config->method('setAppValue')->willReturnCallback(
+            function (string $app, string $key, string $value) use (&$appCache): void {
+                $this->appValues[$key] = $value;
+                if ($appCache !== null) {
+                    $appCache[$key] = $value;
+                }
+            },
+        );
+        $appConfig = $this->createStub(IAppConfig::class);
+        $appConfig->method('clearCache')->willReturnCallback(function () use (&$appCache): void {
+            $appCache = null;
+        });
         $config->method('getUserValue')->willReturnCallback(
             fn (string $uid, string $app, string $key): string => $this->stored[$uid . $key] ?? '',
         );
@@ -229,7 +364,55 @@ final class ReadScopeTest extends TestCase
         $watches = $this->createStub(WatchIndex::class);
         $watches->method('rowsOf')->willReturnCallback(fn (): array => $this->watches);
 
-        return new ReadScope($config, $links, $watches, $root);
+        $userConfig = $this->createStub(IUserConfig::class);
+        $userConfig->method('getValuesByUsers')->willReturnCallback(function (string $app, string $key): array {
+            $values = [];
+            foreach ($this->stored as $uidKey => $value) {
+                if (str_ends_with($uidKey, $key)) {
+                    $values[substr($uidKey, 0, -strlen($key))] = $value;
+                }
+            }
+
+            return $values;
+        });
+
+        return new ReadScope($config, $links, $watches, $root, $userConfig, $appConfig, $this->lockingProvider());
+    }
+
+    private function lockingProvider(): ILockingProvider
+    {
+        $locks = $this->createStub(ILockingProvider::class);
+        $locks->method('acquireLock')->willReturnCallback(function (string $path, int $type): void {
+            $held = $this->locks[$path] ?? ['shared' => 0, 'exclusive' => false];
+            $free = $type === ILockingProvider::LOCK_SHARED
+                ? !$held['exclusive']
+                : !$held['exclusive'] && $held['shared'] === 0;
+            if (!$free) {
+                $other = $this->whileWaiting;
+                $this->whileWaiting = null;
+                if ($other !== null) {
+                    $other();
+                }
+                throw new LockedException($path);
+            }
+            if ($type === ILockingProvider::LOCK_SHARED) {
+                $held['shared']++;
+            } else {
+                $held['exclusive'] = true;
+            }
+            $this->locks[$path] = $held;
+        });
+        $locks->method('releaseLock')->willReturnCallback(function (string $path, int $type): void {
+            $held = $this->locks[$path] ?? ['shared' => 0, 'exclusive' => false];
+            if ($type === ILockingProvider::LOCK_SHARED) {
+                $held['shared'] = max(0, $held['shared'] - 1);
+            } else {
+                $held['exclusive'] = false;
+            }
+            $this->locks[$path] = $held;
+        });
+
+        return $locks;
     }
 
     private function folder(int $id, string $path): Folder

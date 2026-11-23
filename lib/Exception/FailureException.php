@@ -46,6 +46,17 @@ final class FailureException extends \RuntimeException
         );
     }
 
+    /**
+     * A file from Synaplan larger than a copy into the person's files may be.
+     */
+    public static function copyTooLarge(int $maxBytes): self
+    {
+        return new self(
+            new Failure(Http::STATUS_REQUEST_ENTITY_TOO_LARGE, Failure::COPY_TOO_LARGE),
+            'File from Synaplan larger than ' . $maxBytes . ' bytes',
+        );
+    }
+
     public static function unsupportedType(string $mimeType): self
     {
         return new self(

@@ -30,6 +30,7 @@ services:
       NC_OIDC: "0"
       SYNAPLAN_URL: http://host.docker.internal:${SYNAPLAN_PORT:-8001}
       SYNAPLAN_PUBLIC_URL: http://localhost:${SYNAPLAN_PORT:-8001}
+      SYNAPLAN_DELIVERY_URL: http://host.docker.internal:${NC_PORT:-8081}/index.php/apps/synaplan_integration/api/v1/inbound
     volumes:
       - ./:/mnt/synaplan_integration:ro
       - ./docker/dev-hooks/before-starting:/docker-entrypoint-hooks.d/before-starting:ro

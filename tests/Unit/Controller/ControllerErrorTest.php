@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Controller\MediaController;
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\LanguageService;
 use OCA\SynaplanIntegration\Service\OwnWrites;
+use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Http;
@@ -78,7 +79,7 @@ final class ControllerErrorTest extends TestCase
             $logger,
         );
         $this->chat = new ChatController($request, $this->client, $root, $session, $language, $logger);
-        $this->media = new MediaController($request, $this->client, $root, $session, $logger, $this->createStub(OwnWrites::class));
+        $this->media = new MediaController($request, $this->client, $root, $session, $logger, $this->createStub(SynaplanFolders::class));
     }
 
     /**

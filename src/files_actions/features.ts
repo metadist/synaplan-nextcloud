@@ -5,11 +5,17 @@ export interface Features {
 	translation: boolean
 	watches: boolean
 	watchShared: boolean
+	readFolders: boolean
 }
 
 // Until Synaplan has answered, everything counts as offered: the request
 // itself still refuses what Synaplan lacks, with a sentence.
-let features: Features = { translation: true, watches: true, watchShared: true }
+let features: Features = {
+	translation: true,
+	watches: true,
+	watchShared: true,
+	readFolders: true,
+}
 let loading: Promise<void> | null = null
 
 /**
@@ -25,6 +31,7 @@ export function loadFeatures(): Promise<void> {
 					translation: data?.translation !== false,
 					watches: data?.watches !== false,
 					watchShared: data?.watchShared !== false,
+					readFolders: data?.readFolders !== false,
 				}
 			})
 			.catch(() => {})
@@ -56,9 +63,22 @@ export function watchSharedAllowed(): boolean {
 }
 
 /**
+ * Whether the administrator lets people name folders for Synaplan to read,
+ * as far as is known yet.
+ */
+export function readFoldersAllowed(): boolean {
+	return features.readFolders
+}
+
+/**
  * Forget what was read, for tests.
  */
 export function resetFeatures(): void {
-	features = { translation: true, watches: true, watchShared: true }
+	features = {
+		translation: true,
+		watches: true,
+		watchShared: true,
+		readFolders: true,
+	}
 	loading = null
 }

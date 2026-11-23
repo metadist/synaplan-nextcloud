@@ -12,6 +12,7 @@ use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use OCP\IConfig;
+use OCP\Lock\LockedException;
 
 /**
  * Once an hour: read Synaplan's signing keys, tell Synaplan again where
@@ -49,7 +50,11 @@ class RefreshNotifyKeysJob extends TimedJob
             }
         }
         foreach ($this->config->getUsersForUserValue(Application::APP_ID, ReadScope::PENDING, '1') as $uid) {
-            $this->scope->republish($uid);
+            try {
+                $this->scope->republish($uid);
+            } catch (LockedException) {
+                // Still pending: the next hour tries again.
+            }
         }
     }
 }

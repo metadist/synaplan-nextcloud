@@ -16,7 +16,7 @@ import { defineAsyncComponent } from 'vue'
 export function registerFromSynaplanMenu(): void {
 	addNewFileMenuEntry({
 		id: 'synaplan:from-synaplan',
-		displayName: t('synaplan_integration', 'From Synaplan'),
+		displayName: t('synaplan_integration', 'From Synaplan…'),
 		iconSvgInline: CloudDownloadOutlineSvg,
 		category: NewMenuEntryCategory.Other,
 		order: 50,

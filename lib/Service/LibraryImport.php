@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
-use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
-use OCP\Files\NotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -19,17 +17,20 @@ class LibraryImport
         private SynaplanClient $client,
         private IRootFolder $rootFolder,
         private LoggerInterface $logger,
-        private OwnWrites $ownWrites,
+        private SynaplanFolders $folders,
     ) {
     }
 
     /**
-     * @return array{files: list<array{id: int, name: string, generated: bool}>, page: int, pages: int}
+     * One page of the person's Synaplan files, newest first. The filter
+     * runs in Synaplan, so it spans every page.
+     *
+     * @return array{files: list<array{id: int, name: string, generated: bool, created: int}>, page: int, pages: int}
      */
-    public function list(int $page = 1): array
+    public function list(int $page = 1, bool $generatedOnly = false, string $search = ''): array
     {
         $page = max(1, $page);
-        $decoded = $this->client->listRecentFiles($page);
+        $decoded = $this->client->listRecentFiles($page, $generatedOnly ? 'generated' : '', $search);
         $rows = is_array($decoded['files'] ?? null) ? $decoded['files'] : [];
         $files = [];
         foreach ($rows as $row) {
@@ -43,12 +44,10 @@ class LibraryImport
             $files[] = [
                 'id' => (int) $row['id'],
                 'name' => $name,
-                'generated' => ($row['source'] ?? '') === 'generated',
+                'generated' => ($row['generated'] ?? false) === true || ($row['source'] ?? '') === 'generated',
+                'created' => is_numeric($row['uploaded_at'] ?? null) ? (int) $row['uploaded_at'] : 0,
             ];
         }
-        usort($files, static function (array $a, array $b): int {
-            return ($a['generated'] === $b['generated']) ? 0 : ($a['generated'] ? -1 : 1);
-        });
 
         $pages = is_array($decoded['pagination'] ?? null) ? (int) ($decoded['pagination']['pages'] ?? 1) : 1;
 
@@ -67,8 +66,8 @@ class LibraryImport
         if ($fileId < 1) {
             throw new \InvalidArgumentException('Missing file.');
         }
-        $destination = CopyDelivery::cleanFolder($folder);
-        $bytes = $this->client->downloadStoredFile($fileId);
+        $destination = SynaplanFolders::cleanFolder($folder);
+        $bytes = $this->client->downloadStoredFile($fileId, SynaplanFolders::MAX_BYTES);
         $name = basename(str_replace('\\', '/', trim($name)));
         if ($name === '' || $name === '.' || $name === '..') {
             $name = 'file';
@@ -76,8 +75,8 @@ class LibraryImport
 
         try {
             $userFolder = $this->rootFolder->getUserFolder($uid);
-            $target = $destination === '' ? $userFolder : $this->ensure($userFolder, $destination);
-            $file = $this->place($target, $name, $bytes);
+            $target = $destination === '' ? $userFolder : $this->folders->ensure($userFolder, $destination);
+            $file = $this->folders->write($target, $name, $bytes);
         } catch (\Throwable $e) {
             $this->logger->warning('Could not copy a Synaplan file for {uid}: {message}', [
                 'app' => Application::APP_ID,
@@ -106,41 +105,5 @@ class LibraryImport
         $base = basename(str_replace('\\', '/', $display !== '' ? $display : $filename));
 
         return $base === '.' || $base === '..' ? '' : $base;
-    }
-
-    private function place(Folder $folder, string $name, string $bytes): \OCP\Files\File
-    {
-        $name = $name !== '' ? $name : 'file';
-        $stem = pathinfo($name, PATHINFO_FILENAME);
-        $ext = pathinfo($name, PATHINFO_EXTENSION);
-        $target = $name;
-        $n = 2;
-        while ($folder->nodeExists($target)) {
-            $target = $stem . ' (' . $n . ')' . ($ext !== '' ? '.' . $ext : '');
-            $n++;
-        }
-        $file = $folder->newFile($target);
-        $file->putContent($bytes);
-        $this->ownWrites->note($file, time());
-
-        return $file;
-    }
-
-    private function ensure(Folder $root, string $path): Folder
-    {
-        $current = $root;
-        foreach (explode('/', $path) as $segment) {
-            if ($current->nodeExists($segment)) {
-                $node = $current->get($segment);
-                if (!$node instanceof Folder) {
-                    throw new NotFoundException('A file is where a folder should be.');
-                }
-                $current = $node;
-            } else {
-                $current = $current->newFolder($segment);
-            }
-        }
-
-        return $current;
     }
 }
