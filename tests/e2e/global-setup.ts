@@ -97,9 +97,24 @@ const SYNAPLAN_REDIS_CONTAINER =
  * Synaplan allows a registered client 30 updates an hour and has no setting
  * to lift that. Every saved admin setting is one update, so a test stack
  * that stays up between runs locks this Nextcloud out within a few runs.
- * Clear those counters on the test stack's Redis before each run.
+ * Clear this Nextcloud's counter on the test stack's Redis before each run,
+ * and only its own: other clients of a shared stack keep theirs.
  */
-function resetClientUpdateLimit(): void {
+async function resetClientUpdateLimit(): Promise<void> {
+	const admin = await nextcloudAs('admin')
+	const settings = await admin.get(`${APP}/api/v1/settings`)
+	expect(settings.ok(), 'reading the admin settings').toBe(true)
+	const { link_instance_id: instanceId } = (await settings.json()) as {
+		link_instance_id?: string
+	}
+	await admin.dispose()
+	if (!instanceId) {
+		return
+	}
+	if (!/^[\w-]+$/.test(instanceId)) {
+		throw new Error(`Unexpected instance id ${instanceId}.`)
+	}
+
 	const redis = (...args: string[]) =>
 		execFileSync('docker', [
 			'exec',
@@ -112,7 +127,7 @@ function resetClientUpdateLimit(): void {
 			.filter((line) => line.trim() !== '')
 	let keys: string[]
 	try {
-		keys = redis('--scan', '--pattern', '*oauth:client-update:*')
+		keys = redis('--scan', '--pattern', `*oauth:client-update:${instanceId}`)
 	} catch (error) {
 		throw new Error(
 			`Could not reach the Synaplan test Redis in ${SYNAPLAN_REDIS_CONTAINER}; set SYNAPLAN_REDIS_CONTAINER.`,
@@ -175,7 +190,7 @@ export default async function globalSetup(): Promise<void> {
 	await waitUntilReady(`${NC_URL}/status.php`)
 	catchUpWithTheCheckout()
 	await waitUntilReady(`${NC_URL}/status.php`)
-	resetClientUpdateLimit()
+	await resetClientUpdateLimit()
 
 	const synaplan = await synaplanAs(SYNAPLAN_ADMIN)
 	const created = await synaplan.post('/api/v1/apikeys', {
