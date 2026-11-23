@@ -124,8 +124,56 @@ function resetClientUpdateLimit(): void {
 	}
 }
 
+const NC_PROJECT = process.env.E2E_NC_PROJECT ?? 'synaplan-nextcloud-e2e'
+
+/**
+ * Run a command in the e2e Nextcloud container.
+ *
+ * @param user the container user
+ * @param command the command and its arguments
+ */
+function inNextcloud(user: string, ...command: string[]): void {
+	try {
+		execFileSync(
+			'docker',
+			[
+				'compose',
+				'-p',
+				NC_PROJECT,
+				'-f',
+				'docker-compose.ci.yml',
+				'exec',
+				'-T',
+				'-u',
+				user,
+				'nextcloud',
+				...command,
+			],
+			{ stdio: ['ignore', 'ignore', 'inherit'] },
+		)
+	} catch (error) {
+		throw new Error(
+			`Could not run ${command.join(' ')} in the e2e Nextcloud (compose project ${NC_PROJECT}); set E2E_NC_PROJECT.`,
+			{ cause: error },
+		)
+	}
+}
+
+/**
+ * The app's version stays put between releases, so a Nextcloud kept running
+ * from an older checkout never gets the migrations and background jobs added
+ * since (docker/dev-migrate.sh), and keeps serving the routes it cached in
+ * APCu under that version, which an Apache restart clears.
+ */
+function catchUpWithTheCheckout(): void {
+	inNextcloud('www-data', 'sh', '/mnt/synaplan_integration/docker/dev-migrate.sh')
+	inNextcloud('root', 'sh', '-c', 'apachectl -k graceful 2>/dev/null')
+}
+
 export default async function globalSetup(): Promise<void> {
 	await waitUntilReady(`${SYNAPLAN_URL}/api/health`)
+	await waitUntilReady(`${NC_URL}/status.php`)
+	catchUpWithTheCheckout()
 	await waitUntilReady(`${NC_URL}/status.php`)
 	resetClientUpdateLimit()
 
