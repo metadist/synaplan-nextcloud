@@ -278,13 +278,14 @@ class SourceEventsJobTest extends TestCase
     /**
      * @param class-string<Node> $class
      */
-    private function node(string $class, string $path, string $owner): Node
+    private function node(string $class, string $path, string $owner, string $internalPath = 'files/x'): Node
     {
         $user = $this->createStub(IUser::class);
         $user->method('getUID')->willReturn($owner);
         $node = $class === Folder::class ? $this->createStub(Folder::class) : $this->createStub(Node::class);
         $node->method('getPath')->willReturn($path);
         $node->method('getOwner')->willReturn($user);
+        $node->method('getInternalPath')->willReturn($internalPath);
 
         return $node;
     }
@@ -308,15 +309,31 @@ class SourceEventsJobTest extends TestCase
 
     public function testAMovedFolderIsWalkedForThePeopleItIsSharedWith(): void
     {
-        $this->nodes['ada'][50] = $this->node(Folder::class, '/ada/files/Specs', 'ada');
-        $this->nodes['carol'][50] = $this->node(Folder::class, '/carol/files/Specs', 'ada');
+        $this->nodes['ada'][50] = $this->node(Folder::class, '/ada/files/Projects/Specs', 'ada');
+        $this->nodes['carol'][50] = $this->node(Folder::class, '/carol/files/Projects/Specs', 'ada', 'files/Projects/Specs');
         $this->sharedWith = ['carol'];
-        $this->queue->add('ada', ['id' => '50', 'event' => 'moved', 'version' => 'e2', 'path' => 'Specs'], 10, SourceEventQueue::STEP_SHARE);
+        $this->queue->add('ada', ['id' => '50', 'event' => 'moved', 'version' => 'e2', 'path' => 'Projects/Specs'], 10, SourceEventQueue::STEP_SHARE);
         $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
 
         $this->runJob(['uid' => 'ada']);
 
-        self::assertSame(['carol send 50', 'carol walk 50'], $this->queue->steps());
+        self::assertSame(['carol send 50', 'carol walk 50'], $this->queue->steps(), 'Carol has Projects shared, so Specs moved for her too');
+    }
+
+    public function testASharedFolderItsOwnerMovesKeepsItsPathForThePeopleItIsSharedWith(): void
+    {
+        $this->nodes['ada'][50] = $this->node(Folder::class, '/ada/files/Archive/Specs 2026', 'ada');
+        $this->nodes['carol'][50] = $this->node(Folder::class, '/carol/files/Specs', 'ada', '');
+        $this->nodes['carol'][42] = $this->node(Node::class, '/carol/files/spec.pdf', 'ada', '');
+        $this->sharedWith = ['carol'];
+        $this->queue->add('ada', ['id' => '50', 'event' => 'moved', 'version' => 'e2', 'path' => 'Archive/Specs 2026'], 10, SourceEventQueue::STEP_SHARE);
+        $this->queue->add('ada', ['id' => '42', 'event' => 'moved', 'version' => 'e3', 'path' => 'Archive/spec.pdf'], 11, SourceEventQueue::STEP_SHARE);
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'ada']);
+
+        self::assertSame([], $this->queue->steps(), 'Carol sees the folder and the file where she put them');
+        self::assertSame([], array_filter($this->jobsAdded, static fn (array $job): bool => $job[1] === ['uid' => 'carol']));
     }
 
     public function testAJobQueuedBeforeTheQueueSendsItsEvent(): void

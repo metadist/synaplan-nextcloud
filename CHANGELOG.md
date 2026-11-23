@@ -154,7 +154,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Renaming a folder shared with you tells Synaplan of your copies only.**
   The folder keeps its name for its owner and everyone else it is shared
   with, but the owner was sent a move of every file in it to the path it
-  already had.
+  already had. The same held the other way round: when the owner renamed or
+  moved a shared folder or file, everyone it is shared with was sent moves
+  to the paths they already had.
 - **Moving, deleting or restoring a large folder answers at once.** The
   files inside are queued for Synaplan from the file cache in one statement,
   or, for a move, by the background job 500 at a time. The request went
