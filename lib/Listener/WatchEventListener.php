@@ -83,22 +83,34 @@ class WatchEventListener implements IEventListener
     }
 
     /**
-     * A deleted target is reported while its watch runs; a restored one only
-     * while its watch says the target is gone. A target restored before its
-     * deletion went out takes the deletion back: Synaplan never knew.
+     * A deleted target is reported while its watch runs, and the watch is
+     * noted as having lost it. A restored target is reported to a watch
+     * that lost it, as Synaplan said or as noted here, and in place of a
+     * deletion still queued: Synaplan takes `restored` only for a watch
+     * whose target is gone, so an extra one changes nothing, and a deletion
+     * being sent right now is followed by it.
      */
     private function targetEvent(Node $node, string $event): void
     {
         $id = (int) $node->getId();
+        $now = $this->time->getTime();
         foreach ($this->index->on([$id]) as $watch) {
             if ($watch['target'] !== $id) {
                 continue;
             }
-            if ($event === 'deleted' ? $watch['state'] === WatchIndex::ACTIVE : WatchIndex::targetGone($watch)) {
-                $this->index->enqueue($watch['id'], $id, $event, $this->time->getTime());
-            } elseif ($event === 'restored') {
-                $this->index->cancelEvent($watch['id'], $id, 'deleted');
+            if ($event === 'deleted') {
+                if ($watch['state'] === WatchIndex::ACTIVE) {
+                    $this->index->enqueue($watch['id'], $id, 'deleted', $now);
+                    $this->index->markTarget($watch['id'], true);
+                }
+                continue;
             }
+            if (WatchIndex::targetGone($watch)) {
+                $this->index->enqueue($watch['id'], $id, 'restored', $now);
+            } elseif (!$this->index->replaceEvent($watch['id'], $id, 'deleted', 'restored', $now)) {
+                continue;
+            }
+            $this->index->markTarget($watch['id'], false);
         }
     }
 }

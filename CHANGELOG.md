@@ -52,6 +52,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **A watched folder deleted by mistake and restored at once keeps its
+  watch.** If Synaplan had already heard of the deletion, it never heard of
+  the restore, and the watch stayed stopped on a folder that was back. The
+  restore now always follows the deletion.
 - **A watch stopped elsewhere loses its eyes.** A folder whose watch was
   stopped in Synaplan or in another tab kept its eyes until the page was
   reloaded. They now go with the next answer from Synaplan.

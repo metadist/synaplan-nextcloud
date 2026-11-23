@@ -314,15 +314,38 @@ class WatchIndex
     }
 
     /**
-     * Take back a lifecycle event of a watch's target that has not gone out.
+     * Turn a queued lifecycle event of a watch's target into another one, as
+     * a new change. While the old one is being sent, the feed keeps the new
+     * one queued, so both go, in order. False when none was queued.
      */
-    public function cancelEvent(int $watchId, int $fileId, string $event): void
+    public function replaceEvent(int $watchId, int $fileId, string $event, string $by, int $changed): bool
     {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete(self::QUEUE)
+        $qb->update(self::QUEUE)
+            ->set('event', $qb->createNamedParameter($by))
+            ->set('changed', $qb->createNamedParameter($changed, IQueryBuilder::PARAM_INT))
+            ->set('generation', $qb->createNamedParameter(self::generation()))
+            ->set('due', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+            ->set('attempts', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('event', $qb->createNamedParameter($event)));
+
+        return $qb->executeStatement() > 0;
+    }
+
+    /**
+     * Note here what a queued target event will tell Synaplan, until its
+     * next list says how it took it: gone after `deleted`, running after
+     * `restored`.
+     */
+    public function markTarget(int $watchId, bool $gone): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('state', $qb->createNamedParameter($gone ? self::ATTENTION : self::ACTIVE))
+            ->set('reason', $qb->createNamedParameter($gone ? self::TARGET_GONE : ''))
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
     }
 

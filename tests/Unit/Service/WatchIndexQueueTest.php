@@ -75,6 +75,28 @@ final class WatchIndexQueueTest extends TestCase
         );
     }
 
+    public function testAQueuedDeletionBecomesARestoreAsANewChange(): void
+    {
+        self::assertTrue($this->index()->replaceEvent(5, 30, 'deleted', 'restored', 200));
+
+        $statement = $this->last();
+        self::assertSame('update synaplan_watch_queue', $statement[0]);
+        self::assertContains('set event="restored"', $statement);
+        self::assertContains('set changed=200', $statement);
+        self::assertContains('set generation=' . json_encode($this->generations[0]), $statement);
+        self::assertContains('where event="deleted"', $statement);
+    }
+
+    public function testAWatchIsNotedAsHavingLostItsTargetAndAsRunningAgain(): void
+    {
+        $index = $this->index();
+        $index->markTarget(5, true);
+        self::assertSame(['update synaplan_watches', 'set state="attention"', 'set reason="target_gone"', 'where watch_id=5'], $this->last());
+
+        $index->markTarget(5, false);
+        self::assertSame(['update synaplan_watches', 'set state="active"', 'set reason=""', 'where watch_id=5'], $this->last());
+    }
+
     private function index(): WatchIndex
     {
         $db = $this->createStub(IDBConnection::class);
