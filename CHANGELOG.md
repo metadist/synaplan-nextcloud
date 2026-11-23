@@ -141,6 +141,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   after a minute, then 5, 15 and 60 minutes, and given up after that.
   Events go out in batches of up to 100 per call. The queue needs the new
   version number's database update.
+- **Moving, deleting or restoring a large folder answers at once.** The
+  files inside are queued for Synaplan from the file cache in one statement,
+  or, for a move, by the background job 500 at a time. The request went
+  through every folder below, read each file and queued a job per file and
+  person first, so the desktop client could time out on a move that went
+  through.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that

@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Tests\Unit\Support\ArraySourceEventQueue;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
+use OCA\SynaplanIntegration\Service\SourceEventQueue;
 use OCP\Lock\ILockingProvider;
 use OCP\Lock\LockedException;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -152,6 +153,47 @@ class SourceEventsJobTest extends TestCase
 
         self::assertSame(['ada deleted 42', 'bob deleted 42'], $this->sentEvents());
         self::assertSame(['ada'], array_values(array_map(static fn (array $row): string => $row['uid'], $this->queue->rows)));
+    }
+
+    public function testAMovedFolderIsWalkedPageByPageAndItsFilesFollowIt(): void
+    {
+        $this->queue->cache(3, 'files/Archive/Specs', 50);
+        for ($id = 1; $id <= SourceEventsJob::WALK_PAGE + 1; ++$id) {
+            $this->queue->cache(3, 'files/Archive/Specs/f' . $id . '.pdf', 100 + $id);
+        }
+        $this->queue('ada', '50', 'moved', 10, 'Archive/Specs');
+        $this->queue->add('ada', ['id' => '50', 'event' => 'moved', 'version' => 'e1', 'path' => 'Archive/Specs'], 10, SourceEventQueue::STEP_WALK);
+        $this->queue('ada', '7', 'changed', 20, 'later.txt');
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'ada']);
+
+        $sent = $this->sentEvents();
+        self::assertCount(SourceEventsJob::WALK_PAGE + 3, $sent);
+        self::assertSame('ada moved 50', $sent[0]);
+        self::assertSame('ada moved 101', $sent[1]);
+        self::assertSame('ada changed 7', $sent[array_key_last($sent)]);
+        self::assertSame('Archive/Specs/f1.pdf', $this->sent[1][1][0]['path']);
+        self::assertSame(2, $this->queue->cacheReads);
+        self::assertSame([], $this->queue->rows);
+    }
+
+    public function testRowsOfADeletionUnderWayWaitAndAreDroppedWhenItNeverHappens(): void
+    {
+        $this->now = 10_000;
+        $this->queue->add('ada', ['id' => '51', 'event' => 'deleted', 'version' => 'e1', 'path' => ''], 9_990 * 1_000_000, SourceEventQueue::STEP_HELD, 50);
+        $this->queue('ada', '7', 'changed', 9_995 * 1_000_000);
+        $this->synaplanAnswers(static fn (): array => ['applied' => 1]);
+
+        $this->runJob(['uid' => 'ada']);
+
+        self::assertSame([], $this->sent);
+        self::assertSame([SourceEventsJob::class, ['uid' => 'ada'], 10_060], $this->jobsAdded[array_key_last($this->jobsAdded)]);
+
+        $this->now += SourceEventsJob::HELD_FOR;
+        $this->runJob(['uid' => 'ada']);
+
+        self::assertSame(['ada changed 7'], $this->sentEvents());
     }
 
     public function testAJobQueuedBeforeTheQueueSendsItsEvent(): void

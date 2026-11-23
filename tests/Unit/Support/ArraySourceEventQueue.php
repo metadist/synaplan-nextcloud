@@ -47,6 +47,89 @@ final class ArraySourceEventQueue extends SourceEventQueue
         return array_slice($rows, 0, $limit);
     }
 
+    /**
+     * Put a file or folder into the fake file cache.
+     */
+    public function cache(int $storage, string $path, int $id, string $etag = 'e1'): void
+    {
+        $this->fileCache[] = ['storage' => $storage, 'path' => $path, 'id' => $id, 'etag' => $etag];
+    }
+
+    /** @var list<array{storage: int, path: string, id: int, etag: string}> */
+    public array $fileCache = [];
+    /** Statements that read the file cache. */
+    public int $cacheReads = 0;
+
+    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0): void
+    {
+        ++$this->cacheReads;
+        foreach ($this->below($folderId) as $entry) {
+            $this->add($uid, ['id' => (string) $entry['id'], 'event' => $event, 'version' => $entry['etag'], 'path' => ''], $ord, $step, $walked);
+        }
+    }
+
+    public function descendants(int $folderId, int $afterId, int $limit): array
+    {
+        ++$this->cacheReads;
+        $page = array_values(array_filter($this->below($folderId), static fn (array $entry): bool => $entry['id'] > $afterId));
+        usort($page, static fn (array $a, array $b): int => $a['id'] <=> $b['id']);
+
+        return array_map(
+            static fn (array $entry): array => ['id' => $entry['id'], 'path' => $entry['path'], 'etag' => $entry['etag']],
+            array_slice($page, 0, $limit),
+        );
+    }
+
+    /**
+     * The entries below a folder, with their paths below it.
+     *
+     * @return list<array{storage: int, path: string, id: int, etag: string}>
+     */
+    private function below(int $folderId): array
+    {
+        $folder = null;
+        foreach ($this->fileCache as $entry) {
+            if ($entry['id'] === $folderId) {
+                $folder = $entry;
+            }
+        }
+        if ($folder === null) {
+            return [];
+        }
+        $prefix = $folder['path'] === '' ? '' : $folder['path'] . '/';
+        $out = [];
+        foreach ($this->fileCache as $entry) {
+            if ($entry['storage'] === $folder['storage'] && $entry['path'] !== $folder['path'] && str_starts_with($entry['path'], $prefix)) {
+                $out[] = ['path' => substr($entry['path'], strlen($prefix))] + $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    public function release(int $folderId): void
+    {
+        foreach ($this->rows as $seq => $row) {
+            if ($row['step'] === self::STEP_HELD && $row['walked'] === $folderId) {
+                $this->rows[$seq]['step'] = self::STEP_SEND;
+            }
+        }
+    }
+
+    public function removeHeld(string $uid, int $folderId): void
+    {
+        foreach ($this->rows as $seq => $row) {
+            if ($row['uid'] === $uid && $row['step'] === self::STEP_HELD && $row['walked'] === $folderId) {
+                unset($this->rows[$seq]);
+            }
+        }
+    }
+
+    public function walked(int $seq, int $walked): void
+    {
+        $this->rows[$seq]['walked'] = $walked;
+    }
+
     public function remove(array $seqs): void
     {
         foreach ($seqs as $seq) {

@@ -11,7 +11,6 @@ use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\Files\Events\Node\AbstractNodeEvent;
 use OCP\Files\Events\Node\AbstractNodesEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
@@ -36,9 +35,6 @@ class SourceEventListener implements IEventListener
 {
     public const DEV_MUTE = 'dev_mute_events';
 
-    /** @var array<int, list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>> */
-    private array $pendingDeletedDescendants = [];
-
     public function __construct(
         private SynaplanConfig $synaplanConfig,
         private IConfig $config,
@@ -57,25 +53,48 @@ class SourceEventListener implements IEventListener
             return;
         }
 
+        $ord = SourceEventQueue::now();
         if ($event instanceof BeforeNodeDeletedEvent) {
             $node = $event->getNode();
-            if ($node instanceof Folder && $this->userRelativePath($node->getPath()) !== null) {
-                $this->pendingDeletedDescendants[(int) $node->getId()] = $this->descendantPayloads($node, 'deleted');
+            $folder = $node instanceof Folder ? $this->payload($node, 'deleted', true) : null;
+            if ($folder !== null) {
+                foreach ($this->perPerson($folder) as $row) {
+                    $this->queueDescendants($row['uid'], $node, 'deleted', $ord, SourceEventQueue::STEP_HELD, (int) $node->getId());
+                }
             }
 
             return;
         }
 
-        $ord = SourceEventQueue::now();
         $people = [];
-        foreach ($this->mapEvents($event) as $mapped) {
+        foreach ($this->mapEvents($event) as [$mapped, $node]) {
             foreach ($this->perPerson($mapped) as $row) {
                 $this->queue->add($row['uid'], $row, $ord);
                 $people[$row['uid']] = true;
+                if (!$node instanceof Folder) {
+                    continue;
+                }
+                if ($mapped['event'] === 'moved') {
+                    $this->queue->add($row['uid'], $row, $ord, SourceEventQueue::STEP_WALK);
+                } elseif ($mapped['event'] === 'restored') {
+                    $this->queueDescendants($row['uid'], $node, 'restored', $ord, SourceEventQueue::STEP_SEND);
+                }
             }
+        }
+        if ($event instanceof NodeDeletedEvent) {
+            $this->queue->release((int) $event->getNode()->getId());
         }
         foreach (array_keys($people) as $uid) {
             $this->jobs->add(SourceEventsJob::class, ['uid' => (string) $uid]);
+        }
+    }
+
+    private function queueDescendants(string $uid, Folder $folder, string $kind, int $ord, string $step, int $walked = 0): void
+    {
+        try {
+            $this->queue->addDescendants($uid, (int) $folder->getId(), $kind, $ord, $step, $walked);
+        } catch (\Throwable) {
+            // Best effort: the folder's own event still goes out.
         }
     }
 
@@ -127,82 +146,30 @@ class SourceEventListener implements IEventListener
     }
 
     /**
-     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
+     * The event of the node itself, and the node; the job and the file cache
+     * add what lies below a folder.
+     *
+     * @return list<array{array{id: string, event: string, version: string, path: string, uid: string, owner: string}, Node}>
      */
     private function mapEvents(Event $event): array
     {
-        if ($event instanceof NodeWrittenEvent) {
-            $one = $this->payload($event->getNode(), 'changed', false);
-
-            return $one !== null ? [$one] : [];
-        }
-        if ($event instanceof NodeDeletedEvent) {
-            $node = $event->getNode();
-            $one = $this->payload($node, 'deleted', true);
-            if ($one === null) {
-                return [];
-            }
-            $folderId = (int) $node->getId();
-            $descendants = $this->pendingDeletedDescendants[$folderId] ?? [];
-            unset($this->pendingDeletedDescendants[$folderId]);
-
-            return [$one, ...$descendants];
-        }
-        if ($event instanceof NodeRenamedEvent) {
-            $sourcePath = $event->getSource()->getPath();
-            $kind = str_contains($sourcePath, '/files_trashbin/') ? 'restored' : 'moved';
-            $target = $event->getTarget();
-            $one = $this->payload($target, $kind, true);
-            if ($one === null) {
-                return [];
-            }
-            $descendants = $target instanceof Folder ? $this->descendantPayloads($target, $kind) : [];
-
-            return [$one, ...$descendants];
-        }
-        if ($event instanceof AbstractNodesEvent) {
-            $target = $event->getTarget();
-            $one = $this->payload($target, 'restored', true);
-            if ($one === null) {
-                return [];
-            }
-            $descendants = $target instanceof Folder ? $this->descendantPayloads($target, 'restored') : [];
-
-            return [$one, ...$descendants];
-        }
-        if ($event instanceof AbstractNodeEvent) {
+        [$node, $kind, $allowFolder] = match (true) {
+            $event instanceof NodeWrittenEvent => [$event->getNode(), 'changed', false],
+            $event instanceof NodeDeletedEvent => [$event->getNode(), 'deleted', true],
+            $event instanceof NodeRenamedEvent => [
+                $event->getTarget(),
+                str_contains($event->getSource()->getPath(), '/files_trashbin/') ? 'restored' : 'moved',
+                true,
+            ],
+            $event instanceof AbstractNodesEvent => [$event->getTarget(), 'restored', true],
+            default => [null, '', false],
+        };
+        if (!$node instanceof Node) {
             return [];
         }
+        $one = $this->payload($node, $kind, $allowFolder);
 
-        return [];
-    }
-
-    /**
-     * @return list<array{id: string, event: string, version: string, path: string, uid: string, owner: string}>
-     */
-    private function descendantPayloads(Folder $folder, string $kind): array
-    {
-        $out = [];
-        try {
-            foreach ($folder->getDirectoryListing() as $child) {
-                if ($child instanceof Folder) {
-                    $row = $this->payload($child, $kind, true);
-                    if ($row !== null) {
-                        $out[] = $row;
-                    }
-                    array_push($out, ...$this->descendantPayloads($child, $kind));
-                } else {
-                    $row = $this->payload($child, $kind, false);
-                    if ($row !== null) {
-                        $out[] = $row;
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // Best-effort walk.
-        }
-
-        return $out;
+        return $one !== null ? [[$one, $node]] : [];
     }
 
     /**

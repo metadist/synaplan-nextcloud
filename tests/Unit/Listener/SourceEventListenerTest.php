@@ -10,6 +10,7 @@ use OCA\SynaplanIntegration\Listener\SourceEventListener;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Tests\Unit\Support\ArraySourceEventQueue;
 use OCP\BackgroundJob\IJobList;
+use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
@@ -72,6 +73,79 @@ class SourceEventListenerTest extends TestCase
         $node->method('getEtag')->willReturn($etag);
 
         return $node;
+    }
+
+    /**
+     * Ada's folder `Specs` on storage 3, with two files below it in the file
+     * cache, as seen at `$path`. Listing it fails the test.
+     */
+    private function specsFolder(string $path = '/ada/files/Specs', string $internalPath = 'files/Specs'): Folder&MockObject
+    {
+        $this->queue->cache(3, 'files/Specs', 50, 'ef');
+        $this->queue->cache(3, 'files/Specs/a.pdf', 51, 'ea');
+        $this->queue->cache(3, 'files/Specs/Old/b.pdf', 52, 'eb');
+        $this->queue->cache(3, 'files/Specsheet.pdf', 60);
+        $folder = $this->createMock(Folder::class);
+        $folder->method('getType')->willReturn(FileInfo::TYPE_FOLDER);
+        $folder->method('getId')->willReturn(50);
+        $folder->method('getPath')->willReturn($path);
+        $folder->method('getInternalPath')->willReturn($internalPath);
+        $folder->method('getEtag')->willReturn('ef');
+        $folder->expects($this->never())->method('getDirectoryListing');
+
+        return $folder;
+    }
+
+    public function testADeletedFolderQueuesItsFilesFromTheFileCacheOnceTheDeletionHappened(): void
+    {
+        $folder = $this->specsFolder();
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+
+        self::assertSame(['held', 'held'], array_values(array_map(static fn (array $row): string => $row['step'], $this->queue->rows)));
+        self::assertSame([], $this->jobsAdded);
+
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame([
+            ['uid' => 'ada', 'id' => '51', 'event' => 'deleted', 'version' => 'ea', 'path' => ''],
+            ['uid' => 'ada', 'id' => '52', 'event' => 'deleted', 'version' => 'eb', 'path' => ''],
+            ['uid' => 'ada', 'id' => '50', 'event' => 'deleted', 'version' => 'ef', 'path' => 'Specs'],
+        ], $this->queue->events());
+        self::assertSame(['send'], array_values(array_unique(array_map(static fn (array $row): string => $row['step'], $this->queue->rows))));
+        self::assertSame(1, $this->queue->cacheReads);
+    }
+
+    public function testAFolderDeletedThroughAShareQueuesTheFilesTheOwnerKeepsInIt(): void
+    {
+        $folder = $this->specsFolder('/bob/files/Specs', 'Specs');
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame(['51', '52', '50'], array_map(static fn (array $event): string => $event['id'], $this->queue->events()));
+    }
+
+    public function testAMovedFolderLeavesItsFilesToTheJob(): void
+    {
+        $source = $this->createStub(Node::class);
+        $source->method('getPath')->willReturn('/ada/files/Drafts');
+        $this->listener()->handle(new NodeRenamedEvent($source, $this->specsFolder()));
+
+        self::assertSame(['send', 'walk'], array_values(array_map(static fn (array $row): string => $row['step'], $this->queue->rows)));
+        self::assertSame('Specs', array_values($this->queue->rows)[1]['path']);
+        self::assertSame(0, $this->queue->cacheReads);
+    }
+
+    public function testARestoredFolderQueuesItsFilesFromTheFileCache(): void
+    {
+        $source = $this->createStub(Node::class);
+        $source->method('getPath')->willReturn('/ada/files_trashbin/files/Specs.d123');
+        $this->listener()->handle(new NodeRenamedEvent($source, $this->specsFolder()));
+
+        self::assertSame(['50 restored', '51 restored', '52 restored'], array_map(
+            static fn (array $event): string => $event['id'] . ' ' . $event['event'],
+            $this->queue->events(),
+        ));
+        self::assertSame([[SourceEventsJob::class, ['uid' => 'ada']]], $this->jobsAdded);
     }
 
     public function testWrittenFileQueuesChangedEvent(): void

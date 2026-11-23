@@ -30,6 +30,10 @@ class SourceEventsJob extends QueuedJob
     public const RETRY_DELAYS = [60, 300, 900, 3600];
     /** Seconds of work per run before the job hands over to its next run. */
     private const BUDGET = 60;
+    /** Files of a moved folder queued per step of its walk. */
+    public const WALK_PAGE = 500;
+    /** Seconds after which the held rows of a deletion that never happened go. */
+    public const HELD_FOR = 600;
 
     public function __construct(
         ITimeFactory $time,
@@ -82,17 +86,53 @@ class SourceEventsJob extends QueuedJob
 
                 return;
             }
-            $batch = $this->leadingSends($rows);
-            if ($batch === []) {
-                return;
+            $head = $rows[0];
+            if ($head['step'] === SourceEventQueue::STEP_WALK) {
+                $this->walk($head);
+            } elseif ($head['step'] === SourceEventQueue::STEP_HELD) {
+                if ($now * 1_000_000 - $head['ord'] < self::HELD_FOR * 1_000_000) {
+                    $this->jobs->scheduleAfter(self::class, $now + 60, ['uid' => $uid]);
+
+                    return;
+                }
+                $this->queue->removeHeld($uid, $head['walked']);
+            } elseif ($head['step'] === SourceEventQueue::STEP_SEND) {
+                $this->send($uid, $this->leadingSends($rows), $now);
+            } else {
+                $this->queue->remove([$head['seq']]);
             }
-            $this->send($uid, $batch, $now);
             if ($this->time->getTime() >= $until) {
                 $this->jobs->add(self::class, ['uid' => $uid]);
 
                 return;
             }
         }
+    }
+
+    /**
+     * Queue the next page of a moved folder's files and folders, with the
+     * paths the person sees them at, behind the walk and with its order.
+     *
+     * @param QueuedEvent $walk
+     */
+    private function walk(array $walk): void
+    {
+        $page = $this->queue->descendants($walk['file_id'], $walk['walked'], self::WALK_PAGE);
+        foreach ($page as $entry) {
+            $path = $walk['path'] === '' ? '' : $walk['path'] . '/' . $entry['path'];
+            $this->queue->add($walk['uid'], [
+                'id' => (string) $entry['id'],
+                'event' => $walk['event'],
+                'version' => substr($entry['etag'], 0, 255),
+                'path' => strlen($path) <= 255 ? $path : '',
+            ], $walk['ord']);
+        }
+        if (count($page) < self::WALK_PAGE) {
+            $this->queue->remove([$walk['seq']]);
+
+            return;
+        }
+        $this->queue->walked($walk['seq'], $page[count($page) - 1]['id']);
     }
 
     /**

@@ -20,6 +20,10 @@ class SourceEventQueue
     public const TABLE = 'synaplan_source_events';
     /** Ready to be sent. */
     public const STEP_SEND = 'send';
+    /** A moved folder whose files are still to be queued; `walked` is the last file id queued. */
+    public const STEP_WALK = 'walk';
+    /** Below a folder about to be deleted; `walked` is the folder's id. */
+    public const STEP_HELD = 'held';
 
     public function __construct(
         private IDBConnection $db,
@@ -91,6 +95,141 @@ class SourceEventQueue
         $result->closeCursor();
 
         return $rows;
+    }
+
+    /**
+     * Queue every file and folder below a folder for one person, in one
+     * statement from the file cache: the request reads no node. The path is
+     * left out, as Synaplan reads it for moves only.
+     */
+    public function addDescendants(string $uid, int $folderId, string $event, int $ord, string $step, int $walked = 0): void
+    {
+        $folder = $this->location($folderId);
+        if ($folder === null) {
+            return;
+        }
+        $select = $this->db->getQueryBuilder();
+        $expr = $select->expr();
+        $select->select(
+            $expr->literal($ord, IQueryBuilder::PARAM_INT),
+            $expr->literal($uid),
+            'fileid',
+            $expr->literal($event),
+            'etag',
+            $expr->literal(''),
+            $expr->literal($step),
+            $expr->literal($walked, IQueryBuilder::PARAM_INT),
+        )
+            ->from('filecache')
+            ->where($expr->eq('storage', $select->createNamedParameter($folder['storage'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($this->below($select, $folder['path']));
+
+        $columns = array_map(
+            static fn (string $column): string => $select->getColumnName($column),
+            ['ord', 'uid', 'file_id', 'event', 'version', 'path', 'step', 'walked'],
+        );
+        $this->db->executeStatement(
+            'INSERT INTO ' . $select->getTableName(self::TABLE) . ' (' . implode(', ', $columns) . ') ' . $select->getSQL(),
+            $select->getParameters(),
+            $select->getParameterTypes(),
+        );
+    }
+
+    /**
+     * A page of the files and folders below a folder, by file id, with
+     * their paths below it.
+     *
+     * @return list<array{id: int, path: string, etag: string}>
+     */
+    public function descendants(int $folderId, int $afterId, int $limit): array
+    {
+        $folder = $this->location($folderId);
+        if ($folder === null) {
+            return [];
+        }
+        $qb = $this->db->getQueryBuilder();
+        $result = $qb->select('fileid', 'path', 'etag')
+            ->from('filecache')
+            ->where($qb->expr()->eq('storage', $qb->createNamedParameter($folder['storage'], IQueryBuilder::PARAM_INT)))
+            ->andWhere($this->below($qb, $folder['path']))
+            ->andWhere($qb->expr()->gt('fileid', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)))
+            ->orderBy('fileid', 'ASC')
+            ->setMaxResults($limit)
+            ->executeQuery();
+        $prefix = $folder['path'] === '' ? 0 : strlen($folder['path']) + 1;
+        $rows = [];
+        while (($row = $result->fetch()) !== false) {
+            $rows[] = ['id' => (int) $row['fileid'], 'path' => substr((string) $row['path'], $prefix), 'etag' => (string) ($row['etag'] ?? '')];
+        }
+        $result->closeCursor();
+
+        return $rows;
+    }
+
+    /**
+     * Where the file cache keeps a folder: a node seen through a share
+     * names its path below the share, the cache below its storage.
+     *
+     * @return array{storage: int, path: string}|null
+     */
+    private function location(int $fileId): ?array
+    {
+        $qb = $this->db->getQueryBuilder();
+        $result = $qb->select('storage', 'path')
+            ->from('filecache')
+            ->where($qb->expr()->eq('fileid', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+            ->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+
+        return is_array($row) ? ['storage' => (int) $row['storage'], 'path' => (string) ($row['path'] ?? '')] : null;
+    }
+
+    private function below(IQueryBuilder $qb, string $folderPath): string
+    {
+        if ($folderPath === '') {
+            return (string) $qb->expr()->neq('path_hash', $qb->createNamedParameter(md5('')));
+        }
+
+        return (string) $qb->expr()->like('path', $qb->createNamedParameter($this->db->escapeLikeParameter($folderPath) . '/%'));
+    }
+
+    /**
+     * The held rows of a folder deletion that happened become ready to send.
+     */
+    public function release(int $folderId): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('step', $qb->createNamedParameter(self::STEP_SEND))
+            ->where($qb->expr()->eq('step', $qb->createNamedParameter(self::STEP_HELD)))
+            ->andWhere($qb->expr()->eq('walked', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
+            ->executeStatement();
+    }
+
+    /**
+     * The held rows of a folder deletion that never happened.
+     */
+    public function removeHeld(string $uid, int $folderId): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete(self::TABLE)
+            ->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)))
+            ->andWhere($qb->expr()->eq('step', $qb->createNamedParameter(self::STEP_HELD)))
+            ->andWhere($qb->expr()->eq('walked', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT)))
+            ->executeStatement();
+    }
+
+    /**
+     * How far the walk of a moved folder got.
+     */
+    public function walked(int $seq, int $walked): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('walked', $qb->createNamedParameter($walked, IQueryBuilder::PARAM_INT))
+            ->where($qb->expr()->eq('seq', $qb->createNamedParameter($seq, IQueryBuilder::PARAM_INT)))
+            ->executeStatement();
     }
 
     /**
