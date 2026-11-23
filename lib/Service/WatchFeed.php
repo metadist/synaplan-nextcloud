@@ -53,13 +53,14 @@ class WatchFeed
                 $this->index->dequeue($row['watch'], $row['file']);
                 continue;
             }
+            $restored = null;
             if ($row['event'] !== '') {
                 $result = $this->sender->targetEvent($watch, $row['event'], $now);
                 // Restored while the deletion was on its way: the listener
                 // found nothing left to take back.
                 if ($result === WatchSender::SENT && $row['event'] === 'deleted'
                     && $this->sender->ownerNode($watch['uid'], $watch['target']) !== null) {
-                    $this->sender->targetEvent($watch, 'restored', $now);
+                    $restored = $this->sender->targetEvent($watch, 'restored', $now);
                 }
                 if ($result === WatchSender::SENT) {
                     $this->sync->request($watch['uid']);
@@ -70,6 +71,11 @@ class WatchFeed
                 $result = $this->sender->file($watch, $row['file']);
             }
             $this->settle($watch, $row, $result, $now);
+            // The deletion went; the restore is retried on its own, unless
+            // a newer event of the target is queued by now.
+            if ($restored === WatchSender::RETRY) {
+                $this->index->enqueueIfAbsent($row['watch'], $row['file'], 'restored', $now, $now + 60);
+            }
         }
     }
 

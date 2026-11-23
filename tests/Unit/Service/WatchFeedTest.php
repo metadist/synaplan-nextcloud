@@ -101,6 +101,40 @@ final class WatchFeedTest extends TestCase
         self::assertSame(['deleted', 'restored'], $events);
     }
 
+    public function testARestoreThatCouldNotGoIsQueuedWithoutTheDeletion(): void
+    {
+        $row = ['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0];
+        $this->queue($row, self::WATCH);
+        $this->sender->method('ownerNode')->willReturn($this->createStub(Folder::class));
+        $this->sender->method('targetEvent')->willReturnCallback(
+            static fn (array $watch, string $event): string => $event === 'deleted' ? WatchSender::SENT : WatchSender::RETRY,
+        );
+        $calls = [];
+        $this->index->method('done')->willReturnCallback(function (array $settled) use (&$calls): void {
+            $calls[] = 'done ' . $settled['event'];
+        });
+        $this->index->method('enqueueIfAbsent')->willReturnCallback(function (int $watch, int $file, string $event, int $changed, int $due) use (&$calls): bool {
+            $calls[] = "queue {$watch} {$file} {$event} {$changed} {$due}";
+
+            return true;
+        });
+        $this->index->expects($this->never())->method('retryLater');
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+
+        self::assertSame(['done deleted', 'queue 5 30 restored ' . self::NOW . ' ' . (self::NOW + 60)], $calls);
+    }
+
+    public function testARestoreThatWentQueuesNothing(): void
+    {
+        $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
+        $this->sender->method('ownerNode')->willReturn($this->createStub(Folder::class));
+        $this->sender->method('targetEvent')->willReturn(WatchSender::SENT);
+        $this->index->expects($this->never())->method('enqueueIfAbsent');
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+    }
+
     public function testADeletedTargetThatStaysGoneIsOnlyReportedDeleted(): void
     {
         $this->queue(['watch' => 5, 'file' => 30, 'event' => 'deleted', 'changed' => self::NOW, 'generation' => 'g1', 'attempts' => 0], self::WATCH);
@@ -118,7 +152,7 @@ final class WatchFeedTest extends TestCase
     }
 
     /**
-     * @param array{watch: int, file: int, event: string, changed: int, attempts: int} $row
+     * @param array{watch: int, file: int, event: string, changed: int, generation: string, attempts: int} $row
      * @param array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int} $watch
      */
     private function queue(array $row, array $watch): void
@@ -128,7 +162,7 @@ final class WatchFeedTest extends TestCase
     }
 
     /**
-     * @return array{watch: int, file: int, event: string, changed: int, attempts: int}
+     * @return array{watch: int, file: int, event: string, changed: int, generation: string, attempts: int}
      */
     private static function row(int $file, int $attempts = 0): array
     {
