@@ -46,6 +46,8 @@ let featureEnabled: boolean | null = null
 let lastGlyphs: GlyphOverrides = {}
 let lastOpenSynaplanUrl = ''
 const listeners = new Set<() => void>()
+/** Counts invalidations: an answer asked for before the last one is out of date. */
+let generation = 0
 
 interface PendingItem {
 	id: string
@@ -110,6 +112,7 @@ export function onCloudStatusInvalidated(fn: () => void): () => void {
  * Clear the 60-second client cache after a knowledge change.
  */
 export function invalidateCloudStatusCache(): void {
+	generation++
 	cache.clear()
 	folderWatches.clear()
 	featureEnabled = null
@@ -187,10 +190,15 @@ async function flushBatch(): Promise<void> {
 	const baseUrl = generateUrl('/apps/synaplan_integration')
 	for (let offset = 0; offset < entries.length; offset += MAX_BATCH) {
 		const slice = entries.slice(offset, offset + MAX_BATCH)
+		const asked = generation
 		try {
 			const { data } = await axios.post(`${baseUrl}/api/v1/cloud/status`, {
 				items: slice.map((e) => ({ id: e.id, version: e.version })),
 			})
+			if (asked !== generation) {
+				askAgain(slice)
+				continue
+			}
 			const enabled = Boolean(data?.enabled)
 			const unreachable = Boolean(data?.unreachable)
 			featureEnabled = enabled
@@ -236,6 +244,10 @@ async function flushBatch(): Promise<void> {
 				entry.resolvers.forEach((r) => r(resolved))
 			}
 		} catch {
+			if (asked !== generation) {
+				askAgain(slice)
+				continue
+			}
 			for (const entry of slice) {
 				entry.resolvers.forEach((r) =>
 					r({
@@ -249,5 +261,19 @@ async function flushBatch(): Promise<void> {
 				)
 			}
 		}
+	}
+}
+
+/**
+ * Ask again for rows whose answer was asked for before the cache was
+ * invalidated, and hand them the new answer instead.
+ *
+ * @param entries the rows
+ */
+function askAgain(entries: PendingItem[]): void {
+	for (const entry of entries) {
+		requestRowStatus(entry.id, entry.version).then((res) =>
+			entry.resolvers.forEach((r) => r(res)),
+		)
 	}
 }
