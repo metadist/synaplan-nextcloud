@@ -134,6 +134,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   minutes, and a minute after Synaplan gave no answer. Every folder view
   and every opened sidebar asked for them again and waited up to 15 seconds
   for the answer.
+- **Synaplan hears of a person's file changes in the order they happened.**
+  An event Synaplan could not take yet, such as a deletion while it was
+  down, now holds back the events after it, so a
+  restore can no longer arrive first and be ignored. It is tried again
+  after a minute, then 5, 15 and 60 minutes, and given up after that.
+  Events go out in batches of up to 100 per call. The queue needs the new
+  version number's database update.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that

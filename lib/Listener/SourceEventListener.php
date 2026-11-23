@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Listener;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\BackgroundJob\SourceEventsJob;
+use OCA\SynaplanIntegration\Service\SourceEventQueue;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
@@ -25,7 +26,8 @@ use OCP\IConfig;
 /**
  * When a file or folder changes, moves, is deleted to the trash, or is
  * restored from the trash, queue source events for Synaplan (including
- * descendant files inside a moved, deleted, or restored folder).
+ * descendant files inside a moved, deleted, or restored folder), in each
+ * person's queue in the order they happen.
  * Respects dev_mute_events.
  *
  * @implements IEventListener<Event>
@@ -42,6 +44,7 @@ class SourceEventListener implements IEventListener
         private IConfig $config,
         private IJobList $jobs,
         private IRootFolder $rootFolder,
+        private SourceEventQueue $queue,
     ) {
     }
 
@@ -63,10 +66,16 @@ class SourceEventListener implements IEventListener
             return;
         }
 
+        $ord = SourceEventQueue::now();
+        $people = [];
         foreach ($this->mapEvents($event) as $mapped) {
-            foreach ($this->perPerson($mapped) as $job) {
-                $this->jobs->add(SourceEventsJob::class, $job);
+            foreach ($this->perPerson($mapped) as $row) {
+                $this->queue->add($row['uid'], $row, $ord);
+                $people[$row['uid']] = true;
             }
+        }
+        foreach (array_keys($people) as $uid) {
+            $this->jobs->add(SourceEventsJob::class, ['uid' => (string) $uid]);
         }
     }
 
