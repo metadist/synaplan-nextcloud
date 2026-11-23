@@ -43,6 +43,8 @@ class SourceEventListenerTest extends TestCase
     private array $kept = [];
     /** @var list<array{string, mixed}> */
     private array $jobsAdded = [];
+    /** @var list<array{string, mixed, int}> */
+    private array $scheduled = [];
 
     /** @var array<string, string> */
     private array $appConfig = [];
@@ -57,6 +59,9 @@ class SourceEventListenerTest extends TestCase
         $this->queue = new ArraySourceEventQueue();
         $this->jobs->method('add')->willReturnCallback(function (string $job, mixed $argument): void {
             $this->jobsAdded[] = [$job, $argument];
+        });
+        $this->jobs->method('scheduleAfter')->willReturnCallback(function (string $job, int $after, mixed $argument): void {
+            $this->scheduled[] = [$job, $argument, $after];
         });
 
         $this->synaplanConfig->method('isRegistered')->willReturnCallback(fn (): bool => $this->registered);
@@ -140,6 +145,21 @@ class SourceEventListenerTest extends TestCase
         ], $this->queue->events());
         self::assertSame(['send'], array_values(array_unique(array_map(static fn (array $row): string => $row['step'], $this->queue->rows))));
         self::assertSame(1, $this->queue->cacheReads);
+    }
+
+    public function testTheHeldRowsOfADeletionThatNeverHappensAreClearedOnceTheyTimeOut(): void
+    {
+        $this->sharedWith[50] = ['bob'];
+        $before = time();
+        $this->listener()->handle(new BeforeNodeDeletedEvent($this->specsFolder()));
+
+        self::assertSame([], $this->jobsAdded);
+        self::assertSame(
+            [[SourceEventsJob::class, ['uid' => 'ada', 'held' => true]], [SourceEventsJob::class, ['uid' => 'bob', 'held' => true]]],
+            array_map(static fn (array $job): array => [$job[0], $job[1]], $this->scheduled),
+        );
+        self::assertGreaterThan($before + SourceEventsJob::HELD_FOR, $this->scheduled[0][2]);
+        self::assertLessThanOrEqual(time() + SourceEventsJob::HELD_FOR + 1, $this->scheduled[0][2]);
     }
 
     public function testAFileThatLeftAFolderAfterAFailedDeletionIsNotDeletedWithIt(): void

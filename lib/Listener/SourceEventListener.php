@@ -123,6 +123,16 @@ class SourceEventListener implements IEventListener
         foreach ($recipients as $uid) {
             $this->queue->add($uid, ['id' => $mapped['id'], 'event' => 'deleted', 'version' => $mapped['version'], 'path' => ''], $ord, SourceEventQueue::STEP_HELD, $id);
         }
+        // A deletion that fails says so nowhere: a run after the rows time
+        // out drops them, under its own argument so it delays no other run.
+        $holding = $node instanceof Folder ? [...array_unique($told), ...$recipients] : $recipients;
+        foreach ($holding as $uid) {
+            $this->jobs->scheduleAfter(
+                SourceEventsJob::class,
+                intdiv($ord, 1_000_000) + SourceEventsJob::HELD_FOR + 1,
+                ['uid' => $uid, 'held' => true],
+            );
+        }
     }
 
     /**
