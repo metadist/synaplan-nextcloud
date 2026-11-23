@@ -417,6 +417,24 @@ class PlatformLinkServiceTest extends TestCase
         }
     }
 
+    public function testAFolderReadsClaimAndListingWaitNoLongerThanTheyAreGiven(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('sk_ada');
+        $timeouts = [];
+        $this->httpClient->expects($this->exactly(2))->method('post')->willReturnCallback(
+            function (string $url, array $options) use (&$timeouts): IResponse {
+                $timeouts[] = $options['timeout'];
+
+                return $this->answer(200, '{}');
+            },
+        );
+
+        $this->service()->claimPickup('15', 'ada', 12);
+        $this->service()->submitPickupListing('15', 'ada', [], 3);
+
+        self::assertSame([12, 3], $timeouts);
+    }
+
     public function testWatchesAreListedWithThePersonsOwnCredential(): void
     {
         $this->userAccounts->method('credentialFor')->with('ada')->willReturn('sk_ada');

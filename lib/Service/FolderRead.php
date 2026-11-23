@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\BackgroundJob\PickupJob;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -20,15 +21,18 @@ use Psr\Log\LoggerInterface;
  * list the folder, send what was asked for, and report.
  *
  * The whole answer has {@see self::BUDGET_SECONDS} inside the notification
- * request, claim and listing included. What is left is kept in app config
- * under the read's id and finished by {@see PickupJob}: a job argument is
- * capped (4000 characters on Nextcloud 33, 32000 later), and a large folder
- * leaves more than that.
+ * request, going through the folder, claim, listing and every call to
+ * Synaplan included: Synaplan waits 30 seconds for it. What is left is kept
+ * in app config under the read's id and finished by {@see PickupJob}: a job
+ * argument is capped (4000 characters on Nextcloud 33, 32000 later), and a
+ * large folder leaves more than that.
  */
 class FolderRead
 {
     public const BUDGET_SECONDS = 20;
     private const LISTING_CHUNK = 500;
+    private const CALL_SECONDS = 30;
+    private const UPLOAD_SECONDS = 120;
 
     public function __construct(
         private PlatformLinkService $links,
@@ -38,13 +42,14 @@ class FolderRead
         private IJobList $jobs,
         private LoggerInterface $logger,
         private IAppConfig $appConfig,
+        private ITimeFactory $time,
     ) {
     }
 
     public function handle(string $id, string $externalId, int $budgetSeconds = self::BUDGET_SECONDS): void
     {
         try {
-            $this->start($id, $externalId, microtime(true) + max(1, $budgetSeconds));
+            $this->start($id, $externalId, $this->time->getTime() + max(1, $budgetSeconds));
         } catch (\Throwable $e) {
             $this->logger->warning('A folder read could not be answered: {message}', [
                 'app' => Application::APP_ID,
@@ -54,9 +59,10 @@ class FolderRead
     }
 
     /**
-     * Uploads left over from a read that did not finish in the request, from
-     * app config, or from the arguments of a job queued by an older version.
-     * It ends in a result call whatever fails on the way.
+     * What a read left when the request ran out of time, from app config or
+     * from the arguments of a job queued by an older version: the whole read
+     * when that was before Synaplan said what to send, else the uploads
+     * still owed. It ends in a result call whatever fails on the way.
      *
      * @param array<string, mixed>|null $pending
      */
@@ -76,41 +82,38 @@ class FolderRead
         $listed = (int) ($pending['listed'] ?? 0);
         $skipped = is_array($pending['skipped'] ?? null) ? $pending['skipped'] : [];
         try {
-            $userFolder = $this->rootFolder->getUserFolder($uid);
+            if (is_array($pending['selector'] ?? null)) {
+                $this->read($id, $uid, $pending['selector'], null);
+
+                return;
+            }
+            $upload = [];
             foreach ($left as $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-                $outcome = $this->uploadOne($id, $uid, $userFolder, $item, 120);
-                if ($outcome === null) {
-                    $sent++;
-                } else {
-                    $skipped[] = $outcome;
+                if (is_array($item)) {
+                    $upload[] = ['id' => (string) ($item['id'] ?? ''), 'version' => (string) ($item['version'] ?? '')];
                 }
             }
+            $this->send($id, $uid, $this->rootFolder->getUserFolder($uid), $upload, $listed, $sent, $skipped, null);
         } catch (\Throwable $e) {
             $this->logger->warning('A folder read could not be finished: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
             ]);
             $this->report($id, $uid, 'failed', $listed, $sent, $skipped, 'unreachable');
-
-            return;
         }
-        $this->close($id, $uid, $listed, $sent, $skipped);
     }
 
     /**
      * The read is claimed and answered with the key of the person the signed
      * notification names; the claim must name the same person.
      */
-    private function start(string $id, string $externalId, float $deadline): void
+    private function start(string $id, string $externalId, int $deadline): void
     {
         $uid = $this->uid($externalId);
         if ($uid === null || !$this->links->canActFor($uid)) {
             return;
         }
-        $claim = $this->links->claimPickup($id, $uid);
+        $claim = $this->links->claimPickup($id, $uid, $this->secondsFor($deadline, self::CALL_SECONDS) ?? 1);
         if (isset($claim['status_code']) && (int) $claim['status_code'] !== 200) {
             return;
         }
@@ -122,7 +125,7 @@ class FolderRead
         // Once claimed, Synaplan waits for a result until its timeout: every
         // way out of the read has to report one.
         try {
-            $this->read($id, $uid, $claim, $deadline);
+            $this->read($id, $uid, is_array($claim['selector'] ?? null) ? $claim['selector'] : [], $deadline);
         } catch (\Throwable $e) {
             $this->logger->warning('A claimed folder read failed: {message}', [
                 'app' => Application::APP_ID,
@@ -134,11 +137,11 @@ class FolderRead
     }
 
     /**
-     * @param array<string, mixed> $claim
+     * @param array<mixed> $selector
+     * @param int|null $deadline when the request's time runs out; null in the background job
      */
-    private function read(string $id, string $uid, array $claim, float $deadline): void
+    private function read(string $id, string $uid, array $selector, ?int $deadline): void
     {
-        $selector = is_array($claim['selector'] ?? null) ? $claim['selector'] : [];
         $userFolder = $this->rootFolder->getUserFolder($uid);
         $folder = $this->folder($userFolder, $selector);
         if (!$folder instanceof Folder) {
@@ -155,25 +158,27 @@ class FolderRead
 
         $since = self::since($selector['changed_since'] ?? null);
         $recursive = ($selector['recursive'] ?? false) === true;
-        $files = $this->filesIn($uid, $userFolder, $folder, $recursive, $since);
-        $items = [];
-        foreach ($files as $file) {
-            $items[] = [
-                'id' => $file['id'],
-                'version' => $file['version'],
-                'name' => $file['name'],
-                'folder' => $file['folder'],
-                'size' => $file['size'],
-                'mime' => $file['mime'],
-            ];
+        $files = $this->filesIn($uid, $userFolder, $folder, $recursive, $since, $deadline);
+        if ($files === null) {
+            // The job reads the folder again; Synaplan repeats what it
+            // decided for files it was already told of.
+            $this->later($id, $uid, ['selector' => $selector]);
+
+            return;
         }
         // Synaplan reads at most 500 items of one listing call and keeps
         // its decisions across calls (`07` §4).
         $listing = ['upload' => [], 'skip' => []];
-        foreach (array_chunk($items, self::LISTING_CHUNK) ?: [[]] as $chunk) {
-            $answer = $this->links->submitPickupListing($id, $uid, $chunk);
+        foreach (array_chunk($files, self::LISTING_CHUNK) ?: [[]] as $chunk) {
+            $seconds = $this->secondsFor($deadline, self::CALL_SECONDS);
+            if ($seconds === null) {
+                $this->later($id, $uid, ['selector' => $selector]);
+
+                return;
+            }
+            $answer = $this->links->submitPickupListing($id, $uid, $chunk, $seconds);
             if (isset($answer['status_code']) && (int) $answer['status_code'] !== 200) {
-                $this->report($id, $uid, 'failed', count($items), 0, [], 'unreachable');
+                $this->report($id, $uid, 'failed', count($files), 0, [], 'unreachable');
 
                 return;
             }
@@ -210,15 +215,26 @@ class FolderRead
             }
         }
 
-        $sent = 0;
+        $this->send($id, $uid, $userFolder, $upload, count($files), 0, $skipped, $deadline);
+    }
+
+    /**
+     * Send the files Synaplan asked for while the request has time, and
+     * leave the rest to the job.
+     *
+     * @param list<array{id: string, version: string}> $upload
+     * @param list<array{id: string, name: string, reason: string}> $skipped
+     */
+    private function send(string $id, string $uid, Folder $userFolder, array $upload, int $listed, int $sent, array $skipped, ?int $deadline): void
+    {
         $left = [];
         foreach ($upload as $item) {
-            $remaining = (int) floor($deadline - microtime(true));
-            if ($remaining <= 1) {
+            $seconds = $left === [] ? $this->secondsFor($deadline, self::UPLOAD_SECONDS) : null;
+            if ($seconds === null) {
                 $left[] = $item;
                 continue;
             }
-            $outcome = $this->uploadOne($id, $uid, $userFolder, $item, $remaining);
+            $outcome = $this->uploadOne($id, $uid, $userFolder, $item, $seconds);
             if ($outcome === null) {
                 $sent++;
             } else {
@@ -226,18 +242,36 @@ class FolderRead
             }
         }
         if ($left !== []) {
-            $this->appConfig->setValueArray(Application::APP_ID, self::pendingKey($id), [
-                'uid' => $uid,
-                'left' => $left,
-                'sent' => $sent,
-                'listed' => count($items),
-                'skipped' => $skipped,
-            ], true);
-            $this->jobs->add(PickupJob::class, ['id' => $id]);
+            $this->later($id, $uid, ['left' => $left, 'sent' => $sent, 'listed' => $listed, 'skipped' => $skipped]);
 
             return;
         }
-        $this->close($id, $uid, count($items), $sent, $skipped);
+        $this->close($id, $uid, $listed, $sent, $skipped);
+    }
+
+    /**
+     * Leave the rest of the read to {@see PickupJob}.
+     *
+     * @param array<string, mixed> $pending
+     */
+    private function later(string $id, string $uid, array $pending): void
+    {
+        $this->appConfig->setValueArray(Application::APP_ID, self::pendingKey($id), ['uid' => $uid] + $pending, true);
+        $this->jobs->add(PickupJob::class, ['id' => $id]);
+    }
+
+    /**
+     * How long the next step may take: its own limit in the job, no longer
+     * than the request has left, and null when that is a second or less.
+     */
+    private function secondsFor(?int $deadline, int $limit): ?int
+    {
+        if ($deadline === null) {
+            return $limit;
+        }
+        $left = $deadline - $this->time->getTime();
+
+        return $left > 1 ? min($limit, $left) : null;
     }
 
     /**
@@ -401,17 +435,26 @@ class FolderRead
     /**
      * A recursive read only enters the sub-folders the person's setting
      * allows: "Only what I watch" allows a watched folder, not the folders in
-     * it, and a listing already tells Synaplan names, paths and sizes.
+     * it, and a listing already tells Synaplan names, paths and sizes. Null
+     * when the request runs out of time on the way.
      *
-     * @return list<array{id: string, version: string, name: string, folder: string, size: int, mime: string}>
+     * @return list<array{id: string, version: string, name: string, folder: string, size: int, mime: string}>|null
      */
-    private function filesIn(string $uid, Folder $userFolder, Folder $folder, bool $recursive, int $since): array
+    private function filesIn(string $uid, Folder $userFolder, Folder $folder, bool $recursive, int $since, ?int $deadline): ?array
     {
+        $nodes = $folder->getDirectoryListing();
+        if ($this->secondsFor($deadline, 1) === null) {
+            return null;
+        }
         $found = [];
-        foreach ($folder->getDirectoryListing() as $node) {
+        foreach ($nodes as $node) {
             if ($node instanceof Folder) {
                 if ($recursive && $this->scope->mayRead($uid, $this->relativeFolder($userFolder, $node))) {
-                    $found = array_merge($found, $this->filesIn($uid, $userFolder, $node, true, $since));
+                    $inner = $this->filesIn($uid, $userFolder, $node, true, $since, $deadline);
+                    if ($inner === null) {
+                        return null;
+                    }
+                    $found = array_merge($found, $inner);
                 }
                 continue;
             }

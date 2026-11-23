@@ -267,7 +267,7 @@ class PlatformLinkService
     /**
      * @return array<string, mixed>
      */
-    public function claimPickup(string $id, string $uid): array
+    public function claimPickup(string $id, string $uid, int $timeoutSeconds = 30): array
     {
         return $this->request(
             'POST',
@@ -276,6 +276,7 @@ class PlatformLinkService
             $this->personHeaders($uid),
             false,
             true,
+            max(1, $timeoutSeconds),
         );
     }
 
@@ -283,7 +284,7 @@ class PlatformLinkService
      * @param list<array<string, mixed>> $items
      * @return array<string, mixed>
      */
-    public function submitPickupListing(string $id, string $uid, array $items): array
+    public function submitPickupListing(string $id, string $uid, array $items, int $timeoutSeconds = 30): array
     {
         return $this->request(
             'POST',
@@ -292,6 +293,7 @@ class PlatformLinkService
             array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
+            max(1, $timeoutSeconds),
         );
     }
 
