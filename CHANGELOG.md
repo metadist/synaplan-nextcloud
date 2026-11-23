@@ -76,7 +76,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **"Only what I watch" and "All my files"** no longer tell Synaplan the
   folders named under "Also folders I allow". Synaplan opened reads of them
   that the app then refused. The app keeps the list for when the person
-  switches back.
+  switches back. After the update, Synaplan learns within the hour for
+  everyone who kept named folders under another choice.
 - **The searchable files on the Synaplan page** are the newest hundred that
   came from Nextcloud. The app asked Synaplan for page 100 of all files, so
   the list was mostly empty.
