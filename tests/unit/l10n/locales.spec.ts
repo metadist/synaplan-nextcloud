@@ -31,6 +31,16 @@ const CORE_WORDS: Record<string, Record<string, string>> = {
 	},
 }
 
+/**
+ * The read choices speak as the person (plan 05, folder-read copy), so formal
+ * and informal German say them the same way.
+ */
+const READ_CHOICES: Record<string, string> = {
+	'Only what I watch': 'Nur was ich beobachte',
+	'Also folders I allow': 'Auch Ordner, die ich freigebe',
+	'All my files': 'Alle meine Dateien',
+}
+
 /** "Searchable by AI" is a state inside sentences; each locale uses the core's wording for it. */
 const SEARCHABLE: Record<string, string> = {
 	de: 'KI-durchsuchbar',
@@ -140,6 +150,15 @@ describe('source strings', () => {
 	it.each([...SOURCE])('"%s" uses no banned word', (text) => {
 		for (const word of BANNED) {
 			expect(withoutPlaceholders(text)).not.toMatch(word)
+		}
+	})
+})
+
+describe.each(['de', 'de_DE'])('%s', (code) => {
+	it('says the read choices in the first person', () => {
+		const { translations } = locale(code)
+		for (const [source, german] of Object.entries(READ_CHOICES)) {
+			expect(translations[source], source).toBe(german)
 		}
 	})
 })

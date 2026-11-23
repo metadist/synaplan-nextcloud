@@ -62,6 +62,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Notifications signed with a new key** make Synaplan's keys be read at most
   once a minute also when several arrive at once. Each used to read the old
   check time and fetch the keys itself.
+- **Formal German** says the read choices in the person's own words, as
+  informal German does: "Nur was ich beobachte", "Auch Ordner, die ich
+  freigebe", "Alle meine Dateien".
 - **People with a long user id**, such as LDAP UUIDs or user_oidc's hashed
   ids, keep their Synaplan connection after the first hour and can change
   what Synaplan may read. Without a locking cache, Nextcloud keeps at most
