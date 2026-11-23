@@ -62,6 +62,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Notifications signed with a new key** make Synaplan's keys be read at most
   once a minute also when several arrive at once. Each used to read the old
   check time and fetch the keys itself.
+- **People with a long user id**, such as LDAP UUIDs or user_oidc's hashed
+  ids, keep their Synaplan connection after the first hour and can change
+  what Synaplan may read. Without a locking cache, Nextcloud keeps at most
+  64 characters of a lock name, so their refresh and read-setting locks
+  could never be taken.
 - **"Only what I watch" and "All my files"** no longer tell Synaplan the
   folders named under "Also folders I allow". Synaplan opened reads of them
   that the app then refused. The app keeps the list for when the person

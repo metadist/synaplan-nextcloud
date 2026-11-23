@@ -116,7 +116,7 @@ class ReadScope
      */
     private function changing(string $uid, callable $change): mixed
     {
-        $person = Application::APP_ID . '/read-scope/' . $uid;
+        $person = self::personLock($uid);
         $this->acquire(self::ceilingLock(), ILockingProvider::LOCK_SHARED);
         try {
             $this->acquire($person, ILockingProvider::LOCK_EXCLUSIVE);
@@ -137,6 +137,15 @@ class ReadScope
     private static function ceilingLock(): string
     {
         return Application::APP_ID . '/read-scope-ceiling';
+    }
+
+    /**
+     * Database locking keeps at most 64 characters of a key, and user ids
+     * run to 64 themselves (user_oidc), so the key carries a hash of the id.
+     */
+    private static function personLock(string $uid): string
+    {
+        return Application::APP_ID . '/read-scope/' . md5($uid);
     }
 
     /**

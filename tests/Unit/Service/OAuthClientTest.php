@@ -165,12 +165,12 @@ class OAuthClientTest extends TestCase
         $this->app['notify_issuer'] = 'https://issuer.example/';
     }
 
-    private function connected(string $refresh = 'rt-old', string $access = 'at-old', int $expires = 0): void
+    private function connected(string $refresh = 'rt-old', string $access = 'at-old', int $expires = 0, string $uid = 'ada'): void
     {
-        $this->user['ada|synaplan_oauth_refresh'] = $refresh;
-        $this->user['ada|synaplan_oauth_access'] = $access;
-        $this->user['ada|synaplan_oauth_expires'] = (string) $expires;
-        $this->user['ada|synaplan_oauth_client'] = 'client-1';
+        $this->user[$uid . '|synaplan_oauth_refresh'] = $refresh;
+        $this->user[$uid . '|synaplan_oauth_access'] = $access;
+        $this->user[$uid . '|synaplan_oauth_expires'] = (string) $expires;
+        $this->user[$uid . '|synaplan_oauth_client'] = 'client-1';
     }
 
     /**
@@ -586,6 +586,24 @@ class OAuthClientTest extends TestCase
         $this->assertTrue($client->isConnected('ada'));
     }
 
+    public function testAPersonWithALongUserIdGetsTheRefreshLock(): void
+    {
+        // user_oidc's unique ids are 64-character hashes.
+        $uid = str_repeat('f', 64);
+        $this->registered();
+        $this->connected('rt-old', 'at-old', time() - 10, $uid);
+        $this->onLock = static function (string $path): void {
+            // Nextcloud's database locking keeps the key in a varchar(64)
+            // and reads a failed insert as a lock that is taken.
+            if (strlen($path) > 64) {
+                throw new LockedException($path);
+            }
+        };
+        $this->respond = static fn (): array => [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]];
+
+        $this->assertSame('at-new', $this->client()->accessToken($uid));
+    }
+
     public function testARefreshUnderWayElsewhereIsWaitedForAndItsTokenTaken(): void
     {
         $this->registered();
@@ -670,18 +688,20 @@ class OAuthClientTest extends TestCase
     public function testForgettingAndRevokingWaitForARefreshUnderWay(): void
     {
         $this->registered();
-        $this->connected();
+        $this->connected('rt-old', 'at-old', time() - 10);
+        $this->respond = static fn (): array => [200, ['access_token' => 'at-new', 'refresh_token' => 'rt-new', 'expires_in' => 300]];
         $locked = [];
         $this->onLock = function (string $path) use (&$locked): void {
             $locked[] = $path;
         };
         $client = $this->client();
 
+        $client->accessToken('ada');
         $client->forget('ada');
         $this->connected();
         $client->revoke('ada');
 
-        $this->assertSame(['synaplan_integration/oauth-refresh/ada', 'synaplan_integration/oauth-refresh/ada'], $locked);
+        $this->assertSame(array_fill(0, 3, 'synaplan_integration/refresh/' . md5('ada')), $locked);
         $this->assertSame([], $this->grant());
     }
 

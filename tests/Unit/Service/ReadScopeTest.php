@@ -178,7 +178,7 @@ final class ReadScopeTest extends TestCase
         // Ada's other request is switching to "Only what I watch" and
         // dropping HR when the administrator lowers the ceiling.
         $ceilingLock = Application::APP_ID . '/read-scope-ceiling';
-        $adaLock = Application::APP_ID . '/read-scope/ada';
+        $adaLock = Application::APP_ID . '/read-scope/' . md5('ada');
         $this->locks[$ceilingLock] = ['shared' => 1, 'exclusive' => false];
         $this->locks[$adaLock] = ['shared' => 0, 'exclusive' => true];
         $this->whileWaiting = function () use ($ceilingLock, $adaLock): void {
@@ -206,6 +206,16 @@ final class ReadScopeTest extends TestCase
 
         $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
         self::assertSame(ReadScope::MODE_ALLOWED, $this->scope()->get('ada')['mode']);
+    }
+
+    public function testAPersonWithALongUserIdCanChangeTheReadSetting(): void
+    {
+        // user_oidc's unique ids are 64-character hashes.
+        $uid = str_repeat('f', 64);
+        $scope = $this->scope();
+        $scope->save($uid, ReadScope::MODE_WATCHED, []);
+
+        self::assertSame(ReadScope::MODE_WATCHED, $scope->get($uid)['mode']);
     }
 
     public function testSynaplanHearsOfTheNamedFoldersOnlyUnderAlsoFoldersIAllow(): void
@@ -396,6 +406,11 @@ final class ReadScopeTest extends TestCase
     {
         $locks = $this->createStub(ILockingProvider::class);
         $locks->method('acquireLock')->willReturnCallback(function (string $path, int $type): void {
+            // Nextcloud's database locking keeps the key in a varchar(64)
+            // and reads a failed insert as a lock that is taken.
+            if (strlen($path) > 64) {
+                throw new LockedException($path);
+            }
             $held = $this->locks[$path] ?? ['shared' => 0, 'exclusive' => false];
             $free = $type === ILockingProvider::LOCK_SHARED
                 ? !$held['exclusive']
