@@ -347,10 +347,11 @@ class FolderRead
     }
 
     /**
-     * The folder a selector names. A selector naming no folder, or the root,
-     * is refused even when the person lets Synaplan read all their files, and
-     * so is a path that cannot be cleaned (`Invoices//2026`,
-     * `Invoices/../HR`): neither is read as the whole home folder.
+     * The folder a selector names. A selector naming no folder, or the root
+     * by its path or by its id, is refused even when the person lets
+     * Synaplan read all their files, and so is a path that cannot be cleaned
+     * (`Invoices//2026`, `Invoices/../HR`): none is read as the whole home
+     * folder.
      *
      * @param array<string, mixed> $selector
      */
@@ -361,7 +362,8 @@ class FolderRead
             $nodes = $userFolder->getById((int) $id);
             $node = $nodes[0] ?? null;
 
-            return $node instanceof Folder ? $node : null;
+            // Nextcloud finds the home folder by its own id too.
+            return $node instanceof Folder && $node->getPath() !== $userFolder->getPath() ? $node : null;
         }
         $path = ReadScope::clean(trim(is_string($selector['folder_path'] ?? null) ? $selector['folder_path'] : ''));
         if ($path === '') {

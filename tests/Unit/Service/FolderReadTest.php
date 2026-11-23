@@ -67,7 +67,12 @@ final class FolderReadTest extends TestCase
         $home = $this->createMock(Folder::class);
         $home->method('getPath')->willReturn('/ada/files');
         $home->method('get')->with('Invoices')->willReturn($invoices);
-        $home->method('getById')->with(7)->willReturn([$file]);
+        // Nextcloud finds the home folder by its own id too.
+        $home->method('getById')->willReturnCallback(static fn (int $id): array => match ($id) {
+            7 => [$file],
+            99 => [$home],
+            default => [],
+        });
         $home->method('getRelativePath')->willReturnCallback(static fn (string $path): string => match ($path) {
             '/ada/files/Invoices' => '/Invoices',
             '/ada/files/Invoices/Private' => '/Invoices/Private',
@@ -258,6 +263,7 @@ final class FolderReadTest extends TestCase
         yield 'an empty path' => [['folder_path' => '', 'recursive' => true]];
         yield 'blanks' => [['folder_id' => '', 'folder_path' => '  ', 'recursive' => true]];
         yield 'the root' => [['folder_path' => '/', 'recursive' => true]];
+        yield 'the root by its id' => [['folder_id' => '99', 'recursive' => true]];
     }
 
     /**
