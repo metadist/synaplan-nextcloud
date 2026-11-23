@@ -23,6 +23,7 @@ use OCP\IDBConnection;
 class WatchIndex
 {
     public const ACTIVE = 'active';
+    public const PAUSED = 'paused';
     public const ATTENTION = 'attention';
     public const TARGET_GONE = 'target_gone';
     private const TABLE = 'synaplan_watches';
@@ -128,18 +129,6 @@ class WatchIndex
         foreach ($this->rowsOf($uid) as $known) {
             $this->drop($known['id']);
         }
-    }
-
-    /**
-     * Active watches on any of these nodes: a file's own id (a file watch) or
-     * its parent folder's id (a folder watch).
-     *
-     * @param list<int> $nodeIds
-     * @return list<WatchRow>
-     */
-    public function activeOn(array $nodeIds): array
-    {
-        return array_values(array_filter($this->on($nodeIds), static fn (array $row): bool => $row['state'] === self::ACTIVE));
     }
 
     /**
@@ -281,18 +270,46 @@ class WatchIndex
     }
 
     /**
+     * The files queued for a watch, events of its target left out.
+     *
+     * @return list<int>
+     */
+    public function queuedFiles(int $watchId): array
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('file_id')->from(self::QUEUE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->isNull('event'));
+        $result = $qb->executeQuery();
+        $files = [];
+        while (($id = $result->fetchOne()) !== false) {
+            $files[] = (int) $id;
+        }
+        $result->closeCursor();
+
+        return $files;
+    }
+
+    /**
      * @return list<QueueRow>
      */
     public function due(int $now, int $quietSeconds, int $limit): array
     {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('*')->from(self::QUEUE)
-            ->where($qb->expr()->lte('due', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
+        // A paused watch's files wait for the resume without filling the batch.
+        $qb->select('q.*')->from(self::QUEUE, 'q')
+            ->leftJoin('q', self::TABLE, 'w', $qb->expr()->eq('w.watch_id', 'q.watch_id'))
+            ->where($qb->expr()->lte('q.due', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->orX(
-                $qb->expr()->isNotNull('event'),
-                $qb->expr()->lte('changed', $qb->createNamedParameter($now - $quietSeconds, IQueryBuilder::PARAM_INT)),
+                $qb->expr()->isNotNull('q.event'),
+                $qb->expr()->lte('q.changed', $qb->createNamedParameter($now - $quietSeconds, IQueryBuilder::PARAM_INT)),
             ))
-            ->orderBy('changed', 'ASC')
+            ->andWhere($qb->expr()->orX(
+                $qb->expr()->isNotNull('q.event'),
+                $qb->expr()->isNull('w.watch_id'),
+                $qb->expr()->eq('w.state', $qb->createNamedParameter(self::ACTIVE)),
+            ))
+            ->orderBy('q.changed', 'ASC')
             ->setMaxResults($limit);
         $result = $qb->executeQuery();
         $rows = [];
@@ -440,6 +457,17 @@ class WatchIndex
         $reason = is_string($reason) && strlen($reason) <= 32 ? $reason : '';
 
         return ['id' => $id, 'kind' => $kind, 'target' => (int) $target, 'state' => $state, 'reason' => $reason];
+    }
+
+    /**
+     * A changed file is queued for this watch: while it runs, and while it
+     * is paused, so that resuming can send the files that arrived meanwhile.
+     *
+     * @param array{state: string} $watch
+     */
+    public static function queues(array $watch): bool
+    {
+        return $watch['state'] === self::ACTIVE || $watch['state'] === self::PAUSED;
     }
 
     /**

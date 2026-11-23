@@ -37,7 +37,7 @@ final class WatchEventListenerTest extends TestCase
 
     public function testAFileWrittenIntoAWatchedFolderIsQueuedAsChangedNow(): void
     {
-        $this->index->method('activeOn')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
+        $this->index->method('on')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
         $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW);
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
@@ -46,7 +46,7 @@ final class WatchEventListenerTest extends TestCase
     public function testAFileWatchTakesNewVersionsOfItsFileOnly(): void
     {
         $fileWatch = ['id' => 6, 'kind' => 'file', 'target' => 7] + self::FOLDER_WATCH;
-        $this->index->method('activeOn')->willReturn([$fileWatch, ['id' => 9, 'target' => 7] + self::FOLDER_WATCH]);
+        $this->index->method('on')->willReturn([$fileWatch, ['id' => 9, 'target' => 7] + self::FOLDER_WATCH]);
         $this->index->expects($this->once())->method('enqueue')->with(6, 7, '', self::NOW);
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
@@ -54,17 +54,33 @@ final class WatchEventListenerTest extends TestCase
 
     public function testAFileMovedIntoAWatchedFolderArrivesThere(): void
     {
-        $this->index->method('activeOn')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
-        $this->index->method('on')->willReturn([]);
+        $this->index->method('on')->willReturnCallback(static fn (array $ids): array => $ids === [7, 30] ? [self::FOLDER_WATCH] : []);
         $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW);
 
         $this->listener()->handle(new NodeRenamedEvent($this->file(7, 12), $this->file(7, 30)));
     }
 
+    public function testAFileMovedIntoAPausedFolderWaitsForTheResume(): void
+    {
+        $paused = ['state' => 'paused'] + self::FOLDER_WATCH;
+        $this->index->method('on')->willReturnCallback(static fn (array $ids): array => $ids === [7, 30] ? [$paused] : []);
+        $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW);
+
+        $this->listener()->handle(new NodeRenamedEvent($this->file(7, 12), $this->file(7, 30)));
+    }
+
+    public function testAFileIsNotQueuedForAWatchThatNeedsAttention(): void
+    {
+        $this->index->method('on')->with([7, 30])->willReturn([['state' => 'attention'] + self::FOLDER_WATCH]);
+        $this->index->expects($this->never())->method('enqueue');
+
+        $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
+    }
+
     public function testTheAppsOwnWriteIsIgnored(): void
     {
         $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $id === 7 && $version === 'e7');
-        $this->index->expects($this->never())->method('activeOn');
+        $this->index->expects($this->never())->method('on');
         $this->index->expects($this->never())->method('enqueue');
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
@@ -73,7 +89,7 @@ final class WatchEventListenerTest extends TestCase
     public function testAPersonsEditOfAFileThisAppWroteIsQueued(): void
     {
         $this->ownWrites->method('isOwnVersion')->willReturnCallback(static fn (int $id, string $version): bool => $version === 'e6');
-        $this->index->method('activeOn')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
+        $this->index->method('on')->with([7, 30])->willReturn([self::FOLDER_WATCH]);
         $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW);
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
@@ -157,7 +173,7 @@ final class WatchEventListenerTest extends TestCase
 
     public function testNothingIsQueuedWhileMutedOrUnregistered(): void
     {
-        $this->index->expects($this->never())->method('activeOn');
+        $this->index->expects($this->never())->method('on');
         $this->muted = '1';
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
         $this->muted = '0';
@@ -167,7 +183,7 @@ final class WatchEventListenerTest extends TestCase
 
     public function testAFailingIndexNeverFailsTheWrite(): void
     {
-        $this->index->method('activeOn')->willThrowException(new \RuntimeException('no table'));
+        $this->index->method('on')->willThrowException(new \RuntimeException('no table'));
 
         $this->listener()->handle(new NodeWrittenEvent($this->file(7, 30)));
         $this->addToAssertionCount(1);

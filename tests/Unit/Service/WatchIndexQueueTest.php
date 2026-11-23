@@ -6,8 +6,10 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\Service\WatchIndex;
 use OCP\DB\Exception as DBException;
+use OCP\DB\QueryBuilder\ICompositeExpression;
 use OCP\DB\QueryBuilder\IExpressionBuilder;
 use OCP\DB\QueryBuilder\IParameter;
+use OCP\DB\IResult;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use PHPUnit\Framework\TestCase;
@@ -105,6 +107,20 @@ final class WatchIndexQueueTest extends TestCase
         self::assertSame(['delete synaplan_watch_queue', 'where watch_id=5', 'where event IS NULL', 'where changed<200'], $this->last());
     }
 
+    public function testThePausedWatchesFilesWaitOutsideTheFeedsBatch(): void
+    {
+        $this->index()->due(1000, 60, 500);
+
+        self::assertSame([
+            'select q.*',
+            'from synaplan_watch_queue q',
+            'left join synaplan_watches w on w.watch_id=q.watch_id',
+            'where q.due<=1000',
+            'where (q.event IS NOT NULL OR q.changed<=940)',
+            'where (q.event IS NOT NULL OR w.watch_id IS NULL OR w.state="active")',
+        ], $this->last());
+    }
+
     private function index(): WatchIndex
     {
         $db = $this->createStub(IDBConnection::class);
@@ -123,6 +139,40 @@ final class WatchIndexQueueTest extends TestCase
         $qb = $this->createStub(IQueryBuilder::class);
         $expr = $this->createStub(IExpressionBuilder::class);
         $expr->method('eq')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '=' . $y);
+        $expr->method('lte')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<=' . $y);
+        $expr->method('isNotNull')->willReturnCallback(static fn (mixed $x): string => $x . ' IS NOT NULL');
+        $expr->method('orX')->willReturnCallback(static fn (mixed ...$parts): ICompositeExpression => new class (array_map('strval', $parts)) implements ICompositeExpression {
+            /** @param list<string> $parts */
+            public function __construct(private array $parts)
+            {
+            }
+
+            /** @param list<mixed> $parts */
+            public function addMultiple(array $parts = []): ICompositeExpression
+            {
+                return $this;
+            }
+
+            public function add($part): ICompositeExpression
+            {
+                return $this;
+            }
+
+            public function count(): int
+            {
+                return count($this->parts);
+            }
+
+            public function getType(): string
+            {
+                return 'OR';
+            }
+
+            public function __toString(): string
+            {
+                return '(' . implode(' OR ', $this->parts) . ')';
+            }
+        });
         $expr->method('lt')->willReturnCallback(static fn (mixed $x, mixed $y): string => $x . '<' . $y);
         $expr->method('isNull')->willReturnCallback(static fn (mixed $x): string => $x . ' IS NULL');
         $qb->method('expr')->willReturn($expr);
@@ -157,9 +207,33 @@ final class WatchIndexQueueTest extends TestCase
 
             return $qb;
         });
+        $qb->method('select')->willReturnCallback(static function (mixed ...$columns) use ($qb, $record): IQueryBuilder {
+            $record('select ' . implode(', ', $columns));
+
+            return $qb;
+        });
+        $qb->method('from')->willReturnCallback(static function (string $table, ?string $alias = null) use ($qb, $record): IQueryBuilder {
+            $record('from ' . $table . ($alias !== null ? ' ' . $alias : ''));
+
+            return $qb;
+        });
+        $qb->method('leftJoin')->willReturnCallback(static function (string $from, string $table, string $alias, mixed $on) use ($qb, $record): IQueryBuilder {
+            $record('left join ' . $table . ' ' . $alias . ' on ' . $on);
+
+            return $qb;
+        });
+        $qb->method('orderBy')->willReturn($qb);
+        $qb->method('setMaxResults')->willReturn($qb);
+        $qb->method('executeQuery')->willReturnCallback(function (): IResult {
+            $result = $this->createStub(IResult::class);
+            $result->method('fetchAssociative')->willReturn(false);
+            $result->method('fetchOne')->willReturn(false);
+
+            return $result;
+        });
         foreach (['where', 'andWhere'] as $method) {
-            $qb->method($method)->willReturnCallback(static function (string $condition) use ($qb, $record): IQueryBuilder {
-                $record('where ' . $condition);
+            $qb->method($method)->willReturnCallback(static function (mixed $condition) use ($qb, $record): IQueryBuilder {
+                $record('where ' . (string) $condition);
 
                 return $qb;
             });

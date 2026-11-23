@@ -141,8 +141,9 @@ class WatchReconcile
     }
 
     /**
-     * The target's files that changed after the app started feeding the
-     * watch, by id. None while the target is gone or a setting holds it.
+     * The target's files that changed or arrived after the app started
+     * feeding the watch, by id. None while the target is gone or a setting
+     * holds it.
      *
      * @param WatchRow $watch
      * @return array<int, File>
@@ -153,9 +154,11 @@ class WatchReconcile
         if ($target === null || $this->policy->blocks($target)) {
             return [];
         }
+        // A queued file arrived after the start, whatever its time says: moved in, say.
+        $queued = array_flip($this->index->queuedFiles($watch['id']));
         $files = [];
         foreach ($this->files($target) as $file) {
-            if ($watch['since'] === 0 || $file->getMTime() > $watch['since']) {
+            if ($watch['since'] === 0 || $file->getMTime() > $watch['since'] || isset($queued[(int) $file->getId()])) {
                 $files[(int) $file->getId()] = $file;
             }
         }

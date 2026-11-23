@@ -93,6 +93,21 @@ final class WatchReconcileTest extends TestCase
         self::assertSame(1, $this->reconcile()->waiting($paused));
     }
 
+    public function testAFileMovedInWhilePausedCountsWhateverItsTime(): void
+    {
+        $paused = ['state' => 'paused', 'since' => self::NOW - 600] + self::WATCH;
+        $this->watching($paused, $this->folder([
+            $this->file(7, 'e7', self::NOW - 365 * 86400),
+            $this->file(8, 'e8', self::NOW - 7200),
+        ]));
+        $this->index->method('queuedFiles')->with(5)->willReturn([7]);
+        $this->links->expects($this->once())->method('reconcileWatch')
+            ->with('ada', 5, [['id' => '7', 'version' => 'e7']])
+            ->willReturn(['process' => ['7'], 'forget' => []]);
+
+        self::assertSame(1, $this->reconcile()->waiting($paused));
+    }
+
     public function testAHeldTargetHasNothingWaiting(): void
     {
         $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW)]));

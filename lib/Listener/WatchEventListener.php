@@ -75,8 +75,8 @@ class WatchEventListener implements IEventListener
         } catch (\Throwable) {
             $parent = 0;
         }
-        foreach ($this->index->activeOn([$id, $parent]) as $watch) {
-            if (WatchSender::belongs($watch, $node)) {
+        foreach ($this->index->on([$id, $parent]) as $watch) {
+            if (WatchIndex::queues($watch) && WatchSender::belongs($watch, $node)) {
                 $this->index->enqueue($watch['id'], $id, '', $now);
             }
         }
