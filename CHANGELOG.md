@@ -120,6 +120,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   setting nothing would use; now they are hidden, and a direct request is
   refused without changing the saved setting. Settings and the menu entry
   both say that this Synaplan does not read folders.
+  refused without changing the saved setting. While Synaplan gives no
+  answer, its last answer of the past day stands in, so an outage does not
+  hide them.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that

@@ -96,7 +96,7 @@ class PlatformLinkServiceTest extends TestCase
             ->willReturn($this->answer(200, (string) json_encode(['issuer' => 'https://synaplan.example'] + $offers)));
 
         self::assertSame([$reads, $reads], [$this->service()->readsFolders(), $this->service()->readsFolders()]);
-        self::assertSame([300], array_values($this->cache->ttls));
+        self::assertSame([300, 86400], array_values($this->cache->ttls));
     }
 
     public function testASynaplanWithPlatformLinksOffReadsNoFolders(): void
@@ -105,7 +105,7 @@ class PlatformLinkServiceTest extends TestCase
 
         self::assertFalse($this->service()->readsFolders());
         self::assertFalse($this->service()->readsFolders());
-        self::assertSame([300], array_values($this->cache->ttls));
+        self::assertSame([300, 86400], array_values($this->cache->ttls));
     }
 
     public function testASynaplanThatDoesNotAnswerIsAskedAgainAfterAMinute(): void
@@ -115,6 +115,55 @@ class PlatformLinkServiceTest extends TestCase
         self::assertFalse($this->service()->readsFolders());
         self::assertFalse($this->service()->readsFolders());
         self::assertSame([60], array_values($this->cache->ttls));
+    }
+
+    public function testWhileSynaplanGivesNoAnswerItsLastAnswerStandsInAndItIsAskedAgainSoon(): void
+    {
+        $answer = fn (): IResponse => $this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => ['deliveries', 'pickups', 'read_scope'],
+        ]));
+        $this->httpClient->method('get')->willReturnCallback(static function () use (&$answer): IResponse {
+            return $answer();
+        });
+        self::assertTrue($this->service()->readsFolders());
+
+        foreach ([
+            'down' => fn (): IResponse => $this->answer(503, ''),
+            'unreachable' => static fn (): IResponse => throw new \RuntimeException('cURL error 7: Failed to connect'),
+        ] as $case => $responder) {
+            $this->expireTheAnswer();
+            $answer = $responder;
+
+            self::assertTrue($this->service()->readsFolders(), $case);
+            self::assertSame([60], $this->askedAgainAfter(), $case);
+        }
+
+        $this->expireTheAnswer();
+        $answer = fn (): IResponse => $this->answer(404, '{"error":"not_found"}');
+        self::assertFalse($this->service()->readsFolders(), 'platform links turned off');
+
+        $this->expireTheAnswer();
+        $answer = fn (): IResponse => $this->answer(503, '');
+        self::assertFalse($this->service()->readsFolders(), 'the last answer offered nothing');
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function askedAgainAfter(): array
+    {
+        return array_values(array_filter($this->cache->ttls, static fn (string $key): bool => !str_ends_with($key, '/last'), ARRAY_FILTER_USE_KEY));
+    }
+
+    private function expireTheAnswer(): void
+    {
+        foreach (array_keys($this->cache->values) as $key) {
+            if (!str_ends_with($key, '/last')) {
+                $this->cache->remove($key);
+                unset($this->cache->ttls[$key]);
+            }
+        }
     }
 
     public function testRegisterSendsThisServerAndWhatTheAppDoes(): void
