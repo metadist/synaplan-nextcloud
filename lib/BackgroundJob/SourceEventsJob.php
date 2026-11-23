@@ -106,7 +106,7 @@ class SourceEventsJob extends QueuedJob
                 $this->share($head);
                 $this->queue->remove([$head['seq']]);
             } elseif ($head['step'] === SourceEventQueue::STEP_SEND) {
-                $this->send($uid, $this->leadingSends($rows), $now);
+                $this->send($uid, $this->leadingSends($rows, $now), $now);
             } else {
                 $this->queue->remove([$head['seq']]);
             }
@@ -203,14 +203,17 @@ class SourceEventsJob extends QueuedJob
     }
 
     /**
-     * @param list<QueuedEvent> $rows
-     * @return list<QueuedEvent>
+     * The sends at the head that are due; a row waiting for its retry
+     * holds back the rows after it.
+     *
+     * @param non-empty-list<QueuedEvent> $rows
+     * @return non-empty-list<QueuedEvent>
      */
-    private function leadingSends(array $rows): array
+    private function leadingSends(array $rows, int $now): array
     {
-        $batch = [];
-        foreach ($rows as $row) {
-            if ($row['step'] !== SourceEventQueue::STEP_SEND) {
+        $batch = [$rows[0]];
+        foreach (array_slice($rows, 1) as $row) {
+            if ($row['step'] !== SourceEventQueue::STEP_SEND || $row['due'] > $now) {
                 break;
             }
             $batch[] = $row;

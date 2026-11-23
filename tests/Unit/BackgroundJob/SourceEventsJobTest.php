@@ -162,6 +162,19 @@ class SourceEventsJobTest extends TestCase
         self::assertCount(count(SourceEventsJob::RETRY_DELAYS) + 1, $this->sent);
     }
 
+    public function testAnOlderEventSharedInAheadOfARetryDoesNotTakeTheRetryAlong(): void
+    {
+        $this->queue('carol', '42', 'changed', 20);
+        $this->synaplanAnswers(static fn (array $events): array => $events[0]['event'] === 'changed' ? ['retry' => true] : ['applied' => 1]);
+        $this->runJob(['uid' => 'carol']);
+        $this->queue('carol', '42', 'moved', 10, 'Specs/spec.pdf');
+
+        $this->runJob(['uid' => 'carol']);
+
+        self::assertSame(['carol changed 42', 'carol moved 42'], $this->sentEvents());
+        self::assertSame(['carol send 42'], $this->queue->steps(), 'the change waits for its retry');
+    }
+
     public function testAnotherPersonsEventsDoNotWaitForARetry(): void
     {
         $this->queue('ada', '42', 'deleted', 10);
