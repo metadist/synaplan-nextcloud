@@ -85,6 +85,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
   Synaplan for good, so they could not turn AI on again.
+- **A folder read that runs in the background** checks each file against
+  the read setting and the ceiling as saved at that moment. A job sending
+  files for minutes kept the values it read first, so it still sent files
+  from a folder the person had just taken back or above a ceiling the
+  administrator had just lowered.
 - **A folder read that names no folder**, or names the home folder by its
   path or by its id, is refused as "not found", like the OpenCloud app does.
   With **All my files** allowed, it read the person's whole home folder.

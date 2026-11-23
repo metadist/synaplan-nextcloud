@@ -304,9 +304,16 @@ class ReadScope
      * at (that folder, not its sub-folders: a watch looks at that folder
      * only), and never falls back to the named folders. "Also folders I
      * allow" adds the named folders to those.
+     *
+     * Each check reads the setting and the ceiling as saved now, and finds
+     * the allowed folders again: Nextcloud keeps config as the process first
+     * read it, and a background job sends files for minutes.
      */
     public function mayRead(string $uid, string $folder): bool
     {
+        $this->userConfig->clearCache($uid);
+        $this->appConfig->clearCache();
+        $this->resolved = [];
         $scope = $this->get($uid);
         if ($scope['mode'] === self::MODE_ALL) {
             return true;

@@ -318,6 +318,48 @@ final class ReadScopeTest extends TestCase
         self::assertSame('Archive/Invoices', $scope->get('ada')['folders'][0]['path']);
     }
 
+    public function testALongBackgroundRunSeesAFolderTakenBackAndALoweredCeiling(): void
+    {
+        $this->folders = ['Invoices' => 3, 'HR' => 4];
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [
+            ['id' => '', 'path' => 'Invoices'],
+            ['id' => '', 'path' => 'HR'],
+        ]);
+        $job = $this->scope();
+        self::assertTrue($job->mayRead('ada', 'HR'));
+
+        // Ada takes HR back in her browser while the job is sending files.
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALLOWED,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        self::assertFalse($job->mayRead('ada', 'HR'));
+
+        // Then she picks "All my files", and the administrator lowers the
+        // ceiling in another request.
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALL,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        self::assertTrue($job->mayRead('ada', 'Specs'));
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALLOWED;
+        self::assertFalse($job->mayRead('ada', 'Specs'));
+    }
+
+    public function testEachCheckFindsTheAllowedFolderWhereItIsNow(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+        $job = $this->scope();
+        self::assertTrue($job->mayRead('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3];
+
+        self::assertFalse($job->mayRead('ada', 'Invoices'));
+        self::assertTrue($job->mayRead('ada', 'Archive/Invoices'));
+    }
+
     private function scope(int $cap = 20): ReadScope
     {
         // What this request has read of the app config, until it clears it.
@@ -342,13 +384,26 @@ final class ReadScopeTest extends TestCase
         $appConfig->method('clearCache')->willReturnCallback(function () use (&$appCache): void {
             $appCache = null;
         });
+        // What this request has read of each person's settings, until it
+        // clears them; another process writes $this->stored directly.
+        $userCache = [];
         $config->method('getUserValue')->willReturnCallback(
-            fn (string $uid, string $app, string $key): string => $this->stored[$uid . $key] ?? '',
+            function (string $uid, string $app, string $key) use (&$userCache): string {
+                $userCache[$uid] ??= [];
+
+                return $userCache[$uid][$key] ??= $this->stored[$uid . $key] ?? '';
+            },
         );
         $config->method('setUserValue')->willReturnCallback(
-            function (string $uid, string $app, string $key, string $value): void {
+            function (string $uid, string $app, string $key, string $value) use (&$userCache): void {
                 self::assertSame(Application::APP_ID, $app);
                 $this->stored[$uid . $key] = $value;
+                $userCache[$uid][$key] = $value;
+            },
+        );
+        $config->method('deleteUserValue')->willReturnCallback(
+            function (string $uid, string $app, string $key) use (&$userCache): void {
+                unset($this->stored[$uid . $key], $userCache[$uid][$key]);
             },
         );
         $links = $this->createMock(PlatformLinkService::class);
@@ -388,6 +443,12 @@ final class ReadScopeTest extends TestCase
         $watches->method('rowsOf')->willReturnCallback(fn (): array => $this->watches);
 
         $userConfig = $this->createStub(IUserConfig::class);
+        $userConfig->method('clearCache')->willReturnCallback(function (string $uid) use (&$userCache): void {
+            unset($userCache[$uid]);
+        });
+        $userConfig->method('clearCacheAll')->willReturnCallback(function () use (&$userCache): void {
+            $userCache = [];
+        });
         $userConfig->method('getValuesByUsers')->willReturnCallback(function (string $app, string $key): array {
             $values = [];
             foreach ($this->stored as $uidKey => $value) {
