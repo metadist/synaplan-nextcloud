@@ -183,6 +183,91 @@ test('an allowed folder can still be read by Synaplan after it is moved', async 
 	}
 })
 
+test('New → From Synaplan… adds the picked files to the open folder', async ({
+	page,
+}) => {
+	const stamp = Date.now()
+	const folder = `Q3-${stamp}`
+	const notes = `notes-${stamp}.txt`
+	const person = await nextcloudAs(UID)
+	const synaplan = await synaplanAs(SYNAPLAN_PERSON)
+	const dav = `/remote.php/dav/files/${UID}/${folder}`
+	expect((await person.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	const synaplanIds: number[] = []
+	let chartName = ''
+	try {
+		const uploaded = await synaplan.post('/api/v1/files/upload', {
+			multipart: {
+				'files[]': {
+					name: notes,
+					mimeType: 'text/plain',
+					buffer: Buffer.from(`notes ${stamp}`),
+				},
+				process_level: 'extract',
+			},
+		})
+		expect(uploaded.ok(), 'uploading to Synaplan').toBe(true)
+		synaplanIds.push(
+			((await uploaded.json()) as { files: Array<{ id: number }> }).files[0]
+				.id,
+		)
+		const generated = await synaplan.post('/api/v1/media/generate', {
+			data: { prompt: `A chart ${stamp}`, type: 'image' },
+			timeout: 120_000,
+		})
+		const made = (await generated.json()) as { file?: { url?: string } }
+		expect(generated.ok(), JSON.stringify(made)).toBe(true)
+		chartName = (made.file?.url ?? '').split('/').pop() ?? ''
+		expect(chartName, JSON.stringify(made)).not.toBe('')
+
+		await page.goto(`/index.php/apps/files/files?dir=/${folder}`)
+		await page.getByRole('button', { name: 'New' }).first().click()
+		await page.getByRole('menuitem', { name: 'From Synaplan…' }).click()
+		const picker = page.getByRole('dialog', { name: 'Add from Synaplan' })
+		await expect(picker.getByText(`Saved into: ${folder}`)).toBeVisible()
+		await expect(
+			picker.getByRole('button', { name: 'Add files' }),
+		).toBeDisabled()
+		const chart = picker.locator('li', { hasText: chartName })
+		await expect(chart).toContainText('Generated')
+		await expect(picker.locator('li', { hasText: notes })).toHaveCount(0)
+		await chart.getByText(chartName).click()
+
+		await picker.getByRole('combobox').click()
+		await page.getByRole('option', { name: 'All files' }).click()
+		await picker.getByRole('searchbox').fill(notes)
+		await expect(picker.locator('li')).toHaveCount(1)
+		await picker.locator('li', { hasText: notes }).getByText(notes).click()
+		await picker.getByRole('button', { name: 'Add 2 files' }).click()
+		await expect(picker).toHaveCount(0)
+
+		for (const name of [chartName, notes]) {
+			await expect(
+				page.locator(`[data-cy-files-list-row-name="${name}"]`),
+				`${name} shows in the folder without a reload`,
+			).toBeVisible()
+		}
+		expect(await (await person.get(`${dav}/${notes}`)).text()).toBe(
+			`notes ${stamp}`,
+		)
+	} finally {
+		await person.delete(dav)
+		if (chartName !== '') {
+			const listed = await synaplan.get('/api/v1/files', {
+				params: { source: 'generated', search: chartName },
+			})
+			const rows = ((await listed.json()) as { files?: Array<{ id: number }> })
+				.files
+			synaplanIds.push(...(rows ?? []).map((row) => row.id))
+		}
+		for (const id of synaplanIds) {
+			await synaplan.delete(`/api/v1/files/${id}`)
+		}
+		await person.dispose()
+		await synaplan.dispose()
+	}
+})
+
 /**
  * Open a folder read in Synaplan for the Synaplan person linked to Ada.
  *

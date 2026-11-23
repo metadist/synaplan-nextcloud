@@ -32,6 +32,40 @@ final class LibraryImportTest extends TestCase
         $this->client = $this->createMock(SynaplanClient::class);
     }
 
+    public function testThePickerListsGeneratedFilesAcrossPagesInSynaplansOrder(): void
+    {
+        $this->client->expects(self::once())->method('listRecentFiles')
+            ->with(2, 'generated', 'chart')
+            ->willReturn([
+                'files' => [
+                    ['id' => 9, 'display_name' => 'chart.png', 'generated' => true, 'uploaded_at' => 1795428267],
+                    ['id' => 8, 'filename' => 'older.png', 'source' => 'generated', 'uploaded_at' => '1795428137'],
+                ],
+                'pagination' => ['pages' => 3],
+            ]);
+
+        self::assertSame([
+            'files' => [
+                ['id' => 9, 'name' => 'chart.png', 'generated' => true, 'created' => 1795428267],
+                ['id' => 8, 'name' => 'older.png', 'generated' => true, 'created' => 1795428137],
+            ],
+            'page' => 2,
+            'pages' => 3,
+        ], $this->import()->list(2, true, 'chart'));
+    }
+
+    public function testAllFilesKeepsSynaplansNewestFirstOrder(): void
+    {
+        $this->client->method('listRecentFiles')->with(1, '', '')->willReturn([
+            'files' => [
+                ['id' => 2, 'filename' => 'upload.pdf', 'source' => 'nextcloud', 'uploaded_at' => 20],
+                ['id' => 1, 'filename' => 'chart.png', 'source' => 'generated', 'uploaded_at' => 10],
+            ],
+        ]);
+
+        self::assertSame([2, 1], array_column($this->import()->list()['files'], 'id'));
+    }
+
     public function testFromSynaplanReadsAtMostWhatACopyMayBe(): void
     {
         $this->client->expects(self::once())->method('downloadStoredFile')

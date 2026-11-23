@@ -22,12 +22,15 @@ class LibraryImport
     }
 
     /**
-     * @return array{files: list<array{id: int, name: string, generated: bool}>, page: int, pages: int}
+     * One page of the person's Synaplan files, newest first. The filter
+     * runs in Synaplan, so it spans every page.
+     *
+     * @return array{files: list<array{id: int, name: string, generated: bool, created: int}>, page: int, pages: int}
      */
-    public function list(int $page = 1): array
+    public function list(int $page = 1, bool $generatedOnly = false, string $search = ''): array
     {
         $page = max(1, $page);
-        $decoded = $this->client->listRecentFiles($page);
+        $decoded = $this->client->listRecentFiles($page, $generatedOnly ? 'generated' : '', $search);
         $rows = is_array($decoded['files'] ?? null) ? $decoded['files'] : [];
         $files = [];
         foreach ($rows as $row) {
@@ -41,12 +44,10 @@ class LibraryImport
             $files[] = [
                 'id' => (int) $row['id'],
                 'name' => $name,
-                'generated' => ($row['source'] ?? '') === 'generated',
+                'generated' => ($row['generated'] ?? false) === true || ($row['source'] ?? '') === 'generated',
+                'created' => is_numeric($row['uploaded_at'] ?? null) ? (int) $row['uploaded_at'] : 0,
             ];
         }
-        usort($files, static function (array $a, array $b): int {
-            return ($a['generated'] === $b['generated']) ? 0 : ($a['generated'] ? -1 : 1);
-        });
 
         $pages = is_array($decoded['pagination'] ?? null) ? (int) ($decoded['pagination']['pages'] ?? 1) : 1;
 

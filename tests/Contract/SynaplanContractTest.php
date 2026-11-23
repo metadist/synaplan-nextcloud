@@ -266,6 +266,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->generateMedia('A cat', 'image', 3),
             fn () => $client->downloadFile('/api/v1/files/uploads/7/cat.png'),
             fn () => $client->listRecentFiles(),
+            fn () => $client->listRecentFiles(2, 'generated', 'chart'),
             fn () => $client->downloadStoredFile(42),
             fn () => $links->claimDelivery('9', 'ada'),
             fn () => $links->downloadDelivery('9', '/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),

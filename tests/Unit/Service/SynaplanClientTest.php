@@ -216,6 +216,15 @@ class SynaplanClientTest extends TestCase
         $this->synaplanClient->downloadFile('/api/v1/files/uploads/01/a@b cat.png');
     }
 
+    public function testTheFilePickerAsksSynaplanForGeneratedFilesMatchingTheSearch(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('http://localhost:8000/api/v1/files?page=2&limit=50&source=generated&search=q3+plan')
+            ->willReturn($this->json(['files' => []]));
+
+        $this->synaplanClient->listRecentFiles(2, 'generated', ' q3 plan ');
+    }
+
     public function testAFileLargerThanACopyMayBeIsRefusedFromItsAnnouncedLength(): void
     {
         $response = $this->createMock(IResponse::class);

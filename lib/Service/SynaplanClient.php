@@ -538,14 +538,24 @@ class SynaplanClient
     /**
      * Recent files in the signed-in person's Synaplan, newest first.
      *
+     * @param string $source only files from this source, e.g. "generated"
+     * @param string $search only files whose name or text has this
      * @return array<string, mixed>
      */
-    public function listRecentFiles(int $page = 1): array
+    public function listRecentFiles(int $page = 1, string $source = '', string $search = ''): array
     {
-        return $this->request('GET', '/api/v1/files', null, true, [
+        $query = [
             'page' => max(1, $page),
             'limit' => 50,
-        ]);
+        ];
+        if ($source !== '') {
+            $query['source'] = $source;
+        }
+        if (trim($search) !== '') {
+            $query['search'] = trim($search);
+        }
+
+        return $this->request('GET', '/api/v1/files', null, true, $query);
     }
 
     /**

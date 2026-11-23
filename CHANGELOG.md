@@ -37,6 +37,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   An update from a version where someone already chose "All my files"
   starts the ceiling at all their files, so nobody is narrowed silently.
 
+### Changed
+
+- **New → From Synaplan…** opens "Add from Synaplan": generated files or all
+  files, a search, a check box per file and **Add 2 files**, into the folder
+  named under the list. The filter and the search run in Synaplan, so a
+  generated file on a later page shows too, and the added files appear in
+  the folder without a reload. With nothing to show, it says where files
+  come from and offers **Open Synaplan**.
+
 ### Fixed
 
 - **Withdrawing consent while a token refresh is under way** no longer lets
