@@ -12,6 +12,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IConfig;
 use OCP\IRequest;
@@ -38,6 +39,8 @@ class SettingsController extends Controller
 
     /**
      * Return current settings (API key is masked).
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     public function getSettings(): JSONResponse
     {
@@ -116,6 +119,8 @@ class SettingsController extends Controller
      *
      * Named parameters work when NC framework extracts them.
      * Falls back to raw JSON body parsing for PUT requests.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     public function saveSettings(
         string $synaplan_url = '',
@@ -315,6 +320,8 @@ class SettingsController extends Controller
 
     /**
      * Register this Nextcloud with Synaplan (admin only).
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     public function registerInstance(): JSONResponse
     {
@@ -348,6 +355,8 @@ class SettingsController extends Controller
     /**
      * Leave Synaplan: the registration ends there, every person's grant with
      * it, and the client key goes here.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     public function forgetInstance(): JSONResponse
     {
@@ -368,6 +377,9 @@ class SettingsController extends Controller
         }
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     public function instanceStatus(): JSONResponse
     {
         return new JSONResponse([
@@ -399,6 +411,8 @@ class SettingsController extends Controller
      *
      * Always returns HTTP 200 — the endpoint itself succeeds,
      * only the external health check may fail.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     public function testConnection(): JSONResponse
     {

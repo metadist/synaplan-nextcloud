@@ -22,4 +22,11 @@ export default [
 			'import-extensions/extensions': 'off',
 		},
 	},
+	{
+		files: ['**/*.vue'],
+		rules: {
+			// Prettier writes void elements as <img />.
+			'vue/html-self-closing': ['warn', { html: { void: 'always' } }],
+		},
+	},
 ]

@@ -18,10 +18,12 @@
 		<div v-else class="sp-sidebar-body">
 			<div class="sp-card">
 				<div class="sp-card-header" :class="stateClass">
+					<!-- eslint-disable vue/no-v-html -- glyphMarkup builds the markup; the one outside value, an image URL, is attribute-escaped -->
 					<span
 						class="sp-sidebar-glyph"
 						:class="stateClass"
 						v-html="iconHtml" />
+					<!-- eslint-enable vue/no-v-html -->
 					<div class="sp-sidebar-titles">
 						<div
 							class="sp-sidebar-state"
@@ -184,7 +186,8 @@ import axios from '@nextcloud/axios'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, createApp, ref, watch } from 'vue'
+import { spawnDialog } from '@nextcloud/vue/functions/dialog'
+import { computed, ref, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import ChatModal from './ChatModal.vue'
@@ -334,45 +337,25 @@ async function removeFromSynaplan(): Promise<void> {
 /**
  * Open the Make searchable by AI modal for this file.
  */
-function openKnowledgeModal(): void {
+async function openKnowledgeModal(): Promise<void> {
 	const id = props.fileIdRef.value
 	if (!id) {
 		return
 	}
-	const container = document.createElement('div')
-	document.body.appendChild(container)
-	const app = createApp(KnowledgeModal, {
-		fileId: id,
-		fileName: fileName.value,
-		onClose: () => {
-			app.unmount()
-			container.remove()
-			invalidateCloudStatusCache()
-			loadDetail()
-		},
-	})
-	app.mount(container)
+	await spawnDialog(KnowledgeModal, { fileId: id, fileName: fileName.value })
+	invalidateCloudStatusCache()
+	loadDetail()
 }
 
 /**
  * Open the per-file chat modal.
  */
-function openChat(): void {
+async function openChat(): Promise<void> {
 	const id = props.fileIdRef.value
 	if (!id) {
 		return
 	}
-	const container = document.createElement('div')
-	document.body.appendChild(container)
-	const app = createApp(ChatModal, {
-		fileId: id,
-		fileName: fileName.value,
-		onClose: () => {
-			app.unmount()
-			container.remove()
-		},
-	})
-	app.mount(container)
+	await spawnDialog(ChatModal, { fileId: id, fileName: fileName.value })
 }
 
 watch(

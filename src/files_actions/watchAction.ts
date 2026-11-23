@@ -8,10 +8,11 @@ import { defineAsyncComponent } from 'vue'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 
 /**
+ * Whether a node is a folder.
  *
- * @param node
- * @param node.type
- * @param node.mime
+ * @param node the file list node
+ * @param node.type its type
+ * @param node.mime its MIME type
  */
 function isFolder(node: { type?: string; mime?: string }): boolean {
 	return node.type === 'folder' || node.mime === 'httpd/unix-directory'

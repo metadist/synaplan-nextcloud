@@ -35,6 +35,25 @@ function explained(summary: string, message?: string): string {
 }
 
 /**
+ * Fired on window when an answer says the person's consent or connection is
+ * gone, so a consent gate that is already open reads its state again.
+ */
+export const CONSENT_STALE_EVENT = 'synaplan:consent-stale'
+
+const CONSENT_STALE_CODES = new Set(['not_connected', 'consent_required'])
+
+/**
+ * Call listener whenever an answer says consent or the connection is gone.
+ *
+ * @param listener Reads the consent state again
+ * @return Stops listening
+ */
+export function onConsentStale(listener: () => void): () => void {
+	window.addEventListener(CONSENT_STALE_EVENT, listener)
+	return () => window.removeEventListener(CONSENT_STALE_EVENT, listener)
+}
+
+/**
  * The sentence for a failure code. A code the app does not know shows
  * Synaplan's own sentence when there is one.
  *
@@ -42,6 +61,9 @@ function explained(summary: string, message?: string): string {
  * @param message Synaplan's sentence, when it sent one
  */
 export function describeFailure(code?: string, message?: string): Failure {
+	if (code && CONSENT_STALE_CODES.has(code)) {
+		window.dispatchEvent(new CustomEvent(CONSENT_STALE_EVENT))
+	}
 	switch (code) {
 		case 'not_connected':
 			return {

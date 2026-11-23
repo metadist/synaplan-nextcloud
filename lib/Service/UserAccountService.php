@@ -6,6 +6,8 @@ namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCA\SynaplanIntegration\Http\Failure;
 use OCP\AppFramework\Http;
 use OCP\Http\Client\IClientService;
@@ -49,6 +51,8 @@ class UserAccountService
     public const LINKED_AT_PREF = 'synaplan_linked_at';
     /** Durable: survives disconnect / 401 so a removed linked person is reported, not dropped silently. */
     public const LINK_ORIGIN_PREF = 'synaplan_link_origin';
+    /** '1' while an admin has paused a provisioned person at Synaplan; their key is kept for the resume. */
+    public const PAUSED_PREF = 'synaplan_paused';
 
     public const KIND_LINKED = 'linked';
     public const KIND_PROVISIONED = 'provisioned';
@@ -107,6 +111,9 @@ class UserAccountService
     {
         $this->provisioningFailure = null;
         if ($this->synaplanConfig->getMode() === SynaplanConfig::MODE_SHARED) {
+            return null;
+        }
+        if ($this->isPaused($user->getUID())) {
             return null;
         }
 
@@ -351,6 +358,7 @@ class UserAccountService
         if (!$user instanceof IUser) {
             return;
         }
+        $this->resumeIfPaused($user->getUID());
 
         $this->config->setUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF, '1');
         $this->config->setUserValue(
@@ -367,8 +375,89 @@ class UserAccountService
     }
 
     /**
-     * Withdraw consent and forget the cached per-user key. The Synaplan account
-     * itself is not deleted here (an admin can remove it server-side).
+     * Admin Deactivate for a person holding a provisioned key on a registered
+     * Nextcloud: Synaplan pauses their identity (lifecycle `disabled`), which
+     * refuses the key, and consent goes here. The key is kept, so Activate
+     * resumes the same account. Deleting the key instead would make Synaplan
+     * revoke the identity for good. Returns false when this does not apply.
+     *
+     * @throws FailureException when Synaplan could not be told; nothing changes here then
+     */
+    public function pauseProvisioned(string $uid): bool
+    {
+        if ($this->oauth->isConnected($uid) || !$this->oauth->isRegistered()
+            || ($this->keys->getUserKey($uid) ?? '') === '') {
+            return false;
+        }
+        try {
+            $answer = $this->oauth->reportLifecycle($uid, 'disabled');
+        } catch (\Throwable $e) {
+            $this->logger->warning('Could not pause {uid} at Synaplan: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+            throw new FailureException(new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE), 'Synaplan could not pause the person: ' . $e->getMessage());
+        }
+        if (($answer['account'] ?? '') === 'absent') {
+            // No identity on this registration (a key from before it): no
+            // pause to resume, so the key is forgotten here, not deleted
+            // there, and Activate provisions onto the same account again.
+            $this->deactivateUser($uid);
+
+            return true;
+        }
+        $this->config->setUserValue($uid, Application::APP_ID, self::PAUSED_PREF, '1');
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
+        $this->logger->info('Admin paused AI for {uid} at Synaplan', [
+            'app' => Application::APP_ID,
+            'uid' => $uid,
+        ]);
+
+        return true;
+    }
+
+    public function isPaused(string $uid): bool
+    {
+        return $this->config->getUserValue($uid, Application::APP_ID, self::PAUSED_PREF, '') === '1';
+    }
+
+    /**
+     * @throws FailureException when Synaplan refuses to resume the person or cannot be reached
+     */
+    private function resumeIfPaused(string $uid): void
+    {
+        if (!$this->isPaused($uid)) {
+            return;
+        }
+        if (!$this->oauth->isRegistered()) {
+            // The registration that paused them is gone, and the paused
+            // identity with it: start over with a new key.
+            $this->deactivateUser($uid);
+
+            return;
+        }
+        try {
+            $this->oauth->reportLifecycle($uid, 'enabled');
+        } catch (PlatformLinkException $e) {
+            $this->logger->warning('Could not resume {uid} at Synaplan: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+            throw new FailureException($e->getErrorCode() === PlatformLinkException::CODE_UNREACHABLE
+                ? new Failure(Http::STATUS_BAD_GATEWAY, Failure::SYNAPLAN_UNREACHABLE)
+                : new Failure(Http::STATUS_CONFLICT, Failure::ACCOUNT_UNAVAILABLE), 'Synaplan did not resume the person: ' . $e->getMessage());
+        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::PAUSED_PREF);
+    }
+
+    /**
+     * Withdraw consent and forget every credential held for the person: the
+     * per-user key and a connected person's grant, which is revoked at
+     * Synaplan. The Synaplan account itself is not deleted here (an admin can
+     * remove it server-side).
      */
     public function revokeConsent(): void
     {
@@ -376,11 +465,40 @@ class UserAccountService
         if (!$user instanceof IUser) {
             return;
         }
+        $uid = $user->getUID();
 
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_PREF);
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::CONSENT_AT_PREF);
-        $this->config->deleteUserValue($user->getUID(), Application::APP_ID, self::USER_KEY_PREF);
-        $this->clearLinkPrefsForUid($user->getUID());
+        // The grant is credential resolution's first answer, ahead of any
+        // consent check: it has to go, even when Synaplan cannot be told.
+        if ($this->oauth->isConnected($uid)) {
+            try {
+                $this->oauth->revoke($uid);
+            } catch (\Throwable $e) {
+                $this->logger->warning('Could not revoke the Synaplan grant of {uid} on withdrawn consent: {message}', [
+                    'app' => Application::APP_ID,
+                    'uid' => $uid,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->oauth->forget($uid);
+            }
+        }
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->clearLinkPrefsForUid($uid);
+    }
+
+    /**
+     * Whether a credential is stored for the person, without renewing an
+     * access token or calling Synaplan: for lists and listeners that only
+     * ask whether one exists.
+     */
+    public function hasStoredCredential(string $uid): bool
+    {
+        if ($this->oauth->isConnected($uid)) {
+            return true;
+        }
+
+        return ($this->keys->getUserKey($uid) ?? '') !== '';
     }
 
     /**
@@ -448,6 +566,7 @@ class UserAccountService
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::CONSENT_AT_PREF);
         $this->config->deleteUserValue($uid, Application::APP_ID, self::USER_KEY_PREF);
+        $this->config->deleteUserValue($uid, Application::APP_ID, self::PAUSED_PREF);
         $this->oauth->forget($uid);
         $this->clearLinkPrefsForUid($uid);
 
@@ -470,6 +589,67 @@ class UserAccountService
         }
 
         return $this->adminRequest('GET', '/api/v1/admin/users/' . $synaplanUserId . '/usage', null, $adminKey);
+    }
+
+    /**
+     * Bring an account provisioned before this Nextcloud registered (external
+     * id `<server id>:<uid>`, no instance) onto this Nextcloud's client.
+     * Until then Synaplan cannot find it from a lifecycle report, so deleting
+     * or pausing the person here never reaches it (`02` §3.1).
+     *
+     * Provisioning again with the instance id rewrites that row in place.
+     * The call carries the account's own email: should Synaplan not find the
+     * row, it refuses the email instead of creating a second account.
+     *
+     * True when there is nothing left to do, false to try again later.
+     */
+    public function adoptLegacyAccount(string $uid): bool
+    {
+        $synaplanUserId = $this->getSynaplanUserId($uid);
+        $instanceId = $this->synaplanConfig->getLinkInstanceId();
+        $adminKey = $this->synaplanConfig->getAdminApiKey();
+        if ($synaplanUserId === null || $instanceId === '' || $adminKey === '') {
+            return true;
+        }
+        try {
+            $account = $this->adminRequest('GET', '/api/v1/admin/users/' . $synaplanUserId . '/usage', null, $adminKey);
+            $user = is_array($account['user'] ?? null) ? $account['user'] : [];
+            $externalId = (string) ($user['external_id'] ?? '');
+            $email = (string) ($user['email'] ?? '');
+            if (!str_contains($externalId, ':') || $email === '') {
+                return true;
+            }
+            $answer = $this->adminRequest('POST', '/api/v1/admin/users', [
+                'source' => self::SOURCE,
+                'instance_id' => $instanceId,
+                'external_id' => $uid,
+                'email' => $email,
+                'display_name' => (string) ($user['display_name'] ?? ''),
+            ], $adminKey);
+        } catch (EmailConflictException) {
+            $this->logger->warning('Synaplan did not find the account of {uid} to adopt it', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->info('Could not adopt the Synaplan account of {uid}: {message}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+        if ((int) ($answer['user']['id'] ?? 0) !== $synaplanUserId) {
+            $this->logger->warning('Synaplan answered another account when adopting {uid}', [
+                'app' => Application::APP_ID,
+                'uid' => $uid,
+            ]);
+        }
+
+        return true;
     }
 
     private function provisionAndMint(IUser $user): ?string
@@ -518,7 +698,7 @@ class UserAccountService
         $minted = $this->adminRequest('POST', '/api/v1/admin/users/' . $synaplanUserId . '/api-keys', [
             'instance_id' => $instanceId !== '' ? $instanceId : null,
             'name' => 'nextcloud-' . $user->getUID(),
-            'scopes' => self::USER_KEY_SCOPES,
+            'scopes' => $this->keyScopes(),
         ], $adminKey);
 
         $userKey = (string) ($minted['api_key']['key'] ?? '');
@@ -544,8 +724,8 @@ class UserAccountService
     }
 
     /**
-     * Replace a provisioned key that was minted before watching, without
-     * withdrawing consent. A linked key is left alone: connecting again is
+     * Replace a provisioned key minted without a scope the app now asks for
+     * (watching, memories), without withdrawing consent. A linked key is left alone: connecting again is
      * what gives that person the new permission. Returns the new key, or null
      * when there is nothing to replace.
      */
@@ -555,7 +735,7 @@ class UserAccountService
             return null;
         }
         $user = $this->userSession->getUser();
-        if (!$user instanceof IUser || !$this->hasConsent($user) || $this->keyIncludesWatch($user->getUID())) {
+        if (!$user instanceof IUser || !$this->hasConsent($user) || $this->keyHasEveryScope($user->getUID())) {
             return null;
         }
         $uid = $user->getUID();
@@ -581,12 +761,24 @@ class UserAccountService
         return $minted;
     }
 
-    private function keyIncludesWatch(string $uid): bool
+    /**
+     * What a provisioned key is minted with: memories only while the admin
+     * offers them, as Synaplan's /api/v1/user/memories requires that scope.
+     *
+     * @return list<string>
+     */
+    private function keyScopes(): array
     {
-        return str_contains(
-            $this->config->getUserValue($uid, Application::APP_ID, self::KEY_SCOPES_PREF, ''),
-            'cloud:watch',
-        );
+        return $this->synaplanConfig->isMemoriesEnabled()
+            ? [...self::USER_KEY_SCOPES, 'memories']
+            : self::USER_KEY_SCOPES;
+    }
+
+    private function keyHasEveryScope(string $uid): bool
+    {
+        $held = explode(' ', $this->config->getUserValue($uid, Application::APP_ID, self::KEY_SCOPES_PREF, ''));
+
+        return array_diff($this->keyScopes(), $held) === [];
     }
 
     private function rememberKeyScopes(string $uid): void
@@ -595,7 +787,7 @@ class UserAccountService
             $uid,
             Application::APP_ID,
             self::KEY_SCOPES_PREF,
-            implode(' ', self::USER_KEY_SCOPES),
+            implode(' ', $this->keyScopes()),
         );
     }
 

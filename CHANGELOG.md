@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Deactivate** in the admin's AI Users panel pauses a person whose account
+  the app created, and **Activate AI** resumes them with the same account.
+  2.0.0 deleted their key with the key itself, which ended their link in
+  Synaplan for good, so they could not turn AI on again.
+- **A folder read that names no folder** is refused as "not found", like the
+  OpenCloud app does. With **All my files** allowed, it read the person's
+  whole home folder.
+- **A folder a person let Synaplan read** stays readable when it is renamed
+  or moved, and a new folder created under its old name is not readable.
+  The permission followed the name only.
+- **Synaplan learns the new path of an allowed folder** as soon as it, or a
+  folder around it, is renamed or moved. Synaplan refused to read it at the
+  new path until the person saved their read setting again.
+- **A copy that cannot be written** tells Synaplan why: storage full, a
+  folder the person may not write to, a target folder that is gone, twenty
+  files with that name, or a file over 100 MB. Every failure used to read
+  "could not reach".
+- **A large copy** has the five minutes its download is valid, not 30
+  seconds, and finishes after Synaplan stops waiting for the answer; the
+  result call tells Synaplan when it is done. The download only goes to that
+  copy's own file on Synaplan.
+- **A copy whose claim failed** is claimed once more in the background while
+  it is still valid. The app answered "still copying" and then never sent
+  the result, so Synaplan marked the copy unconfirmed after ten minutes.
+- **A folder read of more than 500 files** lists every file. Synaplan reads
+  500 items per listing call, so the files after the first 500 were left out
+  without a word.
+- **Accounts provisioned before this Nextcloud registered** are moved onto
+  its registration by an hourly background job, once. Until then Synaplan
+  could not find them when a person was deleted, disabled or paused here, so
+  their Synaplan accounts stayed as they were.
+
 ## 2.0.0 – 2026-11-16
 
 1.8.1 is already on the App Store. That release added Watch with Synaplan

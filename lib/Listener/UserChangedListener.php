@@ -46,7 +46,7 @@ class UserChangedListener implements IEventListener
     {
         return $this->userAccounts->wasLinked($uid)
             || $this->userAccounts->getLinkKind($uid) !== null
-            || $this->userAccounts->getStoredApiKey($uid) !== ''
+            || $this->userAccounts->hasStoredCredential($uid)
             || $this->userAccounts->getSynaplanUserId($uid) !== null;
     }
 }

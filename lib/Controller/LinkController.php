@@ -11,6 +11,7 @@ use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\JSONResponse;
@@ -49,6 +50,8 @@ class LinkController extends Controller
 
     /**
      * Begin the handshake: store state and send the user to Synaplan.
+     *
+     * @return RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]
@@ -90,6 +93,8 @@ class LinkController extends Controller
 
     /**
      * Cross-site GET from Synaplan. `state` is the CSRF check.
+     *
+     * @return RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
      */
     #[NoAdminRequired]
     #[NoCSRFRequired]
@@ -142,6 +147,8 @@ class LinkController extends Controller
     /**
      * Revoke the person's grant (which ends their link in Synaplan) and
      * forget local prefs.
+     *
+     * @return JSONResponse<Http::STATUS_BAD_GATEWAY, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function disconnect(): JSONResponse
@@ -160,6 +167,9 @@ class LinkController extends Controller
         return new JSONResponse(['success' => true]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     #[NoAdminRequired]
     public function status(): JSONResponse
     {

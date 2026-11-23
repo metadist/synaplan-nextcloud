@@ -1,11 +1,11 @@
 # Extra compose file for the Synaplan test stack, used with the synaplan
-# repo's docker-compose.test.yml:
+# repo's docker-compose.test.yml at the revision of the pinned image:
 #
 #   docker compose -f docker-compose.test.yml -f docker-compose.test.ci.yml \
 #     -f <this repo>/tests/e2e/synaplan-test-stack.yml up -d --wait
 #
-# Synaplan keeps rate limits and one-time state in Redis, which the test
-# stack does not start. Production always has Redis.
+# The pinned stack brings Redis (redis_test) itself; this file only sets
+# what the journeys need on app_test.
 #
 # This Nextcloud registers as Synaplan's OAuth2 client with the initial
 # access token below, so it is active without an administrator's approval.
@@ -16,19 +16,8 @@
 # clears the key to match.
 
 services:
-    redis_test:
-        image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
-        networks:
-            - synaplan-test-network
-        healthcheck:
-            test: ['CMD', 'redis-cli', 'ping']
-            interval: 2s
-            timeout: 3s
-            retries: 15
-
     app_test:
         environment:
-            REDIS_DSN: redis://redis_test:6379
             STRIPE_SECRET_KEY: ''
             CLOUD_FILES_ENABLED: 'true'
             # The suite registers this Nextcloud itself and expects the client
@@ -36,6 +25,3 @@ services:
             # the setup sends, and it approves that one registration at once.
             PLATFORM_LINKS_REGISTRATION: open
             PLATFORM_LINKS_REGISTRATION_TOKEN: nextcloud-e2e-initial-access-token-0001
-        depends_on:
-            redis_test:
-                condition: service_healthy

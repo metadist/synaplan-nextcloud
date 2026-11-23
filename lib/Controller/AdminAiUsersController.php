@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Service\AdminAiUsersService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
@@ -25,6 +27,9 @@ class AdminAiUsersController extends Controller
         parent::__construct(Application::APP_ID, $request);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     public function list(): JSONResponse
     {
         return new JSONResponse([
@@ -33,14 +38,24 @@ class AdminAiUsersController extends Controller
         ]);
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
     public function usage(string $uid): JSONResponse
     {
         return new JSONResponse($this->aiUsers->usage($uid));
     }
 
+    /**
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
+     */
     public function deactivate(string $uid): JSONResponse
     {
-        $this->aiUsers->deactivate($uid);
+        try {
+            $this->aiUsers->deactivate($uid);
+        } catch (FailureException $e) {
+            return $e->failure->toResponse();
+        }
 
         return new JSONResponse(['success' => true]);
     }

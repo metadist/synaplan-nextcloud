@@ -53,9 +53,10 @@ const pending = new Map<string, PendingItem>()
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
+ * The cache key of a file in one version.
  *
- * @param id
- * @param version
+ * @param id Nextcloud file id
+ * @param version its etag
  */
 function cacheKey(id: string, version: string): string {
 	return `${id}:${version}`

@@ -94,6 +94,16 @@ class SourceEventListener implements IEventListener
     }
 
     /**
+     * The path as sent, or '' when it does not fit Synaplan's 255 bytes:
+     * Synaplan renames its copy to the path it gets and leaves it alone on
+     * '', and a cut path would name another file or split a character.
+     */
+    private static function fitting(string $path): string
+    {
+        return strlen($path) <= 255 ? $path : '';
+    }
+
+    /**
      * Where the owner sees a shared node, '' when it is gone (deleted).
      */
     private function ownerPath(string $owner, int $id): string
@@ -104,7 +114,7 @@ class SourceEventListener implements IEventListener
             return '';
         }
 
-        return $node instanceof Node ? substr($this->userRelativePath($node->getPath()) ?? '', 0, 255) : '';
+        return $node instanceof Node ? self::fitting($this->userRelativePath($node->getPath()) ?? '') : '';
     }
 
     /**
@@ -221,7 +231,7 @@ class SourceEventListener implements IEventListener
                 'id' => (string) $id,
                 'event' => $kind,
                 'version' => substr($etag, 0, 255),
-                'path' => substr($relative, 0, 255),
+                'path' => self::fitting($relative),
                 'uid' => $this->pathUser($node->getPath()),
                 'owner' => $owner,
             ];

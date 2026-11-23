@@ -20,6 +20,7 @@ use Psr\Log\NullLogger;
 
 class OAuthClientTest extends TestCase
 {
+    private const UNDECRYPTABLE = '$AppConfigEncryption$broken';
     private static string $privateKey = '';
 
     /** @var array<string, string> */
@@ -73,7 +74,13 @@ class OAuthClientTest extends TestCase
 
         $appConfig = $this->createStub(IAppConfig::class);
         $appConfig->method('getValueString')->willReturnCallback(
-            fn (string $app, string $key, string $default = ''): string => $this->app[$key] ?? $default
+            function (string $app, string $key, string $default = ''): string {
+                if (($this->app[$key] ?? null) === self::UNDECRYPTABLE) {
+                    throw new \Exception('HMAC does not match.');
+                }
+
+                return $this->app[$key] ?? $default;
+            }
         );
         $appConfig->method('setValueString')->willReturnCallback(
             function (string $app, string $key, string $value, bool $lazy = false, bool $sensitive = false): bool {
@@ -135,6 +142,14 @@ class OAuthClientTest extends TestCase
         );
 
         return new OAuthClient($clientService, $appConfig, $config, $userConfig, $locks, $synaplanConfig, new NullLogger());
+    }
+
+    public function testAClientKeyThatNoLongerDecryptsIsNotARegistration(): void
+    {
+        $this->registered();
+        $this->app['oauth_private_key'] = self::UNDECRYPTABLE;
+
+        $this->assertFalse($this->client()->isRegistered());
     }
 
     private function registered(): void
@@ -432,7 +447,7 @@ class OAuthClientTest extends TestCase
         $this->assertSame('code-1', $form['code']);
         $this->assertSame('verifier-1', $form['code_verifier']);
         $this->assertSame('https://cb', $form['redirect_uri']);
-        $this->assertSame('client-1', $form['client_id']);
+        $this->assertArrayNotHasKey('client_id', $form);
         $this->assertSame('urn:ietf:params:oauth:client-assertion-type:jwt-bearer', $form['client_assertion_type']);
         $this->assertSame('client-1', self::decodeJwt((string) $form['client_assertion'])[1]['iss']);
 

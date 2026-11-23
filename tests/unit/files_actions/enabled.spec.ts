@@ -15,9 +15,16 @@ const XLS = 'application/vnd.ms-excel'
 const TEXT = 'text/plain'
 const PNG = 'image/png'
 
+const DOTX =
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.template'
+const PPSX = 'application/vnd.openxmlformats-officedocument.presentationml.slideshow'
+const ODG = 'application/vnd.oasis.opendocument.graphics'
+const ICS = 'text/calendar'
+const NOT_EXTRACTABLE = [PNG, DOTX, PPSX, ODG, ICS]
+
 const cases: Array<[string, IFileAction, string[], string[]]> = [
-	['summarize', summarizeAction, [PDF, DOCX, TEXT], [XLS, PNG]],
-	['translate', translateAction, [PDF, DOCX, TEXT], [XLS, PNG]],
+	['summarize', summarizeAction, [PDF, DOCX, XLS, TEXT], NOT_EXTRACTABLE],
+	['translate', translateAction, [PDF, DOCX, XLS, TEXT], NOT_EXTRACTABLE],
 	['make searchable', chatAction, [PDF, DOCX, XLS, TEXT], [PNG]],
 	['chat about this file', chatFileAction, [TEXT, 'application/json'], [PDF, PNG]],
 ]

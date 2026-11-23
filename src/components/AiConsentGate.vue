@@ -36,16 +36,22 @@
 				</NcButton>
 			</div>
 		</NcNoteCard>
+		<FailureNote :failure="failure" />
 	</div>
 </template>
 
 <script setup lang="ts">
+import type { Failure } from '../failures'
+
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import FailureNote from './FailureNote.vue'
+import { grantConsent } from '../consent'
+import { onConsentStale } from '../failures'
 
 const emit = defineEmits<{
 	// Fired whenever the "AI is blocked until the user activates it" state changes.
@@ -65,6 +71,7 @@ const mode = ref('shared')
 const autoProvision = ref(false)
 const linkAvailable = ref(false)
 const conflict = ref(false)
+const failure = ref<Failure | null>(null)
 
 const isLink = computed(() => mode.value === 'link')
 const showConnect = computed(
@@ -148,20 +155,10 @@ function connect() {
  */
 async function activate() {
 	saving.value = true
-	try {
-		const { data } = await axios.post(`${baseUrl}/api/v1/ai-consent`, {
-			granted: true,
-		})
-		granted.value = !!data.granted
-		refreshBlocked()
-		if (granted.value) {
-			emit('granted')
-		}
-	} catch {
-		// Leave blocked; the user can retry.
-	} finally {
-		saving.value = false
-	}
+	failure.value = null
+	const answer = await grantConsent()
+	saving.value = false
+	settle(answer.granted, answer.failure)
 }
 
 /**
@@ -170,28 +167,40 @@ async function activate() {
 async function createAccount() {
 	saving.value = true
 	conflict.value = false
-	try {
-		const { data } = await axios.post(`${baseUrl}/api/v1/ai-consent`, {
-			granted: true,
-			create_account: true,
-		})
-		if (data.conflict) {
-			conflict.value = true
-			return
-		}
-		granted.value = !!data.granted
-		refreshBlocked()
-		if (granted.value) {
-			emit('granted')
-		}
-	} catch {
-		// Leave blocked; the user can retry.
-	} finally {
-		saving.value = false
+	failure.value = null
+	const answer = await grantConsent(true)
+	saving.value = false
+	if (answer.conflict) {
+		conflict.value = true
+		return
+	}
+	settle(answer.granted, answer.failure)
+}
+
+/**
+ * Apply the answer to a consent request; a failure stays on screen and the
+ * gate stays, so the person can retry.
+ *
+ * @param isGranted Whether consent is now granted
+ * @param why What went wrong, when the request failed
+ */
+function settle(isGranted: boolean, why: Failure | null) {
+	failure.value = why
+	granted.value = isGranted
+	refreshBlocked()
+	if (isGranted) {
+		emit('granted')
 	}
 }
 
-onMounted(loadStatus)
+// An answer elsewhere on the page can show that consent or the connection
+// ended since the state was read; read it again so the gate comes back.
+let stopListening = () => {}
+onMounted(() => {
+	stopListening = onConsentStale(loadStatus)
+	loadStatus()
+})
+onBeforeUnmount(() => stopListening())
 </script>
 
 <style scoped>

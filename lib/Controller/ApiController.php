@@ -12,6 +12,7 @@ use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Files\File;
@@ -85,6 +86,8 @@ class ApiController extends Controller
      * Tells the frontend which output language will be used (so the user knows
      * up front), and whether the Synaplan memory service is reachable so the
      * memory toggle can be shown only when it actually works.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function clientConfig(): JSONResponse
@@ -111,12 +114,27 @@ class ApiController extends Controller
     }
 
     /**
+     * Which file actions the connected Synaplan supports, for the Files app
+     * to offer only those (R11).
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>
+     */
+    #[NoAdminRequired]
+    public function features(): JSONResponse
+    {
+        return new JSONResponse([
+            'translation' => $this->synaplanClient->offersSummaryType('translation'),
+        ]);
+    }
+
+    /**
      * Summarize a file.
      *
      * @param int    $fileId         Nextcloud file ID
      * @param string $summaryType    bullet-points|abstractive|extractive
      * @param string $length         short|medium|long
      * @param string $outputLanguage ISO language code (en, de, fr, es, it)
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function summarize(
@@ -154,6 +172,7 @@ class ApiController extends Controller
      *
      * @param int    $fileId         Nextcloud file ID
      * @param string $targetLanguage ISO language code (en, de, fr, es, it)
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function translate(
@@ -206,6 +225,7 @@ class ApiController extends Controller
      *
      * @param int    $fileId   Nextcloud file ID
      * @param string $groupKey Target group key for vectorization
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function uploadToKnowledge(int $fileId, string $groupKey = 'DEFAULT', ?bool $keepSynced = null): JSONResponse
@@ -301,6 +321,7 @@ class ApiController extends Controller
      * badge.
      *
      * @param int $fileId Nextcloud file ID
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function knowledgeStatus(int $fileId): JSONResponse
@@ -348,6 +369,7 @@ class ApiController extends Controller
      * Remove a Nextcloud file from the Synaplan knowledge base (CORE-4).
      *
      * @param int $fileId Nextcloud file ID
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function removeFromKnowledge(int $fileId): JSONResponse
@@ -380,6 +402,8 @@ class ApiController extends Controller
 
     /**
      * Get available file groups from Synaplan.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function getGroups(): JSONResponse
@@ -398,6 +422,8 @@ class ApiController extends Controller
 
     /**
      * Get available AI models from Synaplan.
+     *
+     * @return JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function getModels(): JSONResponse

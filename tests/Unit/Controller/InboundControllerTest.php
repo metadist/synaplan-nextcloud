@@ -114,15 +114,46 @@ final class InboundControllerTest extends TestCase
         }
     }
 
-    public function testWrongKeyWrongInstanceAndStaleDoNotCallOut(): void
+    public function testWrongKeyWrongInstanceAndStaleAreRefused(): void
     {
         $this->copies->expects($this->never())->method('handle');
         $this->keys->expects($this->never())->method('refresh');
+        $this->keys->expects($this->once())->method('refreshForUnknownKey')->willReturn(false);
 
         foreach (['wrong_key', 'wrong_issuer', 'wrong_instance', 'stale'] as $name) {
             $response = $this->controller->receive($this->json($name));
             self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus(), $name);
         }
+    }
+
+    public function testANoticeSignedWithAKeySynaplanJustStartedUsingIsTakenAfterOneRefresh(): void
+    {
+        $body = $this->signed($this->notice('delivery', '9', 'ada'));
+        $current = $this->keys->keys();
+        $keys = $this->createMock(NotifyKeyCache::class);
+        $keys->method('issuer')->willReturn(self::ISSUER);
+        $keys->method('keys')->willReturnOnConsecutiveCalls([], $current);
+        $keys->expects($this->once())->method('refreshForUnknownKey')->with(self::NOW)->willReturn(true);
+        $this->copies->expects($this->once())->method('handle')->willReturn(['status' => 200, 'body' => ['status' => 'delivered']]);
+
+        $response = $this->controllerWith($keys)->receive($body);
+
+        self::assertSame(Http::STATUS_OK, $response->getStatus());
+    }
+
+    public function testANoticeNoKeyVerifiesIsRefusedWhenTheRefreshFindsNothingNew(): void
+    {
+        $body = $this->signed($this->notice('delivery', '9', 'ada'));
+        $keys = $this->createMock(NotifyKeyCache::class);
+        $keys->method('issuer')->willReturn(self::ISSUER);
+        $keys->method('keys')->willReturn([]);
+        $keys->expects($this->once())->method('refreshForUnknownKey')->willReturn(false);
+        $this->copies->expects($this->never())->method('handle');
+
+        $response = $this->controllerWith($keys)->receive($body);
+
+        self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus());
+        self::assertSame(NotificationSignature::BAD_SIGNATURE, $response->getData()['error']);
     }
 
     public function testUnsignedDoesNotCallOut(): void
@@ -197,6 +228,28 @@ final class InboundControllerTest extends TestCase
             }
         }
         self::fail('Missing vector ' . $name);
+    }
+
+    private function controllerWith(NotifyKeyCache $keys): InboundController
+    {
+        $config = $this->createMock(SynaplanConfig::class);
+        $config->method('getLinkInstanceId')->willReturn('pi_abc');
+        $time = $this->createMock(ITimeFactory::class);
+        $time->method('getTime')->willReturn(self::NOW);
+
+        return new InboundController(
+            $this->createMock(IRequest::class),
+            $config,
+            $keys,
+            new MemorySeenNotifications(),
+            $this->copies,
+            $this->reads,
+            $this->links,
+            $this->accounts,
+            new ArrayCacheFactory(),
+            $time,
+            new NullLogger(),
+        );
     }
 
     /**

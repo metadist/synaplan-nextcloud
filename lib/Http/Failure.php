@@ -211,6 +211,7 @@ final class Failure
 
     /**
      * @param array<string, mixed> $extra keys the frontend reads beside the failure
+     * @return JSONResponse<Http::STATUS_*, array<string, mixed>, array{}>
      */
     public function toResponse(array $extra = []): JSONResponse
     {

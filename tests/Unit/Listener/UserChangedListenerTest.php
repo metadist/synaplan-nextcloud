@@ -63,7 +63,8 @@ class UserChangedListenerTest extends TestCase
         $this->userAccounts = $this->createMock(UserAccountService::class);
         $this->userAccounts->method('wasLinked')->willReturn(false);
         $this->userAccounts->method('getLinkKind')->willReturn(null);
-        $this->userAccounts->method('getStoredApiKey')->willReturn('');
+        $this->userAccounts->method('hasStoredCredential')->willReturn(false);
+        $this->userAccounts->expects($this->never())->method('getStoredApiKey');
         $this->userAccounts->method('getSynaplanUserId')->willReturn(null);
         $this->platformLinks->expects($this->never())->method('reportLifecycle');
 

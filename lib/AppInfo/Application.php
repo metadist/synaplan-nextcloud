@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\AppInfo;
 
 use OCA\SynaplanIntegration\BackgroundJob\RefreshNotifyKeysJob;
 use OCA\SynaplanIntegration\Listener\LoadScriptsListener;
+use OCA\SynaplanIntegration\Listener\ReadScopeListener;
 use OCA\SynaplanIntegration\Listener\SourceEventListener;
 use OCA\SynaplanIntegration\Listener\UserChangedListener;
 use OCA\SynaplanIntegration\Listener\UserDeletedListener;
@@ -31,6 +32,9 @@ class Application extends App implements IBootstrap
 {
     public const APP_ID = 'synaplan_integration';
 
+    /**
+     * @param array<string, mixed> $urlParams
+     */
     public function __construct(array $urlParams = [])
     {
         parent::__construct(self::APP_ID, $urlParams);
@@ -45,6 +49,7 @@ class Application extends App implements IBootstrap
         $context->registerEventListener(UserChangedEvent::class, UserChangedListener::class);
         $context->registerEventListener(NodeWrittenEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeRenamedEvent::class, SourceEventListener::class);
+        $context->registerEventListener(NodeRenamedEvent::class, ReadScopeListener::class);
         $context->registerEventListener(BeforeNodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', SourceEventListener::class);

@@ -56,4 +56,30 @@ class NotifyKeyCacheTest extends TestCase
 
         $this->assertSame([['publicKey' => 'ed25519:abc', 'kid' => 'k1']], $cache->keys());
     }
+
+    public function testAnUnknownKeyRefreshesAtMostOnceAMinute(): void
+    {
+        $this->app['link_instance_id'] = 'pi_nc';
+        $this->app['notify_issuer'] = 'https://synaplan.example';
+        $this->app['notify_keys'] = '[{"publicKey":"ed25519:old","kid":"k1"}]';
+        $cache = $this->cache(['issuer' => 'https://synaplan.example', 'keys' => [['publicKey' => 'ed25519:new', 'kid' => 'k2']]]);
+
+        $this->assertTrue($cache->refreshForUnknownKey(1000));
+        $this->assertSame([['publicKey' => 'ed25519:new', 'kid' => 'k2']], $cache->keys());
+
+        $this->app['notify_keys'] = '[{"publicKey":"ed25519:old","kid":"k1"}]';
+        $this->assertFalse($cache->refreshForUnknownKey(1059));
+        $this->assertSame([['publicKey' => 'ed25519:old', 'kid' => 'k1']], $cache->keys());
+
+        $this->assertTrue($cache->refreshForUnknownKey(1060));
+    }
+
+    public function testUnchangedKeysAreReported(): void
+    {
+        $this->app['link_instance_id'] = 'pi_nc';
+        $this->app['notify_keys'] = '[{"publicKey":"ed25519:abc","kid":"k1"}]';
+        $cache = $this->cache(['issuer' => 'https://synaplan.example', 'keys' => [['publicKey' => 'ed25519:abc', 'kid' => 'k1']]]);
+
+        $this->assertFalse($cache->refreshForUnknownKey(1000));
+    }
 }

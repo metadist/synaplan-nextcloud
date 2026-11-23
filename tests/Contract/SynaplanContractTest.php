@@ -64,7 +64,7 @@ final class SynaplanContractTest extends TestCase
         'summary' => ['types' => ['abstractive', 'extractive', 'bullet-points', 'translation']],
     ];
 
-    /** @var list<array{method: string, path: string, body: array<string, mixed>, multipart: bool}> */
+    /** @var list<array{method: string, path: string, body: array<string, mixed>, multipart: bool, form: bool}> */
     private array $calls = [];
 
     /** @var array<string, string> */
@@ -88,7 +88,7 @@ final class SynaplanContractTest extends TestCase
 
         $violations = [];
         foreach ($this->calls as $call) {
-            array_push($violations, ...$contract->violations($call['method'], $call['path'], $call['body'], $call['multipart']));
+            array_push($violations, ...$contract->violations($call['method'], $call['path'], $call['body'], $call['multipart'], $call['form']));
         }
 
         self::assertSame([], array_values(array_unique($violations)));
@@ -256,7 +256,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $client->listRecentFiles(),
             fn () => $client->downloadStoredFile(42),
             fn () => $links->claimDelivery('9', 'ada'),
-            fn () => $links->downloadDelivery('/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),
+            fn () => $links->downloadDelivery('9', '/api/v1/platform-links/deliveries/9/file?ticket=abc', 'ada'),
             fn () => $links->reportDelivery('9', 'ada', [
                 'status' => 'delivered',
                 'remote_path' => '/Synaplan/Documents/plan.docx',
@@ -393,7 +393,14 @@ final class SynaplanContractTest extends TestCase
         } elseif (isset($options['body']) && is_string($options['body'])) {
             $body = json_decode($options['body'], true) ?? [];
         }
-        $this->calls[] = ['method' => $method, 'path' => $path, 'body' => $body, 'multipart' => $multipart];
+        // The OAuth endpoints take URL-encoded forms, checked against the
+        // spec's form schema rather than skipped as an empty JSON body.
+        $form = str_starts_with((string) ($options['headers']['Content-Type'] ?? ''), 'application/x-www-form-urlencoded');
+        if ($form && isset($options['body']) && is_string($options['body'])) {
+            parse_str($options['body'], $fields);
+            $body = $fields;
+        }
+        $this->calls[] = ['method' => $method, 'path' => $path, 'body' => $body, 'multipart' => $multipart, 'form' => $form];
 
         $response = $this->createStub(IResponse::class);
         $response->method('getStatusCode')->willReturn(200);

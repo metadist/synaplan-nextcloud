@@ -5,10 +5,18 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\BackgroundJob\DeliveryRetryJob;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
+use OCP\Files\AlreadyExistsException;
+use OCP\Files\EntityTooLargeException;
 use OCP\Files\File;
 use OCP\Files\Folder;
+use OCP\Files\ForbiddenException;
 use OCP\Files\IRootFolder;
+use OCP\Files\NotEnoughSpaceException;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IURLGenerator;
@@ -27,6 +35,15 @@ class CopyDelivery
 
     /** Remember a file this app wrote, so a later copy may replace only that. */
     private const OWN_WRITE_TTL = 600;
+
+    /** Synaplan's cap for a copy; it refuses larger files before sending. */
+    private const MAX_BYTES = 100 * 1024 * 1024;
+
+    /** How long Synaplan keeps a copy's ticket and download path. */
+    private const TICKET_TTL = 300;
+
+    /** `name.ext` and `name (2).ext` up to `name (20).ext`. */
+    private const MAX_SAME_NAME = 20;
 
     private const KIND_FOLDERS = [
         'docx' => 'Documents', 'doc' => 'Documents', 'pptx' => 'Documents',
@@ -50,6 +67,8 @@ class CopyDelivery
         private IURLGenerator $urls,
         private IManager $notifications,
         private LoggerInterface $logger,
+        private IJobList $jobs,
+        private ITimeFactory $time,
     ) {
     }
 
@@ -58,15 +77,46 @@ class CopyDelivery
      */
     public function handle(string $id, string $uid): array
     {
+        // Synaplan waits 30 seconds for the answer, then takes the result
+        // call instead; a slow download must not stop when it hangs up.
+        ignore_user_abort(true);
+
+        return $this->deliver($id, $uid, null);
+    }
+
+    /**
+     * The background try after a failed claim. Past the ticket's life the
+     * claim can only fail, so Synaplan's sweep reports the copy instead.
+     */
+    public function retry(string $id, string $uid, int $since): void
+    {
+        if ($this->time->getTime() - $since > self::TICKET_TTL) {
+            $this->logger->info('A Synaplan copy expired before it could be claimed again', [
+                'app' => Application::APP_ID,
+            ]);
+
+            return;
+        }
+        $this->deliver($id, $uid, $since);
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function deliver(string $id, string $uid, ?int $retriedSince): array
+    {
         try {
             $claim = $this->links->claimDelivery($id, $uid);
         } catch (\Throwable $e) {
-            // The person's credential is gone or Synaplan is unreachable:
-            // the copy stays pending for Synaplan to offer again.
+            // Synaplan is unreachable or the person's credential failed. A
+            // 202 promises a result call, so try once more in the background.
             $this->logger->warning('Could not claim a Synaplan copy: {message}', [
                 'app' => Application::APP_ID,
                 'message' => $e->getMessage(),
             ]);
+            if ($retriedSince === null) {
+                $this->jobs->add(DeliveryRetryJob::class, ['id' => $id, 'uid' => $uid, 'since' => $this->time->getTime()]);
+            }
 
             return ['status' => 202, 'body' => ['state' => 'pending']];
         }
@@ -76,7 +126,7 @@ class CopyDelivery
         }
 
         $result = (string) ($claim['external_id'] ?? '') === $uid
-            ? $this->write($claim)
+            ? $this->write($id, $claim)
             : ['status' => 'failed', 'error_code' => 'not_found'];
         try {
             $this->links->reportDelivery($id, $uid, $result);
@@ -112,15 +162,21 @@ class CopyDelivery
      * @param array<string, mixed> $claim
      * @return array<string, mixed>
      */
-    private function write(array $claim): array
+    private function write(string $id, array $claim): array
     {
         $uid = (string) ($claim['external_id'] ?? '');
         if ($uid === '' || $this->users->get($uid) === null) {
             return ['status' => 'failed', 'error_code' => 'not_found'];
         }
-        $bytes = $this->links->downloadDelivery((string) ($claim['download_path'] ?? ''), $uid);
+        if ((int) ($claim['size'] ?? 0) > self::MAX_BYTES) {
+            return ['status' => 'failed', 'error_code' => 'too_large'];
+        }
+        $bytes = $this->links->downloadDelivery($id, (string) ($claim['download_path'] ?? ''), $uid);
         if ($bytes === null) {
             return ['status' => 'failed', 'error_code' => 'unreachable'];
+        }
+        if (strlen($bytes) > self::MAX_BYTES) {
+            return ['status' => 'failed', 'error_code' => 'too_large'];
         }
 
         try {
@@ -128,6 +184,10 @@ class CopyDelivery
             $name = $this->fileName((string) ($claim['name'] ?? 'file'));
             $target = is_array($claim['target'] ?? null) ? $claim['target'] : [];
             $folder = $this->folder($userFolder, $uid, $name, $target);
+            $free = $folder->getFreeSpace();
+            if ($free >= 0 && $free < strlen($bytes)) {
+                throw new NotEnoughSpaceException('The copy does not fit in the person\'s storage.');
+            }
             $replace = ($claim['on_conflict'] ?? '') === 'replace_own';
             $file = $this->place($folder, $uid, $name, $bytes, $replace);
         } catch (\Throwable $e) {
@@ -137,7 +197,7 @@ class CopyDelivery
                 'message' => $e->getMessage(),
             ]);
 
-            return ['status' => 'failed', 'error_code' => 'unreachable'];
+            return ['status' => 'failed', 'error_code' => self::failureCode($e)];
         }
 
         $relative = $userFolder->getRelativePath($file->getPath()) ?? $file->getName();
@@ -205,6 +265,9 @@ class CopyDelivery
         $ext = pathinfo($name, PATHINFO_EXTENSION);
         $n = 2;
         while ($folder->nodeExists($target)) {
+            if ($n > self::MAX_SAME_NAME) {
+                throw new AlreadyExistsException('Twenty files with this name already exist.');
+            }
             $target = $stem . ' (' . $n . ')' . ($ext !== '' ? '.' . $ext : '');
             $n++;
         }
@@ -212,6 +275,21 @@ class CopyDelivery
         $file->putContent($bytes);
 
         return $file;
+    }
+
+    /**
+     * The failure code Synaplan shows the person (`03` §6).
+     */
+    private static function failureCode(\Throwable $e): string
+    {
+        return match (true) {
+            $e instanceof NotFoundException => 'not_found',
+            $e instanceof NotEnoughSpaceException => 'quota_exceeded',
+            $e instanceof NotPermittedException, $e instanceof ForbiddenException => 'forbidden',
+            $e instanceof AlreadyExistsException => 'conflict',
+            $e instanceof EntityTooLargeException => 'too_large',
+            default => 'unreachable',
+        };
     }
 
     private function ensure(Folder $root, string $path): Folder

@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Service;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Exception\PlatformLinkException;
+use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -282,6 +285,122 @@ class UserAccountServiceTest extends TestCase
         $this->assertFalse($this->service()->consentRequired());
     }
 
+    private function provisionedCarol(): void
+    {
+        $this->userConfig['carol|ai_consent'] = '1';
+        $this->userConfig['carol|ai_consent_at'] = '2026-11-01T00:00:00+00:00';
+        $this->userConfig['carol|synaplan_user_api_key'] = 'sk_carol';
+        $this->userConfig['carol|synaplan_user_key_id'] = '9';
+        $this->userConfig['carol|synaplan_user_id'] = '4';
+        $this->oauth->method('isRegistered')->willReturn(true);
+        $this->oauth->method('isConnected')->willReturn(false);
+    }
+
+    public function testDeactivatePausesAProvisionedPersonAndKeepsTheKey(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->expects($this->once())->method('reportLifecycle')->with('carol', 'disabled')
+            ->willReturn(['account' => 'kept', 'status' => 'suspended']);
+        $this->httpClient->expects($this->never())->method('delete');
+
+        $this->assertTrue($this->service()->pauseProvisioned('carol'));
+
+        $this->assertSame('1', $this->userConfig['carol|synaplan_paused']);
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|ai_consent_at', $this->userConfig);
+        $this->assertSame('sk_carol', $this->userConfig['carol|synaplan_user_api_key']);
+        $this->assertSame('9', $this->userConfig['carol|synaplan_user_key_id']);
+        $this->assertSame('4', $this->userConfig['carol|synaplan_user_id']);
+    }
+
+    public function testAPausedPersonResolvesNoKeyUntilTheyActivateAgain(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertNull($this->service()->resolveKeyForUser($this->mockUser('carol', 'carol@example.org', 'Carol')));
+    }
+
+    public function testActivatingAPausedPersonResumesTheSameKey(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $carol = $this->mockUser('carol', 'carol@example.org', 'Carol');
+        $this->userSession->method('getUser')->willReturn($carol);
+        $this->oauth->expects($this->once())->method('reportLifecycle')->with('carol', 'enabled')
+            ->willReturn(['account' => 'kept', 'status' => 'active']);
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->service()->grantConsent();
+
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+        $this->assertSame('1', $this->userConfig['carol|ai_consent']);
+        $this->assertSame('sk_carol', $this->service()->resolveKeyForUser($carol));
+    }
+
+    public function testAResumeSynaplanRefusesLeavesAIOffAndSaysWhy(): void
+    {
+        $this->provisionedCarol();
+        $this->userConfig['carol|synaplan_paused'] = '1';
+        unset($this->userConfig['carol|ai_consent']);
+        $this->userSession->method('getUser')->willReturn($this->mockUser('carol', 'carol@example.org', 'Carol'));
+        $this->oauth->method('reportLifecycle')
+            ->willThrowException(new PlatformLinkException('Synaplan refused the request (409).', PlatformLinkException::CODE_EXCHANGE));
+
+        try {
+            $this->service()->grantConsent();
+            $this->fail('the refusal reaches the person');
+        } catch (FailureException $e) {
+            $this->assertSame(Failure::ACCOUNT_UNAVAILABLE, $e->failure->code);
+        }
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertSame('1', $this->userConfig['carol|synaplan_paused']);
+    }
+
+    public function testDeactivateChangesNothingWhenSynaplanCannotBeTold(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->method('reportLifecycle')
+            ->willThrowException(new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE));
+
+        try {
+            $this->service()->pauseProvisioned('carol');
+            $this->fail('the admin learns Synaplan was not told');
+        } catch (FailureException $e) {
+            $this->assertSame(Failure::SYNAPLAN_UNREACHABLE, $e->failure->code);
+        }
+        $this->assertSame('1', $this->userConfig['carol|ai_consent']);
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+    }
+
+    public function testDeactivateWithoutAnIdentityOnThisRegistrationForgetsTheKeyHereOnly(): void
+    {
+        $this->provisionedCarol();
+        $this->oauth->method('reportLifecycle')->willReturn(['account' => 'absent', 'status' => 'revoked']);
+        $this->httpClient->expects($this->never())->method('delete');
+
+        $this->assertTrue($this->service()->pauseProvisioned('carol'));
+
+        $this->assertArrayNotHasKey('carol|synaplan_user_api_key', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|ai_consent', $this->userConfig);
+        $this->assertArrayNotHasKey('carol|synaplan_paused', $this->userConfig);
+    }
+
+    public function testPausingIsNotForConnectedPeopleOrAnUnregisteredNextcloud(): void
+    {
+        $this->userConfig['ada|synaplan_user_api_key'] = 'sk_ada';
+        $this->oauth->method('isConnected')->willReturnCallback(fn (string $uid): bool => $uid === 'bob');
+        $this->oauth->method('isRegistered')->willReturnOnConsecutiveCalls(false, true);
+        $this->oauth->expects($this->never())->method('reportLifecycle');
+
+        $this->assertFalse($this->service()->pauseProvisioned('ada'));
+        $this->assertFalse($this->service()->pauseProvisioned('bob'));
+        $this->assertFalse($this->service()->pauseProvisioned('nobody'));
+    }
+
     public function testGrantConsentThenProvisions(): void
     {
         $this->userSession->method('getUser')->willReturn($this->mockUser('dave', 'dave@example.com', 'Dave'));
@@ -312,6 +431,57 @@ class UserAccountServiceTest extends TestCase
 
         $this->assertArrayNotHasKey('alice|ai_consent', $this->userConfig);
         $this->assertArrayNotHasKey('alice|synaplan_user_api_key', $this->userConfig);
+    }
+
+    public function testWithdrawnConsentRevokesTheGrantSoNoTokenIsLeft(): void
+    {
+        $grant = new \stdClass();
+        $grant->connected = true;
+        $this->userConfig['ada|ai_consent'] = '1';
+        $this->appConfig['mode'] = 'link';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('ada', 'ada@example.org', 'Ada'));
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (): bool => (bool) $grant->connected);
+        $this->oauth->method('accessToken')->willReturn('still.usable.token');
+        $this->oauth->expects($this->once())->method('revoke')->with('ada')->willReturnCallback(
+            static function () use ($grant): void {
+                $grant->connected = false;
+            }
+        );
+
+        $service = $this->service();
+        $service->revokeConsent();
+
+        $this->assertArrayNotHasKey('ada|ai_consent', $this->userConfig);
+        $this->assertSame('', $service->credentialFor('ada'));
+    }
+
+    public function testWithdrawnConsentForgetsTheGrantWhenSynaplanCannotBeTold(): void
+    {
+        $this->userConfig['ada|ai_consent'] = '1';
+        $this->userSession->method('getUser')->willReturn($this->mockUser('ada', 'ada@example.org', 'Ada'));
+        $this->oauth->method('isConnected')->willReturn(true);
+        $this->oauth->method('revoke')->willThrowException(
+            new PlatformLinkException('Synaplan cannot be reached.', PlatformLinkException::CODE_UNREACHABLE)
+        );
+        $this->oauth->expects($this->once())->method('forget')->with('ada');
+
+        $this->service()->revokeConsent();
+
+        $this->assertArrayNotHasKey('ada|ai_consent', $this->userConfig);
+    }
+
+    public function testStoredCredentialCheckNeverRenewsAToken(): void
+    {
+        $this->oauth->method('isConnected')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->oauth->expects($this->never())->method('accessToken');
+        $this->userConfig['bob|synaplan_user_api_key'] = 'sk_bob';
+        $this->httpClient->expects($this->never())->method('post');
+
+        $service = $this->service();
+
+        $this->assertTrue($service->hasStoredCredential('ada'));
+        $this->assertTrue($service->hasStoredCredential('bob'));
+        $this->assertFalse($service->hasStoredCredential('carol'));
     }
 
     public function testGetSynaplanUserIdForArbitraryUser(): void
@@ -515,6 +685,95 @@ class UserAccountServiceTest extends TestCase
             $this->assertArrayNotHasKey('X-Instance-Id', $headers);
             $this->assertArrayNotHasKey('X-Instance-Secret', $headers);
         }
+    }
+
+    public function testALegacyAccountIsProvisionedAgainWithTheInstanceAndItsOwnEmail(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('http://localhost:8000/api/v1/admin/users/501/usage', $this->anything())
+            ->willReturn($this->jsonResponse(['user' => [
+                'id' => 501,
+                'email' => 'alice@old.example',
+                'external_id' => 'oc0abc:alice',
+                'display_name' => 'Alice',
+            ]]));
+        $this->httpClient->expects($this->once())->method('post')
+            ->with('http://localhost:8000/api/v1/admin/users', $this->callback(function (array $options): bool {
+                $body = json_decode($options['body'], true);
+
+                return $body === [
+                    'source' => 'nextcloud',
+                    'instance_id' => 'pi_nc',
+                    'external_id' => 'alice',
+                    'email' => 'alice@old.example',
+                    'display_name' => 'Alice',
+                ] && $options['headers']['X-API-Key'] === 'sk_admin_key';
+            }))
+            ->willReturn($this->jsonResponse(['user' => ['id' => 501]]));
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testAnAccountProvisionedForThisClientIsLeftAlone(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willReturn($this->jsonResponse(['user' => [
+            'id' => 501,
+            'email' => 'alice@example.com',
+            'external_id' => 'alice',
+        ]]));
+        $this->httpClient->expects($this->never())->method('post');
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testNothingIsAdoptedBeforeTheRegistrationOrWithoutAnAccount(): void
+    {
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->expects($this->never())->method('get');
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->assertTrue($this->service()->adoptLegacyAccount('bob'));
+    }
+
+    public function testAnAccountSynaplanCannotMatchIsNotCreatedAgain(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willReturn($this->jsonResponse(['user' => [
+            'email' => 'alice@old.example',
+            'external_id' => 'oc0abc:alice',
+        ]]));
+        $conflict = $this->createMock(IResponse::class);
+        $conflict->method('getStatusCode')->willReturn(409);
+        $this->httpClient->method('post')->willReturn($conflict);
+
+        $this->assertTrue($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    public function testAnUnreachableSynaplanIsTriedAgainLater(): void
+    {
+        $this->appConfig['link_instance_id'] = 'pi_nc';
+        $this->userConfig['alice|synaplan_user_id'] = '501';
+        $this->httpClient->method('get')->willThrowException(new \RuntimeException('cURL error 7'));
+
+        $this->assertFalse($this->service()->adoptLegacyAccount('alice'));
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function jsonResponse(array $body): IResponse
+    {
+        $response = $this->createMock(IResponse::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getBody')->willReturn((string) json_encode($body));
+
+        return $response;
     }
 
     public function testSharedModeResolvesNull(): void
@@ -741,6 +1000,58 @@ class UserAccountServiceTest extends TestCase
         $this->assertSame('1', $this->userConfig['alice|ai_consent']);
         $this->assertSame(1, $deleted);
         $this->assertNull($service->renewProvisionedKey());
+    }
+
+    /**
+     * @return iterable<string, array{string, list<string>}>
+     */
+    public static function memorySettings(): iterable
+    {
+        yield 'memories offered' => ['1', ['chat', 'files', 'rag', 'cloud:watch', 'memories']];
+        yield 'memories off' => ['0', ['chat', 'files', 'rag', 'cloud:watch']];
+    }
+
+    /**
+     * @param list<string> $expected
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('memorySettings')]
+    public function testAKeyMintedWithoutMemoriesIsReplacedWhileTheyAreOffered(string $memories, array $expected): void
+    {
+        $this->appConfig['mode'] = 'provision';
+        $this->appConfig['enable_memories'] = $memories;
+        $this->userConfig['alice|ai_consent'] = '1';
+        $this->userConfig['alice|synaplan_user_api_key'] = 'sk_old';
+        $this->userConfig['alice|synaplan_key_scopes'] = 'chat files rag cloud:watch';
+        $user = $this->mockUser('alice', 'alice@example.com', 'Alice');
+        $this->userSession->method('getUser')->willReturn($user);
+
+        $provisionResp = $this->createMock(IResponse::class);
+        $provisionResp->method('getBody')->willReturn(json_encode(['user' => ['id' => 9]]));
+        $mintResp = $this->createMock(IResponse::class);
+        $mintResp->method('getBody')->willReturn(json_encode(['api_key' => ['id' => 11, 'key' => 'sk_new']]));
+        $minted = null;
+        $this->httpClient->method('post')->willReturnCallback(
+            function (string $url, array $options) use ($mintResp, $provisionResp, &$minted): IResponse {
+                if (!str_contains($url, '/api-keys')) {
+                    return $provisionResp;
+                }
+                $minted = json_decode((string) $options['body'], true)['scopes'] ?? null;
+
+                return $mintResp;
+            }
+        );
+        $this->httpClient->method('delete')->willReturn($this->createStub(IResponse::class));
+
+        $renewed = $this->service()->renewProvisionedKey();
+
+        if ($memories === '1') {
+            $this->assertSame('sk_new', $renewed);
+            $this->assertSame($expected, $minted);
+            $this->assertSame(implode(' ', $expected), $this->userConfig['alice|synaplan_key_scopes']);
+        } else {
+            $this->assertNull($renewed);
+            $this->assertNull($minted);
+        }
     }
 
     public function testALinkedKeyIsNotReplaced(): void

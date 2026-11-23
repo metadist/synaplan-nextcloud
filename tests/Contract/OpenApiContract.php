@@ -111,6 +111,7 @@ final class OpenApiContract
     }
 
     /**
+     * @param array<string, mixed> $schema
      * @param array<string|int, mixed> $body
      * @param list<string> $violations
      */

@@ -185,6 +185,7 @@ class SettingsControllerTest extends TestCase
             fn (string $app, string $key, string $default = ''): string => match ($key) {
                 'link_instance_id' => 'client-1',
                 'oauth_kid' => 'kid-1',
+                'oauth_private_key' => 'pem',
                 default => $default,
             }
         );

@@ -6,6 +6,8 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ConsentController;
 use OCA\SynaplanIntegration\Exception\EmailConflictException;
+use OCA\SynaplanIntegration\Exception\FailureException;
+use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
 use OCP\IRequest;
@@ -60,6 +62,35 @@ class ConsentControllerTest extends TestCase
 
         $this->assertFalse($data['success']);
         $this->assertTrue($data['conflict']);
+    }
+
+    public function testAConflictWithoutLinkingNamesTheCodeNotTheException(): void
+    {
+        $user = $this->createMock(IUser::class);
+        $this->userSession->method('getUser')->willReturn($user);
+        $this->synaplanConfig->method('isAutoProvisionEnabled')->willReturn(true);
+        $this->synaplanConfig->method('isLinkAvailable')->willReturn(false);
+        $this->userAccounts->method('provisionForLinkMode')
+            ->willThrowException(new EmailConflictException('A Synaplan account already exists for ada@example.org'));
+        $this->userAccounts->expects($this->never())->method('grantConsent');
+
+        $response = $this->controller()->setConsent(true, true);
+
+        $this->assertSame(409, $response->getStatus());
+        $this->assertSame('email_already_used', $response->getData()['error']);
+        $this->assertStringNotContainsString('ada@example.org', (string) json_encode($response->getData()));
+    }
+
+    public function testAResumeSynaplanRefusesAnswersWithItsCode(): void
+    {
+        $this->userAccounts->method('grantConsent')->willThrowException(
+            new FailureException(new Failure(409, Failure::ACCOUNT_UNAVAILABLE), 'Synaplan did not resume the person'),
+        );
+
+        $response = $this->controller()->setConsent(true);
+
+        $this->assertSame(409, $response->getStatus());
+        $this->assertSame(Failure::ACCOUNT_UNAVAILABLE, $response->getData()['error']);
     }
 
     public function testCreateAccountSuccessGrantsConsentAfterProvision(): void

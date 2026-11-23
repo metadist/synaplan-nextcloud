@@ -1,12 +1,12 @@
 /**
  * Fix for NcModal/NcDialog scoped CSS mismatch.
  *
- * When a Nextcloud app bundles its own @nextcloud/vue via Vite, the scoped
+ * When a Nextcloud app bundles its own `@nextcloud/vue` via Vite, the scoped
  * data-v-* attribute on NcModal may differ from the one in the server-side CSS.
  * This causes the modal overlay and centering styles to not apply.
  *
  * These rules provide the essential modal functionality regardless of which
- * @nextcloud/vue version the server ships — but they MUST only target the
+ * `@nextcloud/vue` version the server ships — but they MUST only target the
  * plugin's OWN modals. Earlier they were global, which re-styled (and boxed)
  * Nextcloud's own modals too — most visibly the Viewer modal that hosts the
  * Collabora/Office editor, capping it at max-width: 900px. Every rule below is
