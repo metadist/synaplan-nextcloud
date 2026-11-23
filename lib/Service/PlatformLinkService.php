@@ -626,6 +626,15 @@ class PlatformLinkService
     }
 
     /**
+     * canActFor() said no only for now: the person's grant is held, but its
+     * token could not be renewed.
+     */
+    public function canActForLater(string $uid): bool
+    {
+        return $this->userAccounts->holdsGrant($uid);
+    }
+
+    /**
      * Calls done for one person carry that person's own credential: their
      * access token, renewed when it has expired, or a provisioned person's
      * key. Synaplan takes the cloud from it and checks that the copy, folder

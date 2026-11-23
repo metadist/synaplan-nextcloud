@@ -48,6 +48,11 @@ class WatchSync
     {
         $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
         if (!$this->links->canActFor($uid)) {
+            if ($this->links->canActForLater($uid)) {
+                $this->retry($uid);
+
+                return false;
+            }
             $this->index->forget($uid);
 
             return true;
