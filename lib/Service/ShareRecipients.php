@@ -89,4 +89,34 @@ class ShareRecipients
 
         return $kept;
     }
+
+    /**
+     * The people who can tell Synaplan and have a folder or file below a
+     * folder mounted on its own, such as a share of a subfolder, from the
+     * mount cache: the folder's access list names only those who reach the
+     * folder itself.
+     *
+     * @param array{storage: int, path: string} $folder
+     * @param list<string> $except the people already told
+     * @return list<array{uid: string, root: int}>
+     */
+    public function mountedBelow(array $folder, array $except): array
+    {
+        $prefix = $folder['path'] === '' ? '' : $folder['path'] . '/';
+        $out = [];
+        try {
+            foreach ($this->mounts->getMountsForStorageId($folder['storage']) as $mount) {
+                $uid = $mount->getUser()->getUID();
+                $path = $mount->getRootInternalPath();
+                if ($path === $folder['path'] || !str_starts_with($path, $prefix) || in_array($uid, $except, true)) {
+                    continue;
+                }
+                $out[$uid . '/' . $mount->getRootId()] = ['uid' => $uid, 'root' => $mount->getRootId()];
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return array_values(array_filter($out, fn (array $mount): bool => $this->accounts->hasStoredCredential($mount['uid'])));
+    }
 }

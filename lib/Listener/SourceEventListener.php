@@ -123,16 +123,42 @@ class SourceEventListener implements IEventListener
         foreach ($recipients as $uid) {
             $this->queue->add($uid, ['id' => $mapped['id'], 'event' => 'deleted', 'version' => $mapped['version'], 'path' => ''], $ord, SourceEventQueue::STEP_HELD, $id);
         }
+        $holding = $node instanceof Folder ? [...array_unique($told), ...$recipients] : $recipients;
+        if ($node instanceof Folder) {
+            $holding = [...$holding, ...$this->holdSharesBelow($id, [...$told, ...$recipients], $ord)];
+        }
         // A deletion that fails says so nowhere: a run after the rows time
         // out drops them, under its own argument so it delays no other run.
-        $holding = $node instanceof Folder ? [...array_unique($told), ...$recipients] : $recipients;
-        foreach ($holding as $uid) {
+        foreach (array_unique($holding) as $uid) {
             $this->jobs->scheduleAfter(
                 SourceEventsJob::class,
                 intdiv($ord, 1_000_000) + SourceEventsJob::HELD_FOR + 1,
                 ['uid' => $uid, 'held' => true],
             );
         }
+    }
+
+    /**
+     * Those who have only a share of something below a deleted folder lose
+     * it with the folder.
+     *
+     * @param list<string> $told
+     * @return list<string> the people whose rows are held
+     */
+    private function holdSharesBelow(int $id, array $told, int $ord): array
+    {
+        try {
+            $folder = $this->queue->location($id);
+            $mounts = $folder === null ? [] : $this->recipients->mountedBelow($folder, $told);
+            foreach ($mounts as $mount) {
+                $this->queue->addDescendants($mount['uid'], $mount['root'], 'deleted', $ord, SourceEventQueue::STEP_HELD, $id);
+                $this->queue->add($mount['uid'], ['id' => (string) $mount['root'], 'event' => 'deleted', 'version' => '', 'path' => ''], $ord, SourceEventQueue::STEP_HELD, $id);
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return array_column($mounts, 'uid');
     }
 
     /**

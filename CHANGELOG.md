@@ -164,7 +164,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Synaplan also updates and forgets the copies of the people a file is
   shared with.** A change, move, deletion or restore is told for each
   person who can reach the file and holds a Synaplan connection, with the
-  path they see; for a deletion they are noted before the shares go. Only
+  path they see; for a deletion they are noted before the shares go, also
+  those who have only a share of something inside a deleted folder. Only
   the person who acted and the owner were told, so a copy someone made of a
   file shared with them stayed old, and stayed after the file was deleted.
 - **Removing a share from your files deletes your Synaplan copies of it.**

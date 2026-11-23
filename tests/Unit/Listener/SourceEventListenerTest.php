@@ -45,6 +45,8 @@ class SourceEventListenerTest extends TestCase
     private array $jobsAdded = [];
     /** @var list<array{string, mixed, int}> */
     private array $scheduled = [];
+    /** @var list<array{uid: string, root: int}> who has a share below a folder */
+    private array $mountedBelow = [];
 
     /** @var array<string, string> */
     private array $appConfig = [];
@@ -76,6 +78,9 @@ class SourceEventListenerTest extends TestCase
         $recipients->method('of')->willReturnCallback(fn (Node $node): array => $this->sharedWith[(int) $node->getId()] ?? []);
         $recipients->method('lost')->willReturnCallback(fn (Node $node, string $uid): bool => in_array($uid, $this->lostBy[(int) $node->getId()] ?? [], true));
         $recipients->method('keptBelow')->willReturnCallback(fn (string $uid): array => $this->kept[$uid] ?? []);
+        $recipients->method('mountedBelow')->willReturnCallback(
+            fn (array $folder, array $except): array => array_values(array_filter($this->mountedBelow, static fn (array $mount): bool => !in_array($mount['uid'], $except, true))),
+        );
         $session = $this->createStub(IUserSession::class);
         if ($this->signedIn !== '') {
             $user = $this->createStub(IUser::class);
@@ -160,6 +165,18 @@ class SourceEventListenerTest extends TestCase
         );
         self::assertGreaterThan($before + SourceEventsJob::HELD_FOR, $this->scheduled[0][2]);
         self::assertLessThanOrEqual(time() + SourceEventsJob::HELD_FOR + 1, $this->scheduled[0][2]);
+    }
+
+    public function testADeletedFolderTakesItsFilesFromThePeopleASubfolderIsSharedWith(): void
+    {
+        $folder = $this->specsFolder();
+        $this->queue->cache(3, 'files/Specs/Old', 53, 'eo');
+        $this->mountedBelow = [['uid' => 'bob', 'root' => 53], ['uid' => 'ada', 'root' => 53]];
+        $this->listener()->handle(new BeforeNodeDeletedEvent($folder));
+        $this->listener()->handle(new NodeDeletedEvent($folder));
+
+        self::assertSame(['ada send 51', 'ada send 52', 'ada send 53', 'bob send 52', 'bob send 53', 'ada send 50'], $this->queue->steps());
+        self::assertContains([SourceEventsJob::class, ['uid' => 'bob']], $this->jobsAdded);
     }
 
     public function testAFileThatLeftAFolderAfterAFailedDeletionIsNotDeletedWithIt(): void

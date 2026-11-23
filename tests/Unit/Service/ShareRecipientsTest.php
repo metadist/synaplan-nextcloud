@@ -87,4 +87,35 @@ final class ShareRecipientsTest extends TestCase
         self::assertSame(['files/Specs/Old'], $recipients->keptBelow('bob', ['storage' => 3, 'path' => 'files/Specs']));
         self::assertSame([], $recipients->keptBelow('eve', ['storage' => 3, 'path' => 'files/Specs']));
     }
+
+    public function testThePeopleWithOnlyAShareBelowAFolderAreFoundInTheMountCache(): void
+    {
+        $cache = $this->createMock(IUserMountCache::class);
+        $cache->method('getMountsForStorageId')->with(3)->willReturn(array_map(function (array $mount): ICachedMountInfo {
+            $user = $this->createStub(IUser::class);
+            $user->method('getUID')->willReturn($mount[0]);
+            $info = $this->createStub(ICachedMountInfo::class);
+            $info->method('getUser')->willReturn($user);
+            $info->method('getRootInternalPath')->willReturn($mount[1]);
+            $info->method('getRootId')->willReturn($mount[2]);
+
+            return $info;
+        }, [
+            ['ada', '', 1],
+            ['bob', 'files/Specs/Old', 53],
+            ['bob', 'files/Specs/Old', 53],
+            ['carol', 'files/Specs', 50],
+            ['dan', 'files/Specs/Old', 53],
+            ['erin', 'files/Specsheet.pdf', 60],
+            ['frank', 'files/Specs/a.pdf', 51],
+        ]));
+        $accounts = $this->createStub(UserAccountService::class);
+        $accounts->method('hasStoredCredential')->willReturnCallback(static fn (string $uid): bool => $uid !== 'dan');
+        $recipients = new ShareRecipients($this->createStub(IManager::class), $accounts, $cache, $this->createStub(IUserManager::class));
+
+        self::assertSame(
+            [['uid' => 'bob', 'root' => 53], ['uid' => 'frank', 'root' => 51]],
+            $recipients->mountedBelow(['storage' => 3, 'path' => 'files/Specs'], ['ada']),
+        );
+    }
 }
