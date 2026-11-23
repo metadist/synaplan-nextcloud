@@ -17,6 +17,7 @@ use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -32,6 +33,7 @@ class ApiControllerTest extends TestCase
     private IAppManager&MockObject $appManager;
     private LoggerInterface&MockObject $logger;
     private bool $readsFolders = true;
+    private bool $followsChanges = true;
     private ApiController $controller;
 
     protected function setUp(): void
@@ -53,6 +55,7 @@ class ApiControllerTest extends TestCase
 
         $links = $this->createStub(PlatformLinkService::class);
         $links->method('readsFolders')->willReturnCallback(fn (): bool => $this->readsFolders);
+        $links->method('followsChanges')->willReturnCallback(fn (): bool => $this->followsChanges);
 
         $this->controller = new ApiController(
             $this->request,
@@ -331,6 +334,37 @@ class ApiControllerTest extends TestCase
         ], $response->getData());
     }
 
+    /**
+     * @return iterable<string, array{bool, bool|null, bool|null}>
+     */
+    public static function keepingUpToDate(): iterable
+    {
+        yield 'Synaplan hears of changes, the person said nothing' => [true, null, true];
+        yield 'Synaplan hears of changes, the person said no' => [true, false, false];
+        yield 'Synaplan hears of no change' => [false, true, null];
+        yield 'Synaplan hears of no change, the person said nothing' => [false, null, null];
+    }
+
+    #[DataProvider('keepingUpToDate')]
+    public function testAFileIsKeptUpToDateOnlyWhereSynaplanHearsWhenItChanges(bool $follows, ?bool $asked, ?bool $sent): void
+    {
+        $this->followsChanges = $follows;
+        $this->mockUserAndFile();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with($this->anything(), $this->anything(), 'DOCS', $this->anything(), $this->anything(), $this->anything(), $this->anything(), true, $sent)
+            ->willReturn(['success' => true, 'files' => [['chunks_created' => 1, 'vectorized' => true]]]);
+
+        $this->assertTrue($this->controller->uploadToKnowledge(42, 'DOCS', $asked)->getData()['success']);
+    }
+
+    public function testTheDialogOffersKeepingUpToDateOnlyWhereSynaplanHearsOfChanges(): void
+    {
+        $this->assertTrue($this->controller->features()->getData()['followsChanges']);
+
+        $this->followsChanges = false;
+        $this->assertFalse($this->controller->features()->getData()['followsChanges']);
+    }
+
     public function testUploadToKnowledgeFileNotFound(): void
     {
         $user = $this->createMock(IUser::class);
@@ -474,7 +508,7 @@ class ApiControllerTest extends TestCase
         $this->synaplanClient->method('offersSummaryType')->willReturnMap([['translation', false]]);
 
         $this->assertSame(
-            ['translation' => false, 'watches' => true, 'watchShared' => true, 'readFolders' => true],
+            ['translation' => false, 'watches' => true, 'watchShared' => true, 'readFolders' => true, 'followsChanges' => true],
             $this->controller->features()->getData(),
         );
     }

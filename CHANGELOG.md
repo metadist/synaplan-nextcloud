@@ -123,6 +123,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refused without changing the saved setting. While Synaplan gives no
   answer, its last answer of the past day stands in, so an outage does not
   hide them.
+- **"Keep it up to date"** and "If you delete the file here, Synaplan
+  forgets it too." show in "Make searchable by AI" only where Synaplan hears
+  when a file changes: people use their own accounts, this Nextcloud is
+  registered, and Synaplan's configuration offers change reports. Elsewhere
+  the upload says nothing about keeping the file, so Synaplan keeps what it
+  had. The file was stored as kept anyway, so after its first change it
+  read as updating for good, and deleting it here left it in Synaplan.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that

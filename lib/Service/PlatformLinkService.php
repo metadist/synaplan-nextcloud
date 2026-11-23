@@ -182,6 +182,18 @@ class PlatformLinkService
     }
 
     /**
+     * Whether Synaplan hears from here when a person's files change, move or
+     * go: each person reports with their own credential, from a registered
+     * server, to a Synaplan that takes the reports.
+     */
+    public function followsChanges(): bool
+    {
+        return $this->synaplanConfig->isPerUserAccountsEnabled()
+            && $this->synaplanConfig->isRegistered()
+            && in_array('source_events', $this->offers(), true);
+    }
+
+    /**
      * What this Synaplan offers clouds, as its configuration lists it. With
      * platform links off it offers nothing. While Synaplan gives no answer,
      * its last answer of the past day stands in, else it offers nothing, and

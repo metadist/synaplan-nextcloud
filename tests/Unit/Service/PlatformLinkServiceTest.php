@@ -117,6 +117,33 @@ class PlatformLinkServiceTest extends TestCase
         self::assertSame([60], array_values($this->cache->ttls));
     }
 
+    /**
+     * @return iterable<string, array{bool, bool, list<string>, bool}>
+     */
+    public static function changeReports(): iterable
+    {
+        yield 'personal accounts, registered, Synaplan takes the reports' => [true, true, ['deliveries', 'source_events'], true];
+        yield 'one shared key' => [false, true, ['deliveries', 'source_events'], false];
+        yield 'accounts made by the administrator, not registered' => [true, false, ['deliveries', 'source_events'], false];
+        yield 'a Synaplan that takes no reports' => [true, true, ['deliveries', 'pickups', 'read_scope'], false];
+    }
+
+    /**
+     * @param list<string> $capabilities
+     */
+    #[DataProvider('changeReports')]
+    public function testAFileIsKeptUpToDateOnlyWhereSynaplanHearsWhenItChanges(bool $personal, bool $registered, array $capabilities, bool $follows): void
+    {
+        $this->synaplanConfig->method('isPerUserAccountsEnabled')->willReturn($personal);
+        $this->synaplanConfig->method('isRegistered')->willReturn($registered);
+        $this->httpClient->method('get')->willReturn($this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => $capabilities,
+        ])));
+
+        self::assertSame($follows, $this->service()->followsChanges());
+    }
+
     public function testWhileSynaplanGivesNoAnswerItsLastAnswerStandsInAndItIsAskedAgainSoon(): void
     {
         $answer = fn (): IResponse => $this->answer(200, (string) json_encode([

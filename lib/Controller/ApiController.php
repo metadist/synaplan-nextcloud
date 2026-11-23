@@ -132,6 +132,7 @@ class ApiController extends Controller
             'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
             'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED
                 && $this->links->readsFolders(),
+            'followsChanges' => $this->links->followsChanges(),
         ]);
     }
 
@@ -253,7 +254,9 @@ class ApiController extends Controller
                 }
             }
         }
-        $keepSynced = $keepSynced ?? true;
+        // Where Synaplan hears of no change, a kept file would read as
+        // updating for good; without the field Synaplan keeps what it had.
+        $keepSynced = $this->links->followsChanges() ? ($keepSynced ?? true) : null;
 
         if ($groupKey === '') {
             $groupKey = 'DEFAULT';

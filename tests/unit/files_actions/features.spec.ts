@@ -2,6 +2,7 @@ import axios from '@nextcloud/axios'
 import { Permission } from '@nextcloud/files'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+	changesFollowed,
 	loadFeatures,
 	readFoldersAllowed,
 	resetFeatures,
@@ -154,5 +155,26 @@ describe('watch on a shared folder', () => {
 		expect(watchOffered({ 'share-types': '' })).toBe(true)
 		expect(watchOffered({ 'share-types': [] })).toBe(true)
 		expect(watchOffered({ 'mount-type': '' })).toBe(true)
+	})
+})
+
+describe('keep it up to date', () => {
+	it('is not offered while Synaplan has not answered or cannot be asked', async () => {
+		expect(changesFollowed()).toBe(false)
+
+		get.mockRejectedValue(new Error('offline'))
+		await loadFeatures()
+		expect(changesFollowed()).toBe(false)
+	})
+
+	it('is offered only where Synaplan hears when a file changes', async () => {
+		get.mockResolvedValue({ data: { followsChanges: true } })
+		await loadFeatures()
+		expect(changesFollowed()).toBe(true)
+
+		resetFeatures()
+		get.mockResolvedValue({ data: { translation: true } })
+		await loadFeatures()
+		expect(changesFollowed()).toBe(false)
 	})
 })
