@@ -32,7 +32,12 @@ class WatchFeed
 
     public function quietSeconds(): int
     {
-        $value = (int) $this->config->getAppValue(Application::APP_ID, self::QUIET_KEY, (string) self::QUIET_SECONDS);
+        return self::quietSecondsIn($this->config);
+    }
+
+    public static function quietSecondsIn(IConfig $config): int
+    {
+        $value = (int) $config->getAppValue(Application::APP_ID, self::QUIET_KEY, (string) self::QUIET_SECONDS);
 
         return max(0, min(3600, $value));
     }

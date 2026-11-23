@@ -160,10 +160,31 @@ final class WatchReconcileTest extends TestCase
 
     public function testAFileThatCouldNotGoNowIsQueued(): void
     {
-        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW)]));
+        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW - 600)]));
         $this->links->method('reconcileWatch')->willReturn(['process' => ['7'], 'forget' => []]);
         $this->sender->method('file')->willReturn(WatchSender::RETRY);
-        $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', 0, self::NOW + 60);
+        $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW - 600, self::NOW + 60);
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
+    }
+
+    public function testAFileStillChangingWaitsOutTheQuietPeriodInTheQueue(): void
+    {
+        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW - 10)]));
+        $this->links->method('reconcileWatch')->willReturn(['process' => ['7'], 'forget' => []]);
+        $this->sender->expects($this->never())->method('file');
+        $this->index->expects($this->once())->method('enqueue')->with(5, 7, '', self::NOW - 10);
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
+    }
+
+    public function testAFileAlreadyQueuedKeepsItsNewerChange(): void
+    {
+        $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW - 600)]));
+        $this->links->method('reconcileWatch')->willReturn(['process' => ['7'], 'forget' => []]);
+        $this->index->method('queued')->with(5, 7)->willReturn(true);
+        $this->sender->expects($this->never())->method('file');
+        $this->index->expects($this->never())->method('enqueue');
 
         $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
     }
