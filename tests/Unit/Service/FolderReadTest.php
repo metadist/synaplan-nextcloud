@@ -407,6 +407,33 @@ final class FolderReadTest extends TestCase
         self::assertSame([['status' => 'done', 'listed' => 1, 'sent' => 1, 'skipped' => []]], $reports);
     }
 
+    public function testGoingThroughTheFolderStopsWhenTheRequestHasNoTimeLeft(): void
+    {
+        $this->listing = [];
+        for ($i = 1; $i <= 30; $i++) {
+            $file = $this->createStub(File::class);
+            $file->method('getId')->willReturn(1000 + $i);
+            $file->method('getName')->willReturn('f' . $i . '.txt');
+            $file->method('getMTime')->willReturnCallback(function (): int {
+                $this->now++;
+
+                return time();
+            });
+            $file->method('getPath')->willReturn('/ada/files/Invoices/f' . $i . '.txt');
+            $this->listing[] = $file;
+        }
+        $this->scope->method('mayRead')->willReturn(true);
+        $this->links->method('claimPickup')->willReturn($this->claim());
+        $this->links->expects($this->never())->method('submitPickupListing');
+        $this->jobs->expects($this->once())->method('add')->with(PickupJob::class, ['id' => '15']);
+        $start = $this->now;
+
+        $this->reads->handle('15', 'ada');
+
+        self::assertLessThanOrEqual($start + FolderRead::BUDGET_SECONDS, $this->now);
+        self::assertSame(['selector' => $this->claim()['selector']], array_diff_key(reset($this->stored) ?: [], ['uid' => true]));
+    }
+
     public function testNoListingCallOutlastsTheRequestAndTheJobListsAgain(): void
     {
         $this->listing = [];

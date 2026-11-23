@@ -263,6 +263,8 @@ class FolderRead
     /**
      * How long the next step may take: its own limit in the job, no longer
      * than the request has left, and null when that is a second or less.
+     *
+     * @phpstan-impure
      */
     private function secondsFor(?int $deadline, int $limit): ?int
     {
@@ -442,12 +444,15 @@ class FolderRead
      */
     private function filesIn(string $uid, Folder $userFolder, Folder $folder, bool $recursive, int $since, ?int $deadline): ?array
     {
-        $nodes = $folder->getDirectoryListing();
         if ($this->secondsFor($deadline, 1) === null) {
             return null;
         }
         $found = [];
-        foreach ($nodes as $node) {
+        foreach ($folder->getDirectoryListing() as $node) {
+            // Reading a file's metadata can wait on its storage.
+            if ($this->secondsFor($deadline, 1) === null) {
+                return null;
+            }
             if ($node instanceof Folder) {
                 if ($recursive && $this->scope->mayRead($uid, $this->relativeFolder($userFolder, $node))) {
                     $inner = $this->filesIn($uid, $userFolder, $node, true, $since, $deadline);
