@@ -8,7 +8,8 @@
 Bring Synaplan's AI into Nextcloud Files:
 
 - **OAuth client id**: this Nextcloud registers once and signs in as itself, so Synaplan can hand files over automatically. People allow the connection on Synaplan's page. No secret from Synaplan is stored here
-- **Watch with Synaplan**: on a folder or a file, keep new files searchable, or run one of your tasks
+- **Watch with Synaplan**: on a folder or a file, keep new files searchable, or run one of your tasks. New and changed files are sent from here
+- **What Synaplan may read**: an administrator sets the ceiling. Each person chooses watched folders, folders they allow, or all their files, up to that ceiling
 - **Summarize** a document with one click
 - **Translate** a file into another language
 - **Chat about this file**: ask questions about one document
@@ -21,7 +22,7 @@ Bring Synaplan's AI into Nextcloud Files:
 
 Requires a Synaplan with the OAuth2 server for clouds. Three ways to connect: one shared account, accounts created by the administrator, or each person connects their own Synaplan account.
 	]]></description>
-	<version>2.0.0</version>
+	<version>2.1.0</version>
 	<licence>Apache-2.0</licence>
 	<author mail="info@synaplan.com" homepage="https://synaplan.com">Synaplan</author>
 	<namespace>SynaplanIntegration</namespace>
