@@ -77,7 +77,7 @@ import NcRichText from '@nextcloud/vue/components/NcRichText'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError } from '../failures'
 
 interface ChatMessage {
 	role: 'user' | 'assistant'
@@ -145,7 +145,7 @@ async function sendMessage() {
 				deepLink.value = data.deepLink
 			}
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 		}
 	} catch (err: unknown) {
 		failure.value = failureFromError(err)

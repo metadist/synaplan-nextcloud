@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { describeFailure, failureFromError, onConsentStale } from '@/failures'
+import {
+	answerOr,
+	describeFailure,
+	failureFromAnswer,
+	failureFromError,
+	failureOr,
+	onConsentStale,
+} from '@/failures'
 
 /**
  * A rejected request as axios reports it; isAxiosError() checks the flag.
@@ -53,6 +60,14 @@ describe('describeFailure', () => {
 		'watch_needs_edit',
 		'watches_off',
 		'watch_shared_off',
+		'feature_not_configured',
+		'platform_disconnected',
+		'platform_ambiguous',
+		'watch_cap',
+		'storage_quota',
+		'invalid_watch',
+		'model_not_found',
+		'no_access',
 	])('gives %s a sentence of its own', (code) => {
 		const { text } = describeFailure(code)
 
@@ -74,6 +89,67 @@ describe('describeFailure', () => {
 		expect(describeFailure('email_already_used').text).toContain('email address')
 	})
 
+	it('names a turned-off cloud files module, and a missing right', () => {
+		expect(
+			describeFailure('feature_not_configured', undefined, {
+				module: 'cloud_files',
+			}).text,
+		).toBe(
+			'Watching folders and files is turned off on this Synaplan. Ask your administrator to turn it on.',
+		)
+		expect(
+			describeFailure('insufficient_scope', undefined, {
+				required: ['cloud:watch'],
+			}),
+		).toEqual({
+			text: 'Your Synaplan connection does not allow watching folders and files. Connect your Synaplan account again.',
+			settingsUrl: expect.stringMatching(
+				/\/settings\/user\/synaplan_integration$/,
+			),
+		})
+		expect(describeFailure('no_access').text).toBe(
+			'You do not have access to this folder or file.',
+		)
+		expect(describeFailure('watch_needs_edit').text).toContain(
+			'permission to edit',
+		)
+	})
+
+	it('says when Synaplan is turned off for this Nextcloud, and adds a limit', () => {
+		expect(
+			describeFailure(
+				'platform_disconnected',
+				'Synaplan is turned off for this cloud.',
+			).text,
+		).toBe('Synaplan is turned off for this Nextcloud. Ask your administrator.')
+		expect(
+			describeFailure(
+				'watch_cap',
+				'You can watch 20 folders. Stop one before watching another.',
+			).text,
+		).toBe(
+			'You have reached the limit for watching folders and files. You can watch 20 folders. Stop one before watching another.',
+		)
+	})
+
+	it('keeps Synaplan’s model sentence and hides an untranslated app sentence', () => {
+		expect(
+			describeFailure(
+				'model_not_found',
+				'The selected model is not available.',
+			).text,
+		).toBe('The selected model is not available.')
+		expect(describeFailure('Unknown conversation').text).toBe(
+			describeFailure().text,
+		)
+		expect(
+			failureOr(
+				rejected(404, { error: 'Unknown conversation' }),
+				'Could not open this conversation. Try again.',
+			),
+		).toBe('Could not open this conversation. Try again.')
+	})
+
 	it("shows Synaplan's own sentence for a code the app does not know", () => {
 		expect(
 			describeFailure('synaplan_rejected', 'Try a shorter document.'),
@@ -91,6 +167,35 @@ describe('describeFailure', () => {
 })
 
 describe('failureFromError', () => {
+	it('reads the module and the missing right from the answer', () => {
+		expect(
+			failureFromAnswer({
+				success: false,
+				error: 'feature_not_configured',
+				module: 'cloud_files',
+				docs: 'modules/cloud-files',
+			}).text,
+		).toContain('Watching folders and files is turned off')
+		expect(
+			failureFromError(
+				rejected(403, {
+					error: 'insufficient_scope',
+					required: ['files'],
+					granted: ['chat'],
+				}),
+			).text,
+		).toContain('using files')
+		expect(
+			failureOr(
+				rejected(500, '<html>Internal Server Error</html>'),
+				'Could not save that folder.',
+			),
+		).toBe('Could not save that folder.')
+		expect(answerOr({ error: 'no_access' }, 'Could not save that folder.')).toBe(
+			'You do not have access to this folder or file.',
+		)
+	})
+
 	it("reads the app's code and Synaplan's sentence from the answer", () => {
 		expect(
 			failureFromError(

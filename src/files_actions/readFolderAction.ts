@@ -6,7 +6,7 @@ import { showError, showSuccess } from '@nextcloud/dialogs'
 import { Permission } from '@nextcloud/files'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError } from '../failures'
 import { extractNodeFromExec, extractNodesFromEnabled } from './compat'
 import { readFoldersAllowed } from './features'
 
@@ -71,10 +71,7 @@ export const readFolderAction: IFileAction = {
 					t('synaplan_integration', 'Synaplan may read this folder.'),
 				)
 			} else {
-				showError(
-					refusal(data.error)
-						?? describeFailure(data.error, data.message).text,
-				)
+				showError(refusal(data.error) ?? failureFromAnswer(data).text)
 			}
 		} catch (error: unknown) {
 			const code = isAxiosError(error) ? error.response?.data?.error : ''

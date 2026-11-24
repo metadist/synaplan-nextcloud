@@ -48,6 +48,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A failed Synaplan action names the reason.** Watching while cloud files
+  are turned off, a missing right, a full watch limit or a full storage says
+  so, instead of "Something went wrong." A folder or file the person cannot
+  read says they have no access.
 - **Withdrawing consent while a token refresh is under way** no longer lets
   the refresh's answer store the grant again, also when the withdrawal
   could not wait for the refresh. Revoking waits for the refresh and ends

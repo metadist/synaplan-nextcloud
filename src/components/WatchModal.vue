@@ -164,7 +164,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError } from '../failures'
 
 const props = defineProps<{
 	fileId: string
@@ -296,7 +296,7 @@ async function loadOptions() {
 			return
 		}
 		if (!data.success) {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 			return
 		}
 		const loaded = Array.isArray(data.tasks) ? data.tasks : []
@@ -362,7 +362,7 @@ async function start() {
 			},
 		)
 		if (!data.success) {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 			return
 		}
 		started.value = true

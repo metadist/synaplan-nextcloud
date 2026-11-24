@@ -364,7 +364,7 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
 import { streamChat } from '../chat/stream'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError, failureOr } from '../failures'
 
 interface MediaInfo {
 	url: string
@@ -722,7 +722,7 @@ async function handleMediaGeneration(command: 'pic' | 'vid', prompt: string) {
 				},
 			})
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 		}
 	} catch (err: unknown) {
 		failure.value = failureFromError(err)
@@ -783,7 +783,12 @@ async function handleChatMessage(text: string) {
 			appendDelta,
 		)
 		if (outcome.kind === 'failed') {
-			failure.value = describeFailure(outcome.code, outcome.message)
+			failure.value = failureFromAnswer({
+				error: outcome.code,
+				message: outcome.message,
+				module: outcome.module,
+				required: outcome.required,
+			})
 		} else if (outcome.kind === 'unavailable' && assistantIndex === -1) {
 			await handleChatMessageBlocking(payload)
 		}
@@ -805,7 +810,7 @@ async function handleChatMessageBlocking(payload: Record<string, unknown>) {
 		if (data.success) {
 			messages.value.push({ role: 'assistant', text: data.response })
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 		}
 	} catch (err: unknown) {
 		failure.value = failureFromError(err)
@@ -836,7 +841,7 @@ async function saveMedia(messageIdx: number) {
 			msg.media.saved = true
 			msg.media.savedPath = data.path
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 		}
 	} catch (err: unknown) {
 		failure.value = failureFromError(err)
@@ -925,11 +930,14 @@ async function openConversation(id: string) {
 		)
 		failure.value = null
 		await scrollToBottom()
-	} catch {
+	} catch (error: unknown) {
 		failure.value = {
-			text: t(
-				'synaplan_integration',
-				'Could not open this conversation. Try again.',
+			text: failureOr(
+				error,
+				t(
+					'synaplan_integration',
+					'Could not open this conversation. Try again.',
+				),
 			),
 		}
 	}
@@ -957,12 +965,15 @@ async function persistConversation() {
 		const saved = data.conversation as Conversation
 		const rest = conversations.value.filter((item) => item.id !== saved.id)
 		conversations.value = [saved, ...rest]
-	} catch {
+	} catch (error: unknown) {
 		if (!failure.value) {
 			failure.value = {
-				text: t(
-					'synaplan_integration',
-					'Could not save this conversation. Try again.',
+				text: failureOr(
+					error,
+					t(
+						'synaplan_integration',
+						'Could not save this conversation. Try again.',
+					),
 				),
 			}
 		}
@@ -974,11 +985,14 @@ async function removeConversation() {
 	const id = currentId.value
 	try {
 		await axios.delete(`${baseUrl}/api/v1/research/conversations/${id}`)
-	} catch {
+	} catch (error: unknown) {
 		failure.value = {
-			text: t(
-				'synaplan_integration',
-				'Could not remove this conversation. Try again.',
+			text: failureOr(
+				error,
+				t(
+					'synaplan_integration',
+					'Could not remove this conversation. Try again.',
+				),
 			),
 		}
 		return

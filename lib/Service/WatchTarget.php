@@ -58,8 +58,8 @@ final class WatchTarget
 
     /**
      * @return array{target_kind: string, target_id: string, target_path: string}
-     * @throws NotFoundException the id is not a readable file or folder of this kind
-     * @throws FailureException the person may not edit it, or it is shared while watching shared folders is off
+     * @throws NotFoundException the id is not a file or folder of this kind
+     * @throws FailureException the person may not read or edit it, or it is shared while watching shared folders is off
      */
     public function resolve(string $kind, string $id): array
     {
@@ -72,14 +72,20 @@ final class WatchTarget
             $home = $this->rootFolder->getUserFolder($user->getUID());
             $node = $home->getFirstNodeById((int) $id);
         } catch (NotPermittedException) {
-            throw new NotFoundException('Choose a folder or a file.');
+            throw new FailureException(
+                new Failure(Http::STATUS_FORBIDDEN, Failure::NO_ACCESS),
+                'Watching needs permission to read the target',
+            );
         }
 
         if (!$node instanceof File && !$node instanceof Folder) {
             throw new NotFoundException('Choose a folder or a file.');
         }
         if (($node->getPermissions() & Constants::PERMISSION_READ) === 0) {
-            throw new NotFoundException('Choose a folder or a file.');
+            throw new FailureException(
+                new Failure(Http::STATUS_FORBIDDEN, Failure::NO_ACCESS),
+                'Watching needs permission to read the target',
+            );
         }
 
         $actual = $node instanceof Folder ? 'folder' : 'file';

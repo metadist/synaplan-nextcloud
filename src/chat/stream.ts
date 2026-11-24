@@ -8,7 +8,13 @@ export type StreamOutcome =
 	/** Deltas arrived and the stream ended without an error. */
 	| { kind: 'answered' }
 	/** The app refused the request or the stream ended with an error event. */
-	| { kind: 'failed'; code?: string; message?: string }
+	| {
+			kind: 'failed'
+			code?: string
+			message?: string
+			module?: string
+			required?: string[]
+	  }
 	/** No answer could be streamed; the caller may ask the blocking endpoint. */
 	| { kind: 'unavailable' }
 
@@ -43,6 +49,37 @@ export function readEvents(buffer: string): { payloads: string[]; rest: string }
 }
 
 /**
+ * The code, sentence, module and missing right an error event or a refusal carries.
+ * Absent fields stay off the object so a caller can compare it exactly.
+ *
+ * @param body The error object, or the app's answer
+ */
+function namedFailure(body: Record<string, unknown>): {
+	code?: string
+	message?: string
+	module?: string
+	required?: string[]
+} {
+	const code =
+		typeof body.code === 'string'
+			? body.code
+			: typeof body.error === 'string'
+				? body.error
+				: undefined
+	const message = typeof body.message === 'string' ? body.message : undefined
+	const module = typeof body.module === 'string' ? body.module : undefined
+	const required = Array.isArray(body.required)
+		? body.required.filter((item): item is string => typeof item === 'string')
+		: []
+	return {
+		...(code ? { code } : {}),
+		...(message ? { message } : {}),
+		...(module ? { module } : {}),
+		...(required.length > 0 ? { required } : {}),
+	}
+}
+
+/**
  * Stream one answer.
  *
  * @param url The app's stream endpoint
@@ -55,7 +92,12 @@ export async function streamChat(
 	onDelta: DeltaHandler,
 ): Promise<StreamOutcome> {
 	let answered = false
-	let failure: { code?: string; message?: string } | null = null
+	let failure: {
+		code?: string
+		message?: string
+		module?: string
+		required?: string[]
+	} | null = null
 
 	try {
 		const response = await fetch(url, {
@@ -94,11 +136,8 @@ export async function streamChat(
 				}
 				try {
 					const json = JSON.parse(data)
-					if (json.error) {
-						failure = {
-							code: json.error.code,
-							message: json.error.message,
-						}
+					if (json.error && typeof json.error === 'object') {
+						failure = namedFailure(json.error)
 						continue
 					}
 					const delta = json.choices?.[0]?.delta?.content
@@ -135,7 +174,7 @@ async function refusal(response: Pick<Response, 'json'>): Promise<StreamOutcome>
 	try {
 		const data = await response.json()
 		if (typeof data?.error === 'string') {
-			return { kind: 'failed', code: data.error, message: data.message }
+			return { kind: 'failed', ...namedFailure(data) }
 		}
 	} catch {
 		// Not the app's JSON: a proxy or server page.

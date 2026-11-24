@@ -231,6 +231,7 @@ import {
 	invalidateCloudStatusCache,
 	onCloudStatusInvalidated,
 } from '../cloud_state/statusBatcher'
+import { failureFromAnswer, failureFromError } from '../failures'
 import { controlsFor, policyStopped } from '../watchControls'
 import { resumeWatch, setWatchState, stopWatch } from '../watches'
 
@@ -363,9 +364,11 @@ async function removeFromSynaplan(): Promise<void> {
 			showSuccess(
 				t('synaplan_integration', 'This file is no longer searchable by AI'),
 			)
+		} else {
+			showError(failureFromAnswer(data).text)
 		}
-	} catch {
-		showError(t('synaplan_integration', "Couldn't check Synaplan right now"))
+	} catch (error: unknown) {
+		showError(failureFromError(error).text)
 	} finally {
 		removing.value = false
 	}

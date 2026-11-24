@@ -542,6 +542,7 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 import AdminAiUsers from './AdminAiUsers.vue'
 import AdminConnection from './AdminConnection.vue'
 import AdminRegistration from './AdminRegistration.vue'
+import { answerOr, failureOr } from '../failures'
 
 interface LanguageOption {
 	id: string
@@ -874,19 +875,18 @@ async function testConnection() {
 		} else {
 			showMessage(
 				t('synaplan_integration', 'Connection failed: {error}', {
-					error: data.error,
+					error: answerOr(
+						data,
+						t('synaplan_integration', 'Unknown error'),
+					),
 				}),
 				'error',
 			)
 		}
 	} catch (err: unknown) {
-		let errorMsg = t('synaplan_integration', 'Unknown error')
-		if (err instanceof Error) {
-			errorMsg = err.message
-		}
 		showMessage(
 			t('synaplan_integration', 'Connection test failed: {error}', {
-				error: errorMsg,
+				error: failureOr(err, t('synaplan_integration', 'Unknown error')),
 			}),
 			'error',
 		)
@@ -920,23 +920,21 @@ async function registerInstance() {
 			)
 		} else {
 			showMessage(
-				data.error
-					|| t(
-						'synaplan_integration',
-						'Could not register this Nextcloud.',
-					),
+				answerOr(
+					data,
+					t('synaplan_integration', 'Could not register this Nextcloud.'),
+				),
 				'error',
 			)
 		}
 	} catch (err: unknown) {
-		let errorMsg = t(
-			'synaplan_integration',
-			'Could not register this Nextcloud.',
+		showMessage(
+			failureOr(
+				err,
+				t('synaplan_integration', 'Could not register this Nextcloud.'),
+			),
+			'error',
 		)
-		if (err instanceof Error) {
-			errorMsg = err.message
-		}
-		showMessage(errorMsg, 'error')
 	} finally {
 		registering.value = false
 	}

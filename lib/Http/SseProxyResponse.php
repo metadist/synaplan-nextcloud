@@ -150,6 +150,12 @@ class SseProxyResponse extends Response implements ICallbackResponse
         if ($failure->message !== null) {
             $error['message'] = $failure->message;
         }
+        if ($failure->module !== null) {
+            $error['module'] = $failure->module;
+        }
+        if ($failure->required !== []) {
+            $error['required'] = $failure->required;
+        }
 
         return "\n\ndata: " . json_encode(['error' => $error]) . "\n\ndata: [DONE]\n\n";
     }

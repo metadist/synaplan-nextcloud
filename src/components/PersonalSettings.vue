@@ -176,6 +176,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { answerOr, failureOr } from '../failures'
 
 type ReadMode = 'watched' | 'allowed' | 'all'
 
@@ -297,10 +298,10 @@ async function loadFolder() {
 		if (READ_MODES.includes(data.read_scope_ceiling)) {
 			readCeiling.value = data.read_scope_ceiling
 		}
-	} catch {
-		banner.value = t(
-			'synaplan_integration',
-			'Could not load Synaplan connection.',
+	} catch (error: unknown) {
+		banner.value = failureOr(
+			error,
+			t('synaplan_integration', 'Could not load Synaplan connection.'),
 		)
 		bannerType.value = 'error'
 	}
@@ -329,11 +330,17 @@ async function saveFolder() {
 			banner.value = t('synaplan_integration', 'Settings saved successfully.')
 			bannerType.value = 'success'
 		} else {
-			banner.value = t('synaplan_integration', 'Could not save that folder.')
+			banner.value = answerOr(
+				data,
+				t('synaplan_integration', 'Could not save that folder.'),
+			)
 			bannerType.value = 'error'
 		}
-	} catch {
-		banner.value = t('synaplan_integration', 'Could not save that folder.')
+	} catch (error: unknown) {
+		banner.value = failureOr(
+			error,
+			t('synaplan_integration', 'Could not save that folder.'),
+		)
 		bannerType.value = 'error'
 	} finally {
 		savingFolder.value = false
@@ -405,11 +412,17 @@ async function saveScope() {
 			banner.value = t('synaplan_integration', 'Settings saved successfully.')
 			bannerType.value = 'success'
 		} else {
-			banner.value = t('synaplan_integration', 'Could not save that folder.')
+			banner.value = answerOr(
+				data,
+				t('synaplan_integration', 'Could not save that folder.'),
+			)
 			bannerType.value = 'error'
 		}
-	} catch {
-		banner.value = t('synaplan_integration', 'Could not save that folder.')
+	} catch (error: unknown) {
+		banner.value = failureOr(
+			error,
+			t('synaplan_integration', 'Could not save that folder.'),
+		)
 		bannerType.value = 'error'
 	} finally {
 		savingScope.value = false
@@ -424,10 +437,10 @@ async function loadStatus() {
 	try {
 		const { data } = await axios.get(`${baseUrl}/api/v1/link/status`)
 		status.value = data || {}
-	} catch {
-		banner.value = t(
-			'synaplan_integration',
-			'Could not load Synaplan connection.',
+	} catch (error: unknown) {
+		banner.value = failureOr(
+			error,
+			t('synaplan_integration', 'Could not load Synaplan connection.'),
 		)
 		bannerType.value = 'error'
 	} finally {
@@ -448,8 +461,11 @@ async function disconnect() {
 			'Disconnected. Connect again when you want to use Synaplan here.',
 		)
 		bannerType.value = 'success'
-	} catch {
-		banner.value = t('synaplan_integration', 'Could not disconnect. Try again.')
+	} catch (error: unknown) {
+		banner.value = failureOr(
+			error,
+			t('synaplan_integration', 'Could not disconnect. Try again.'),
+		)
 		bannerType.value = 'error'
 	} finally {
 		busy.value = false

@@ -287,7 +287,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
 import { invalidateCloudStatusCache } from '../cloud_state/statusBatcher'
-import { describeFailure, failureFromError } from '../failures'
+import { failureFromAnswer, failureFromError } from '../failures'
 
 const props = defineProps<{
 	fileId: number
@@ -438,7 +438,7 @@ async function removeFromKnowledge() {
 			isStale.value = false
 			invalidateCloudStatusCache()
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 			showError(failure.value.text)
 		}
 	} catch (err: unknown) {
@@ -498,7 +498,7 @@ async function uploadFile() {
 			}
 			showError(failure.value.text)
 		} else {
-			failure.value = describeFailure(data.error, data.message)
+			failure.value = failureFromAnswer(data)
 			showError(failure.value.text)
 		}
 	} catch (err: unknown) {
