@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Http\Failure;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCP\AppFramework\Controller;
@@ -26,6 +28,7 @@ class PreferencesController extends Controller
         private IConfig $config,
         private IUserSession $userSession,
         private ReadScope $scope,
+        private PlatformLinkService $links,
     ) {
         parent::__construct(Application::APP_ID, $request);
     }
@@ -46,32 +49,32 @@ class PreferencesController extends Controller
             'read_scope' => $this->scope->get($uid),
             'read_folder_cap' => $this->scope->cap(),
             'read_scope_ceiling' => $this->scope->ceiling(),
+            'reads_folders' => $this->links->readsFolders(),
         ]);
     }
 
     /**
-     * Add one folder the person lets Synaplan read.
+     * Add the folder at this path, which the person lets Synaplan read.
+     * Refused while Synaplan reads no folders.
      *
      * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_FORBIDDEN, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
-    public function allowFolder(string $fileId = '', string $path = ''): JSONResponse
+    public function allowFolder(string $path = ''): JSONResponse
     {
         $uid = $this->uid();
         if ($uid === null) {
             return new JSONResponse(['success' => false, 'error' => 'Not authenticated'], Http::STATUS_UNAUTHORIZED);
         }
+        if (!$this->links->readsFolders()) {
+            return self::unavailable();
+        }
         $raw = file_get_contents('php://input');
         $decoded = $raw !== false && $raw !== '' ? json_decode($raw, true) : [];
-        if (is_array($decoded)) {
-            if ($fileId === '' && isset($decoded['fileId'])) {
-                $fileId = (string) $decoded['fileId'];
-            }
-            if ($path === '' && isset($decoded['path'])) {
-                $path = (string) $decoded['path'];
-            }
+        if (is_array($decoded) && $path === '' && isset($decoded['path'])) {
+            $path = (string) $decoded['path'];
         }
-        $reason = $this->scope->allow($uid, $fileId, $path);
+        $reason = $this->scope->allow($uid, $path);
         if ($reason === 'ceiling') {
             return new JSONResponse(['success' => false, 'error' => 'ceiling'], Http::STATUS_FORBIDDEN);
         }
@@ -90,7 +93,10 @@ class PreferencesController extends Controller
     }
 
     /**
-     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
+     * A read setting is refused while Synaplan reads no folders, and then
+     * nothing is stored.
+     *
+     * @return JSONResponse<Http::STATUS_BAD_REQUEST, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_OK, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_UNAUTHORIZED, array<string, mixed>, array{}>
      */
     #[NoAdminRequired]
     public function save(?string $copy_folder = null): JSONResponse
@@ -115,6 +121,9 @@ class PreferencesController extends Controller
             }
         }
         $scope = $this->request->getParam('read_scope');
+        if (is_array($scope) && !$this->links->readsFolders()) {
+            return self::unavailable();
+        }
         if (is_array($scope)) {
             $mode = (string) ($scope['mode'] ?? '');
             $folders = [];
@@ -138,6 +147,14 @@ class PreferencesController extends Controller
             'copy_folder' => (string) $this->config->getUserValue($uid, Application::APP_ID, SynaplanFolders::COPY_FOLDER, ''),
             'read_scope' => $this->scope->get($uid),
         ]);
+    }
+
+    /**
+     * @return JSONResponse<Http::STATUS_CONFLICT, array<string, mixed>, array{}>
+     */
+    private static function unavailable(): JSONResponse
+    {
+        return new JSONResponse(['success' => false, 'error' => Failure::FOLDER_READS_OFF], Http::STATUS_CONFLICT);
     }
 
     private function uid(): ?string

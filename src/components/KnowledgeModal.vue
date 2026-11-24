@@ -206,7 +206,7 @@
 						@tag="onNewTag" />
 				</div>
 
-				<div class="keep-synced-field">
+				<div v-if="followsChanges" class="keep-synced-field">
 					<NcCheckboxRadioSwitch
 						v-model="keepSynced"
 						type="checkbox"
@@ -288,6 +288,7 @@ import AiConsentGate from './AiConsentGate.vue'
 import FailureNote from './FailureNote.vue'
 import { invalidateCloudStatusCache } from '../cloud_state/statusBatcher'
 import { failureFromAnswer, failureFromError } from '../failures'
+import { changesFollowed, loadFeatures } from '../files_actions/features'
 
 const props = defineProps<{
 	fileId: number
@@ -305,6 +306,7 @@ const loadingGroups = ref(false)
 const failure = ref<Failure | null>(null)
 const selectedGroup = ref('')
 const keepSynced = ref(true)
+const followsChanges = ref(changesFollowed())
 const groupOptions = ref<string[]>([])
 const uploadSuccess = ref(false)
 const chunksCreated = ref(0)
@@ -477,7 +479,9 @@ async function uploadFile() {
 	try {
 		const { data } = await axios.post(
 			`${baseUrl}/api/v1/knowledge/upload/${props.fileId}`,
-			{ groupKey: selectedGroup.value, keepSynced: keepSynced.value },
+			followsChanges.value
+				? { groupKey: selectedGroup.value, keepSynced: keepSynced.value }
+				: { groupKey: selectedGroup.value },
 		)
 
 		const created = data.chunksCreated || 0
@@ -523,6 +527,9 @@ const dialogTitle = t('synaplan_integration', 'Make searchable by AI')
 onMounted(() => {
 	loadGroups()
 	loadStatus()
+	loadFeatures().then(() => {
+		followsChanges.value = changesFollowed()
+	})
 })
 </script>
 

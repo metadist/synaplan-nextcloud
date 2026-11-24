@@ -21,7 +21,7 @@ use Psr\Log\NullLogger;
 final class WatchReconcileTest extends TestCase
 {
     private const NOW = 1700000000;
-    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
 
     private WatchIndex&MockObject $index;
     private WatchSender&MockObject $sender;
@@ -93,6 +93,21 @@ final class WatchReconcileTest extends TestCase
         self::assertSame(1, $this->reconcile()->waiting($paused));
     }
 
+    public function testAFileMovedInWhilePausedCountsWhateverItsTime(): void
+    {
+        $paused = ['state' => 'paused', 'since' => self::NOW - 600] + self::WATCH;
+        $this->watching($paused, $this->folder([
+            $this->file(7, 'e7', self::NOW - 365 * 86400),
+            $this->file(8, 'e8', self::NOW - 7200),
+        ]));
+        $this->index->method('queuedFiles')->with(5)->willReturn([7]);
+        $this->links->expects($this->once())->method('reconcileWatch')
+            ->with('ada', 5, [['id' => '7', 'version' => 'e7']])
+            ->willReturn(['process' => ['7'], 'forget' => []]);
+
+        self::assertSame(1, $this->reconcile()->waiting($paused));
+    }
+
     public function testAHeldTargetHasNothingWaiting(): void
     {
         $this->watching(self::WATCH, $this->folder([$this->file(7, 'e7', self::NOW)]));
@@ -130,6 +145,64 @@ final class WatchReconcileTest extends TestCase
         $this->reconcile()->run(self::NOW, microtime(true) + 60, false);
 
         self::assertSame([500, 1], $sizes);
+    }
+
+    public function testAPassThatRunsOutOfTimeStopsBetweenQuestionsAndIsTriedAgain(): void
+    {
+        $files = [];
+        for ($id = 1; $id <= 501; $id++) {
+            $files[] = $this->file($id, 'e' . $id, self::NOW);
+        }
+        $this->watching(self::WATCH, $this->folder($files));
+        $this->links->expects($this->once())->method('reconcileWatch')->willReturnCallback(
+            static function (): array {
+                usleep(50000);
+
+                return ['process' => [], 'forget' => []];
+            },
+        );
+        $this->index->expects($this->never())->method('markReconciled');
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 0.02, false);
+    }
+
+    public function testALaterRunGoesOnWithTheFilesAPassCutShortDidNotReach(): void
+    {
+        $files = [];
+        for ($id = 501; $id >= 1; $id--) {
+            $files[] = $this->file($id, 'e' . $id, self::NOW);
+        }
+        $this->watching(self::WATCH, $this->folder($files));
+        $after = 0;
+        $this->index->method('reconcileAfter')->willReturnCallback(static function () use (&$after): int {
+            return $after;
+        });
+        $this->index->method('continueAfter')->willReturnCallback(static function (int $watch, int $fileId) use (&$after): void {
+            $after = $fileId;
+        });
+        $reconciled = [];
+        $this->index->method('markReconciled')->willReturnCallback(static function (int $watch, int $now) use (&$after, &$reconciled): void {
+            $after = 0;
+            $reconciled[] = $now;
+        });
+        $asked = [];
+        $this->links->method('reconcileWatch')->willReturnCallback(
+            static function (string $uid, int $watch, array $items) use (&$asked): array {
+                $asked[] = [$items[0]['id'], $items[count($items) - 1]['id']];
+                usleep(50000);
+
+                return ['process' => [], 'forget' => []];
+            },
+        );
+
+        $this->reconcile()->run(self::NOW, microtime(true) + 0.02, false);
+        self::assertSame([['1', '500']], $asked);
+        self::assertSame([], $reconciled);
+
+        $this->reconcile()->run(self::NOW + 60, microtime(true) + 0.02, false);
+        self::assertSame([['1', '500'], ['501', '501']], $asked);
+        self::assertSame([self::NOW + 60], $reconciled);
+        self::assertSame(0, $after);
     }
 
     public function testAWatchReconciledWithinTheIntervalWaits(): void

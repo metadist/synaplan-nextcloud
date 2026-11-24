@@ -1,10 +1,11 @@
 import axios from '@nextcloud/axios'
-import { showConfirmation } from '@nextcloud/dialogs'
+import { showConfirmation, showError } from '@nextcloud/dialogs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resumeWatch } from '@/watches'
 
 vi.mock('@nextcloud/axios', () => ({
 	default: { get: vi.fn(), patch: vi.fn() },
+	isAxiosError: () => false,
 }))
 vi.mock('@nextcloud/dialogs', () => ({
 	showConfirmation: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('@nextcloud/router', () => ({
 const get = vi.mocked(axios.get)
 const patch = vi.mocked(axios.patch)
 const confirm = vi.mocked(showConfirmation)
+const error = vi.mocked(showError)
 
 describe('resuming a watch', () => {
 	afterEach(() => {
@@ -85,11 +87,13 @@ describe('resuming a watch', () => {
 		)
 	})
 
-	it('still resumes when the count cannot be read', async () => {
+	it('stays paused and says why when the count cannot be read', async () => {
 		get.mockRejectedValue(new Error('Network Error'))
 		patch.mockResolvedValue({ data: { watch: { id: 5, state: 'active' } } })
 
-		expect(await resumeWatch(5)).toEqual({ id: 5, state: 'active' })
+		expect(await resumeWatch(5)).toBeNull()
 		expect(confirm).not.toHaveBeenCalled()
+		expect(patch).not.toHaveBeenCalled()
+		expect(error).toHaveBeenCalledOnce()
 	})
 })

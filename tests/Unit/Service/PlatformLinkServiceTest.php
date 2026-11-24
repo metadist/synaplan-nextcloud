@@ -10,6 +10,8 @@ use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCache;
+use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCacheFactory;
 use OCP\App\IAppManager;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -33,9 +35,11 @@ class PlatformLinkServiceTest extends TestCase
     private SynaplanConfig&MockObject $synaplanConfig;
     private UserAccountService&MockObject $userAccounts;
     private LoggerInterface&MockObject $logger;
+    private ArrayCache $cache;
 
     protected function setUp(): void
     {
+        $this->cache = new ArrayCache();
         $this->clientService = $this->createMock(IClientService::class);
         $this->httpClient = $this->createMock(IClient::class);
         $this->config = $this->createMock(IConfig::class);
@@ -64,7 +68,157 @@ class PlatformLinkServiceTest extends TestCase
             $this->synaplanConfig,
             $this->userAccounts,
             $this->logger,
+            new ArrayCacheFactory($this->cache),
         );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, bool}>
+     */
+    public static function configurations(): iterable
+    {
+        yield 'folder reads and the read setting' => [['capabilities' => ['deliveries', 'pickups', 'read_scope']], true];
+        yield 'no read setting' => [['capabilities' => ['deliveries', 'pickups']], false];
+        yield 'no folder reads' => [['capabilities' => ['deliveries', 'read_scope']], false];
+        yield 'a configuration without capabilities' => [[], false];
+    }
+
+    /**
+     * @param array<string, mixed> $offers
+     */
+    #[DataProvider('configurations')]
+    public function testSynaplanReadsFoldersOnlyWhenItOffersFolderReadsAndTheReadSetting(array $offers, bool $reads): void
+    {
+        $this->httpClient->expects($this->once())->method('get')
+            ->with('https://synaplan.example/.well-known/synaplan-configuration', $this->callback(
+                static fn (array $options): bool => $options['timeout'] === 10,
+            ))
+            ->willReturn($this->answer(200, (string) json_encode(['issuer' => 'https://synaplan.example'] + $offers)));
+
+        self::assertSame([$reads, $reads], [$this->service()->readsFolders(), $this->service()->readsFolders()]);
+        self::assertSame([300, 86400], array_values($this->cache->ttls));
+    }
+
+    public function testASynaplanWithPlatformLinksOffReadsNoFolders(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')->willReturn($this->answer(404, ''));
+
+        self::assertFalse($this->service()->readsFolders());
+        self::assertFalse($this->service()->readsFolders());
+        self::assertSame([300, 86400], array_values($this->cache->ttls));
+    }
+
+    public function testASynaplanThatDoesNotAnswerIsAskedAgainAfterAMinute(): void
+    {
+        $this->httpClient->expects($this->once())->method('get')->willThrowException(new \RuntimeException('cURL error 28'));
+
+        self::assertFalse($this->service()->readsFolders());
+        self::assertFalse($this->service()->readsFolders());
+        self::assertSame([60], array_values($this->cache->ttls));
+    }
+
+    /**
+     * @return iterable<string, array{bool, bool, list<string>, bool}>
+     */
+    public static function changeReports(): iterable
+    {
+        yield 'personal accounts, registered, Synaplan takes the reports' => [true, true, ['deliveries', 'source_events'], true];
+        yield 'one shared key' => [false, true, ['deliveries', 'source_events'], false];
+        yield 'accounts made by the administrator, not registered' => [true, false, ['deliveries', 'source_events'], false];
+        yield 'a Synaplan that takes no reports' => [true, true, ['deliveries', 'pickups', 'read_scope'], false];
+    }
+
+    /**
+     * @param list<string> $capabilities
+     */
+    #[DataProvider('changeReports')]
+    public function testAFileIsKeptUpToDateOnlyWhereSynaplanHearsWhenItChanges(bool $personal, bool $registered, array $capabilities, bool $follows): void
+    {
+        $this->synaplanConfig->method('isPerUserAccountsEnabled')->willReturn($personal);
+        $this->synaplanConfig->method('isRegistered')->willReturn($registered);
+        $this->httpClient->method('get')->willReturn($this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => $capabilities,
+        ])));
+
+        self::assertSame($follows, $this->service()->followsChanges());
+    }
+
+    /**
+     * @return iterable<string, array{bool, bool, list<string>, bool}>
+     */
+    public static function watchOffers(): iterable
+    {
+        $on = ['deliveries', 'pickups', 'read_scope', 'cloud_status', 'source_events', 'watches'];
+        yield 'personal accounts, registered, cloud files on' => [true, true, $on, true];
+        yield 'cloud files off' => [true, true, ['deliveries', 'pickups', 'read_scope'], false];
+        yield 'one shared key on a registered server' => [false, true, $on, false];
+        yield 'personal accounts on a server not registered' => [true, false, $on, false];
+    }
+
+    /**
+     * @param list<string> $capabilities
+     */
+    #[DataProvider('watchOffers')]
+    public function testAWatchIsOfferedOnlyWhereItsFilesCanReachSynaplan(bool $personal, bool $registered, array $capabilities, bool $takes): void
+    {
+        $this->synaplanConfig->method('isPerUserAccountsEnabled')->willReturn($personal);
+        $this->synaplanConfig->method('isRegistered')->willReturn($registered);
+        $this->httpClient->method('get')->willReturn($this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => $capabilities,
+        ])));
+
+        self::assertSame($takes, $this->service()->takesWatches());
+    }
+
+    public function testWhileSynaplanGivesNoAnswerItsLastAnswerStandsInAndItIsAskedAgainSoon(): void
+    {
+        $answer = fn (): IResponse => $this->answer(200, (string) json_encode([
+            'issuer' => 'https://synaplan.example',
+            'capabilities' => ['deliveries', 'pickups', 'read_scope'],
+        ]));
+        $this->httpClient->method('get')->willReturnCallback(static function () use (&$answer): IResponse {
+            return $answer();
+        });
+        self::assertTrue($this->service()->readsFolders());
+
+        foreach ([
+            'down' => fn (): IResponse => $this->answer(503, ''),
+            'unreachable' => static fn (): IResponse => throw new \RuntimeException('cURL error 7: Failed to connect'),
+        ] as $case => $responder) {
+            $this->expireTheAnswer();
+            $answer = $responder;
+
+            self::assertTrue($this->service()->readsFolders(), $case);
+            self::assertSame([60], $this->askedAgainAfter(), $case);
+        }
+
+        $this->expireTheAnswer();
+        $answer = fn (): IResponse => $this->answer(404, '{"error":"not_found"}');
+        self::assertFalse($this->service()->readsFolders(), 'platform links turned off');
+
+        $this->expireTheAnswer();
+        $answer = fn (): IResponse => $this->answer(503, '');
+        self::assertFalse($this->service()->readsFolders(), 'the last answer offered nothing');
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function askedAgainAfter(): array
+    {
+        return array_values(array_filter($this->cache->ttls, static fn (string $key): bool => !str_ends_with($key, '/last'), ARRAY_FILTER_USE_KEY));
+    }
+
+    private function expireTheAnswer(): void
+    {
+        foreach (array_keys($this->cache->values) as $key) {
+            if (!str_ends_with($key, '/last')) {
+                $this->cache->remove($key);
+                unset($this->cache->ttls[$key]);
+            }
+        }
     }
 
     public function testRegisterSendsThisServerAndWhatTheAppDoes(): void
@@ -367,6 +521,25 @@ class PlatformLinkServiceTest extends TestCase
         }
     }
 
+    public function testAFolderReadsClaimListingAndResultWaitNoLongerThanTheyAreGiven(): void
+    {
+        $this->userAccounts->method('credentialFor')->willReturn('sk_ada');
+        $timeouts = [];
+        $this->httpClient->expects($this->exactly(3))->method('post')->willReturnCallback(
+            function (string $url, array $options) use (&$timeouts): IResponse {
+                $timeouts[] = $options['timeout'];
+
+                return $this->answer(200, '{}');
+            },
+        );
+
+        $this->service()->claimPickup('15', 'ada', 12);
+        $this->service()->submitPickupListing('15', 'ada', [], 3);
+        $this->service()->reportPickupResult('15', 'ada', ['status' => 'done'], 4);
+
+        self::assertSame([12, 3, 4], $timeouts);
+    }
+
     public function testWatchesAreListedWithThePersonsOwnCredential(): void
     {
         $this->userAccounts->method('credentialFor')->with('ada')->willReturn('sk_ada');
@@ -434,5 +607,17 @@ class PlatformLinkServiceTest extends TestCase
         $this->userAccounts->expects($this->once())->method('deactivateUser')->with('jdoe');
 
         $this->service()->disconnectUid('jdoe');
+    }
+
+    public function testAnEventWaitsWhileAHeldGrantsTokenCannotBeRenewed(): void
+    {
+        $this->synaplanConfig->method('getLinkInstanceId')->willReturn('inst-1');
+        $this->userAccounts->method('getStoredApiKey')->willReturn('');
+        $this->userAccounts->method('holdsGrant')->willReturnCallback(static fn (string $uid): bool => $uid === 'ada');
+        $this->httpClient->expects($this->never())->method('post');
+        $events = [['id' => '42', 'event' => 'deleted', 'version' => 'e1', 'path' => '']];
+
+        self::assertSame(['applied' => 0, 'ignored' => 0, 'reupload' => [], 'retry' => true], $this->service()->reportSourceEvents($events, 'ada'));
+        self::assertSame(['applied' => 0, 'ignored' => 0, 'reupload' => []], $this->service()->reportSourceEvents($events, 'bob'), 'Bob holds no grant');
     }
 }

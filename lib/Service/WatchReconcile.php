@@ -69,7 +69,7 @@ class WatchReconcile
             }
         }
         if (!$newOnly) {
-            $this->ownWrites->prune($now);
+            $this->ownWrites->prune();
         }
     }
 
@@ -98,7 +98,14 @@ class WatchReconcile
     {
         $quiet = WatchFeed::quietSecondsIn($this->config);
         $files = $this->candidates($watch);
-        foreach (array_chunk(array_map(WatchSender::version(...), $files), self::BATCH, true) as $batch) {
+        // A pass cut short by its deadline goes on after the last file it asked about.
+        $after = $this->index->reconcileAfter($watch['id']);
+        $left = array_filter($files, static fn (int $id): bool => $id > $after, ARRAY_FILTER_USE_KEY);
+        $batches = array_chunk(array_map(WatchSender::version(...), $left), self::BATCH, true);
+        foreach ($batches as $at => $batch) {
+            if (microtime(true) > $deadline) {
+                return false;
+            }
             try {
                 $answer = $this->links->reconcileWatch($watch['uid'], $watch['id'], self::items($batch));
             } catch (\Throwable $e) {
@@ -135,14 +142,19 @@ class WatchReconcile
                     $this->index->enqueueIfAbsent($watch['id'], $fileId, '', $changed, $now + 60);
                 }
             }
+            if ($at < count($batches) - 1) {
+                $this->index->continueAfter($watch['id'], (int) array_key_last($batch));
+            }
         }
 
         return true;
     }
 
     /**
-     * The target's files that changed after the app started feeding the
-     * watch, by id. None while the target is gone or a setting holds it.
+     * The target's files that changed or arrived after the app started
+     * feeding the watch, by id. None while the target is gone or a setting
+     * holds it. In file id order, so a pass cut short goes on from a stable
+     * place.
      *
      * @param WatchRow $watch
      * @return array<int, File>
@@ -153,12 +165,15 @@ class WatchReconcile
         if ($target === null || $this->policy->blocks($target)) {
             return [];
         }
+        // A queued file arrived after the start, whatever its time says: moved in, say.
+        $queued = array_flip($this->index->queuedFiles($watch['id']));
         $files = [];
         foreach ($this->files($target) as $file) {
-            if ($watch['since'] === 0 || $file->getMTime() > $watch['since']) {
+            if ($watch['since'] === 0 || $file->getMTime() > $watch['since'] || isset($queued[(int) $file->getId()])) {
                 $files[(int) $file->getId()] = $file;
             }
         }
+        ksort($files);
 
         return $files;
     }

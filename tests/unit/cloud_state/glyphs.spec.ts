@@ -39,7 +39,7 @@ describe('cloud glyphs', () => {
 	it('renders the bird, eyes, badges, and white-label overrides', () => {
 		expect(glyphMarkup({ eyes: false, badge: null, size: 16 })).toContain('<svg')
 		expect(glyphMarkup({ eyes: true, badge: 'arrows', size: 20 })).toContain(
-			'cx="15.5"',
+			'<svg',
 		)
 		expect(
 			glyphMarkup({
@@ -47,5 +47,14 @@ describe('cloud glyphs', () => {
 				overrides: { bird: 'https://example.org/bird.svg' },
 			}),
 		).toContain('https://example.org/bird.svg')
+	})
+
+	it('draws an eye that shows on the bird', () => {
+		const bird = glyphMarkup({ eyes: false })
+		const watching = glyphMarkup({ eyes: true })
+		const eye = watching.replace(bird.replace('</svg>', ''), '')
+
+		expect(eye).toMatch(/<circle [^>]*fill:#fff/)
+		expect(eye).toMatch(/<circle [^>]*fill:currentColor/)
 	})
 })

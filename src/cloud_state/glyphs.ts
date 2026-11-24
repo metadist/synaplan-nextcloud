@@ -125,8 +125,10 @@ export function glyphMarkup(options: {
 	const size = options.size ?? 16
 	const overrideUrl = eyes ? options.overrides?.bird_eyes : options.overrides?.bird
 
+	// A white eyeball over the bird's own eye: an eye in the bird's colour
+	// would vanish into its head.
 	const eyesMarkup = eyes
-		? '<circle cx="15.5" cy="8.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="18.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/>'
+		? '<circle cx="17" cy="11" r="2.4" style="fill:#fff;stroke:none;"/><circle cx="17.5" cy="11" r="1.2" style="fill:currentColor;stroke:none;"/>'
 		: ''
 
 	let badgePath = ''

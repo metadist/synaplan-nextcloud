@@ -29,6 +29,7 @@ use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
+use OCP\Share\Events\ShareDeletedFromSelfEvent;
 use OCP\User\Events\BeforeUserDeletedEvent;
 use OCP\User\Events\UserChangedEvent;
 
@@ -57,6 +58,7 @@ class Application extends App implements IBootstrap
         $context->registerEventListener(BeforeNodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener(NodeDeletedEvent::class, SourceEventListener::class);
         $context->registerEventListener('OCA\\Files_Trashbin\\Events\\NodeRestoredEvent', SourceEventListener::class);
+        $context->registerEventListener(ShareDeletedFromSelfEvent::class, SourceEventListener::class);
         // Files arriving in a watched folder, and a watched target deleted or restored.
         $context->registerEventListener(NodeWrittenEvent::class, WatchEventListener::class);
         $context->registerEventListener(NodeRenamedEvent::class, WatchEventListener::class);

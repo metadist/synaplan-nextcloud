@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\PlatformLinkException;
 use OCP\App\IAppManager;
 use OCP\Http\Client\IClientService;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
@@ -27,8 +28,17 @@ class PlatformLinkService
     public const CAPABILITIES = ['deliveries', 'pickups', 'read_scope', 'source_events', 'watches'];
     private const REGISTRATION_STATUS = 'link_registration_status';
     private const DOWNLOAD_TIMEOUT = 300;
+    private const OFFERS_TIMEOUT = 10;
+    /** Synaplan's configuration may be kept this long (its max-age). */
+    private const OFFERS_TTL = 300;
+    private const OFFERS_RETRY_TTL = 60;
+    /** How long Synaplan's last answer stands in while it gives none. */
+    private const OFFERS_LAST_TTL = 86400;
     /** Synaplan no longer accepts this registration; its own statuses are pending and active. */
     public const STATUS_REFUSED = 'refused';
+
+    /** @var list<string>|null */
+    private ?array $offers = null;
 
     public function __construct(
         private IClientService $clientService,
@@ -39,6 +49,7 @@ class PlatformLinkService
         private SynaplanConfig $synaplanConfig,
         private UserAccountService $userAccounts,
         private LoggerInterface $logger,
+        private ICacheFactory $cacheFactory,
     ) {
     }
 
@@ -86,8 +97,11 @@ class PlatformLinkService
      */
     public function reportSourceEvents(array $events, string $uid): array
     {
-        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '' || !$this->canActFor($uid)) {
+        if ($events === [] || $this->synaplanConfig->getLinkInstanceId() === '') {
             return ['applied' => 0, 'ignored' => 0, 'reupload' => []];
+        }
+        if (!$this->canActFor($uid)) {
+            return ['applied' => 0, 'ignored' => 0, 'reupload' => []] + ($this->canActForLater($uid) ? ['retry' => true] : []);
         }
         try {
             $decoded = $this->request(
@@ -160,6 +174,101 @@ class PlatformLinkService
     }
 
     /**
+     * Whether this Synaplan reads folders: its configuration offers both
+     * folder reads and the read setting.
+     */
+    public function readsFolders(): bool
+    {
+        $offers = $this->offers();
+
+        return in_array('pickups', $offers, true) && in_array('read_scope', $offers, true);
+    }
+
+    /**
+     * Whether Synaplan hears from here when a person's files change, move or
+     * go: each person reports with their own credential, from a registered
+     * server, to a Synaplan that takes the reports.
+     */
+    public function followsChanges(): bool
+    {
+        return $this->synaplanConfig->isPerUserAccountsEnabled()
+            && $this->synaplanConfig->isRegistered()
+            && in_array('source_events', $this->offers(), true);
+    }
+
+    /**
+     * Whether a watch started here gets files: they go with each person's
+     * own credential, from a registered server, to a Synaplan that lists
+     * watches (only while its cloud files are on).
+     */
+    public function takesWatches(): bool
+    {
+        return $this->synaplanConfig->isPerUserAccountsEnabled()
+            && $this->synaplanConfig->isRegistered()
+            && in_array('watches', $this->offers(), true);
+    }
+
+    /**
+     * What this Synaplan offers clouds, as its configuration lists it. With
+     * platform links off it offers nothing. While Synaplan gives no answer,
+     * its last answer of the past day stands in, else it offers nothing, and
+     * it is asked again after a minute.
+     *
+     * @return list<string>
+     */
+    private function offers(): array
+    {
+        if ($this->offers !== null) {
+            return $this->offers;
+        }
+        $cache = $this->cacheFactory->createDistributed(Application::APP_ID);
+        $key = 'offers/' . md5($this->synaplanConfig->getBaseUrl());
+        $kept = self::keptOffers($cache->get($key));
+        if ($kept !== null) {
+            return $this->offers = $kept;
+        }
+        try {
+            $configuration = $this->request(
+                'GET',
+                '/.well-known/synaplan-configuration',
+                null,
+                ['Accept' => 'application/json'],
+                false,
+                true,
+                self::OFFERS_TIMEOUT,
+            );
+            $status = (int) ($configuration['status_code'] ?? 200);
+            if ($status === 200 || $status === 404) {
+                $capabilities = $status === 200 && is_array($configuration['capabilities'] ?? null) ? $configuration['capabilities'] : [];
+                $offers = array_values(array_filter($capabilities, 'is_string'));
+                $cache->set($key, (string) json_encode($offers), self::OFFERS_TTL);
+                $cache->set($key . '/last', (string) json_encode($offers), self::OFFERS_LAST_TTL);
+
+                return $this->offers = $offers;
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning('Synaplan\'s configuration could not be read: {message}', [
+                'app' => Application::APP_ID,
+                'message' => $e->getMessage(),
+            ]);
+        }
+        $offers = self::keptOffers($cache->get($key . '/last')) ?? [];
+        $cache->set($key, (string) json_encode($offers), self::OFFERS_RETRY_TTL);
+
+        return $this->offers = $offers;
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private static function keptOffers(mixed $cached): ?array
+    {
+        $kept = is_string($cached) ? json_decode($cached, true) : null;
+
+        return is_array($kept) ? array_values(array_filter($kept, 'is_string')) : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function claimDelivery(string $id, string $uid): array
@@ -216,7 +325,7 @@ class PlatformLinkService
     /**
      * @return array<string, mixed>
      */
-    public function claimPickup(string $id, string $uid): array
+    public function claimPickup(string $id, string $uid, int $timeoutSeconds = 30): array
     {
         return $this->request(
             'POST',
@@ -225,6 +334,7 @@ class PlatformLinkService
             $this->personHeaders($uid),
             false,
             true,
+            max(1, $timeoutSeconds),
         );
     }
 
@@ -232,7 +342,7 @@ class PlatformLinkService
      * @param list<array<string, mixed>> $items
      * @return array<string, mixed>
      */
-    public function submitPickupListing(string $id, string $uid, array $items): array
+    public function submitPickupListing(string $id, string $uid, array $items, int $timeoutSeconds = 30): array
     {
         return $this->request(
             'POST',
@@ -241,6 +351,7 @@ class PlatformLinkService
             array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
+            max(1, $timeoutSeconds),
         );
     }
 
@@ -345,7 +456,7 @@ class PlatformLinkService
     /**
      * @param array<string, mixed> $result
      */
-    public function reportPickupResult(string $id, string $uid, array $result): void
+    public function reportPickupResult(string $id, string $uid, array $result, int $timeoutSeconds = 30): void
     {
         $this->request(
             'POST',
@@ -354,6 +465,7 @@ class PlatformLinkService
             array_merge($this->personHeaders($uid), ['Content-Type' => 'application/json']),
             false,
             true,
+            $timeoutSeconds,
         );
     }
 
@@ -659,15 +771,16 @@ class PlatformLinkService
      * @param array<string, string> $headers
      * @param bool $keepErrors return the decoded body of a 4xx instead of throwing,
      *                         with `status_code` set, so a refused claim can be told apart
+     * @param int $timeout seconds the whole call may take
      * @return array<string, mixed>
      */
-    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false): array
+    private function request(string $method, string $path, ?array $body, array $headers, bool $notFoundOk = false, bool $keepErrors = false, int $timeout = 30): array
     {
         $client = $this->clientService->newClient();
         $url = $this->synaplanConfig->getBaseUrl() . $path;
         $options = [
             'headers' => $headers,
-            'timeout' => 30,
+            'timeout' => $timeout,
             // Docker / localhost Synaplan is a private address. The integration
             // is supposed to reach it; Nextcloud's SSRF guard would otherwise
             // reject the exchange after the user already confirmed.

@@ -17,12 +17,15 @@ use OCP\IDBConnection;
  * before it existed already and only goes in when the person asked for the
  * files already there (0).
  *
- * @phpstan-type WatchRow array{id: int, uid: string, kind: string, target: int, state: string, since: int, reconciled: int}
+ * @phpstan-type WatchRow array{id: int, uid: string, kind: string, target: int, state: string, reason: string, since: int, reconciled: int}
  * @phpstan-type QueueRow array{watch: int, file: int, event: string, changed: int, generation: string, attempts: int}
  */
 class WatchIndex
 {
     public const ACTIVE = 'active';
+    public const PAUSED = 'paused';
+    public const ATTENTION = 'attention';
+    public const TARGET_GONE = 'target_gone';
     private const TABLE = 'synaplan_watches';
     private const QUEUE = 'synaplan_watch_queue';
     private const KINDS = ['folder', 'file'];
@@ -94,8 +97,10 @@ class WatchIndex
     }
 
     /**
-     * Count only files that change from now on: the owner resumed the watch
-     * without the files that arrived while it was paused.
+     * Count only files that change from now on: the owner resumes the watch
+     * without the files that arrived while it was paused. Call it while the
+     * watch is still paused, before Synaplan resumes it: every file queued
+     * then arrived before the resume, whatever second it was queued in.
      */
     public function restartFrom(int $watchId, int $since): void
     {
@@ -104,6 +109,12 @@ class WatchIndex
             ->set('since', $qb->createNamedParameter($since, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
+
+        $waiting = $this->db->getQueryBuilder();
+        $waiting->delete(self::QUEUE)
+            ->where($waiting->expr()->eq('watch_id', $waiting->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($waiting->expr()->isNull('event'));
+        $waiting->executeStatement();
     }
 
     /**
@@ -119,18 +130,6 @@ class WatchIndex
         foreach ($this->rowsOf($uid) as $known) {
             $this->drop($known['id']);
         }
-    }
-
-    /**
-     * Active watches on any of these nodes: a file's own id (a file watch) or
-     * its parent folder's id (a folder watch).
-     *
-     * @param list<int> $nodeIds
-     * @return list<WatchRow>
-     */
-    public function activeOn(array $nodeIds): array
-    {
-        return array_values(array_filter($this->on($nodeIds), static fn (array $row): bool => $row['state'] === self::ACTIVE));
     }
 
     /**
@@ -201,6 +200,35 @@ class WatchIndex
         $qb = $this->db->getQueryBuilder();
         $qb->update(self::TABLE)
             ->set('reconciled', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+            ->set('reconcile_after', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
+        $qb->executeStatement();
+    }
+
+    /**
+     * The file id after which the watch's unfinished pass goes on; 0 for a
+     * pass from the start.
+     */
+    public function reconcileAfter(int $watchId): int
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('reconcile_after')->from(self::TABLE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
+        $result = $qb->executeQuery();
+        $after = $result->fetchOne();
+        $result->closeCursor();
+
+        return is_numeric($after) ? (int) $after : 0;
+    }
+
+    /**
+     * The pass asked about every file up to $fileId; markReconciled() ends it.
+     */
+    public function continueAfter(int $watchId, int $fileId): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('reconcile_after', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
     }
@@ -272,18 +300,46 @@ class WatchIndex
     }
 
     /**
+     * The files queued for a watch, events of its target left out.
+     *
+     * @return list<int>
+     */
+    public function queuedFiles(int $watchId): array
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('file_id')->from(self::QUEUE)
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->isNull('event'));
+        $result = $qb->executeQuery();
+        $files = [];
+        while (($id = $result->fetchOne()) !== false) {
+            $files[] = (int) $id;
+        }
+        $result->closeCursor();
+
+        return $files;
+    }
+
+    /**
      * @return list<QueueRow>
      */
     public function due(int $now, int $quietSeconds, int $limit): array
     {
         $qb = $this->db->getQueryBuilder();
-        $qb->select('*')->from(self::QUEUE)
-            ->where($qb->expr()->lte('due', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
+        // A paused watch's files wait for the resume without filling the batch.
+        $qb->select('q.*')->from(self::QUEUE, 'q')
+            ->leftJoin('q', self::TABLE, 'w', $qb->expr()->eq('w.watch_id', 'q.watch_id'))
+            ->where($qb->expr()->lte('q.due', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->orX(
-                $qb->expr()->isNotNull('event'),
-                $qb->expr()->lte('changed', $qb->createNamedParameter($now - $quietSeconds, IQueryBuilder::PARAM_INT)),
+                $qb->expr()->isNotNull('q.event'),
+                $qb->expr()->lte('q.changed', $qb->createNamedParameter($now - $quietSeconds, IQueryBuilder::PARAM_INT)),
             ))
-            ->orderBy('changed', 'ASC')
+            ->andWhere($qb->expr()->orX(
+                $qb->expr()->isNotNull('q.event'),
+                $qb->expr()->isNull('w.watch_id'),
+                $qb->expr()->eq('w.state', $qb->createNamedParameter(self::ACTIVE)),
+            ))
+            ->orderBy('q.changed', 'ASC')
             ->setMaxResults($limit);
         $result = $qb->executeQuery();
         $rows = [];
@@ -312,15 +368,38 @@ class WatchIndex
     }
 
     /**
-     * Take back a lifecycle event of a watch's target that has not gone out.
+     * Turn a queued lifecycle event of a watch's target into another one, as
+     * a new change. While the old one is being sent, the feed keeps the new
+     * one queued, so both go, in order. False when none was queued.
      */
-    public function cancelEvent(int $watchId, int $fileId, string $event): void
+    public function replaceEvent(int $watchId, int $fileId, string $event, string $by, int $changed): bool
     {
         $qb = $this->db->getQueryBuilder();
-        $qb->delete(self::QUEUE)
+        $qb->update(self::QUEUE)
+            ->set('event', $qb->createNamedParameter($by))
+            ->set('changed', $qb->createNamedParameter($changed, IQueryBuilder::PARAM_INT))
+            ->set('generation', $qb->createNamedParameter(self::generation()))
+            ->set('due', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
+            ->set('attempts', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT))
             ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
             ->andWhere($qb->expr()->eq('event', $qb->createNamedParameter($event)));
+
+        return $qb->executeStatement() > 0;
+    }
+
+    /**
+     * Note here what a queued target event will tell Synaplan, until its
+     * next list says how it took it: gone after `deleted`, running after
+     * `restored`.
+     */
+    public function markTarget(int $watchId, bool $gone): void
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->update(self::TABLE)
+            ->set('state', $qb->createNamedParameter($gone ? self::ATTENTION : self::ACTIVE))
+            ->set('reason', $qb->createNamedParameter($gone ? self::TARGET_GONE : ''))
+            ->where($qb->expr()->eq('watch_id', $qb->createNamedParameter($watchId, IQueryBuilder::PARAM_INT)));
         $qb->executeStatement();
     }
 
@@ -383,7 +462,7 @@ class WatchIndex
 
     /**
      * @param array<mixed> $watch
-     * @return array{id: int, kind: string, target: int, state: string}|null
+     * @return array{id: int, kind: string, target: int, state: string, reason: string}|null
      */
     public static function parse(array $watch): ?array
     {
@@ -391,6 +470,7 @@ class WatchIndex
         $kind = $watch['target_kind'] ?? null;
         $target = $watch['target_id'] ?? null;
         $state = $watch['state'] ?? null;
+        $reason = $watch['reason'] ?? null;
         if (is_string($id) && ctype_digit($id)) {
             $id = (int) $id;
         }
@@ -404,11 +484,35 @@ class WatchIndex
             return null;
         }
 
-        return ['id' => $id, 'kind' => $kind, 'target' => (int) $target, 'state' => $state];
+        $reason = is_string($reason) && strlen($reason) <= 32 ? $reason : '';
+
+        return ['id' => $id, 'kind' => $kind, 'target' => (int) $target, 'state' => $state, 'reason' => $reason];
     }
 
     /**
-     * @param array{id: int, kind: string, target: int, state: string} $row
+     * A changed file is queued for this watch: while it runs, and while it
+     * is paused, so that resuming can send the files that arrived meanwhile.
+     *
+     * @param array{state: string} $watch
+     */
+    public static function queues(array $watch): bool
+    {
+        return $watch['state'] === self::ACTIVE || $watch['state'] === self::PAUSED;
+    }
+
+    /**
+     * Whether Synaplan holds this watch because its target is gone: only
+     * then does it take a restored target back.
+     *
+     * @param array{state: string, reason: string} $watch
+     */
+    public static function targetGone(array $watch): bool
+    {
+        return $watch['state'] === self::ATTENTION && $watch['reason'] === self::TARGET_GONE;
+    }
+
+    /**
+     * @param array{id: int, kind: string, target: int, state: string, reason: string} $row
      */
     private function upsert(string $uid, array $row, int $since, bool $replaceSince): void
     {
@@ -421,6 +525,7 @@ class WatchIndex
                 'target_kind' => $insert->createNamedParameter($row['kind']),
                 'target_id' => $insert->createNamedParameter($row['target'], IQueryBuilder::PARAM_INT),
                 'state' => $insert->createNamedParameter($row['state']),
+                'reason' => $insert->createNamedParameter($row['reason']),
                 'since' => $insert->createNamedParameter($since, IQueryBuilder::PARAM_INT),
                 'reconciled' => $insert->createNamedParameter(0, IQueryBuilder::PARAM_INT),
             ]);
@@ -440,6 +545,7 @@ class WatchIndex
             ->set('target_kind', $update->createNamedParameter($row['kind']))
             ->set('target_id', $update->createNamedParameter($row['target'], IQueryBuilder::PARAM_INT))
             ->set('state', $update->createNamedParameter($row['state']))
+            ->set('reason', $update->createNamedParameter($row['reason']))
             ->where($update->expr()->eq('watch_id', $update->createNamedParameter($row['id'], IQueryBuilder::PARAM_INT)));
         if ($replaceSince) {
             $update->set('since', $update->createNamedParameter($since, IQueryBuilder::PARAM_INT));
@@ -495,6 +601,7 @@ class WatchIndex
                 'kind' => (string) ($row['target_kind'] ?? ''),
                 'target' => (int) ($row['target_id'] ?? 0),
                 'state' => (string) ($row['state'] ?? ''),
+                'reason' => (string) ($row['reason'] ?? ''),
                 'since' => (int) ($row['since'] ?? 0),
                 'reconciled' => (int) ($row['reconciled'] ?? 0),
             ];

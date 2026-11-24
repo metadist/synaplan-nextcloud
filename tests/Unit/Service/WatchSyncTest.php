@@ -112,7 +112,7 @@ final class WatchSyncTest extends TestCase
      */
     private static function row(string $uid): array
     {
-        return ['id' => 5, 'uid' => $uid, 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+        return ['id' => 5, 'uid' => $uid, 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
     }
 
     public function testARunSyncsMarkedPeopleEveryTimeAndEveryoneEveryTenMinutesAndDaily(): void

@@ -6,6 +6,7 @@ import {
 	APP,
 	ensureConnected,
 	logIn,
+	NC_URL,
 	nextcloudAs,
 	openFileAction,
 	ownIdentities,
@@ -453,15 +454,16 @@ test('resuming a task watch asks about the files that arrived while paused and s
 			.getByTestId('synaplan-watched-row')
 			.filter({ hasText: folder })
 		const ask = page.getByRole('dialog', { name: 'Resume watching' })
-		const question = ask.getByText(
-			'Also handle the files that arrived while paused (1)?',
-		)
+		const question = (count: number) =>
+			ask.getByText(
+				`Also handle the files that arrived while paused (${count})?`,
+			)
 
 		await row.getByTestId('synaplan-watched-pause').click()
 		await expect(row.getByTestId('synaplan-watched-resume')).toBeVisible()
 		const skipped = await dropWhilePaused('while-paused-1.txt')
 		await row.getByTestId('synaplan-watched-resume').click()
-		await expect(question).toBeVisible()
+		await expect(question(1)).toBeVisible()
 		await ask.getByRole('button', { name: 'Only new files' }).click()
 		await expect(row.getByTestId('synaplan-watched-pause')).toBeVisible()
 		runJob('WatchFeedJob')
@@ -470,12 +472,39 @@ test('resuming a task watch asks about the files that arrived while paused and s
 		await row.getByTestId('synaplan-watched-pause').click()
 		await expect(row.getByTestId('synaplan-watched-resume')).toBeVisible()
 		const kept = await dropWhilePaused('while-paused-2.txt')
+		// Moved in while paused: its time is a year before the watch started.
+		const old = `/remote.php/dav/files/${UID}/${folder}-old.txt`
+		const yearAgo = Math.floor(Date.now() / 1000) - 365 * 86400
+		expect(
+			(
+				await person.put(old, {
+					data: 'old',
+					headers: {
+						'Content-Type': 'text/plain',
+						'X-OC-Mtime': String(yearAgo),
+					},
+				})
+			).ok(),
+		).toBe(true)
+		expect(
+			(
+				await person.fetch(old, {
+					method: 'MOVE',
+					headers: { Destination: `${NC_URL}${dav}/moved-in.txt` },
+				})
+			).ok(),
+		).toBe(true)
+		const movedIn = await fileIdOf(person, `${dav}/moved-in.txt`)
 		await row.getByTestId('synaplan-watched-resume').click()
-		await expect(question).toBeVisible()
+		await expect(question(2)).toBeVisible()
 		await ask.getByRole('button', { name: 'Handle them too' }).click()
 		await expect(row.getByTestId('synaplan-watched-pause')).toBeVisible()
+		await new Promise((resolve) => setTimeout(resolve, 1500))
 		runJob('WatchFeedJob')
 		expect(itemsOf(kept), 'sent after resume').toBe('1')
+		expect(itemsOf(movedIn), 'moved in while paused, sent after resume').toBe(
+			'1',
+		)
 		expect(itemsOf(skipped), 'the first one stays out').toBe('0')
 	} finally {
 		occ('config:app:delete', 'synaplan_integration', 'watch_quiet_seconds')

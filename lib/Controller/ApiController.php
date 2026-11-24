@@ -8,6 +8,7 @@ use OCA\SynaplanIntegration\AppInfo\Application;
 use OCA\SynaplanIntegration\Exception\FailureException;
 use OCA\SynaplanIntegration\Http\RespondsToFailures;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\UserAccountService;
@@ -77,6 +78,7 @@ class ApiController extends Controller
         private IConfig $config,
         private IAppManager $appManager,
         private LoggerInterface $logger,
+        private PlatformLinkService $links,
         private ?UserAccountService $userAccounts = null,
     ) {
         parent::__construct(Application::APP_ID, $request);
@@ -126,9 +128,11 @@ class ApiController extends Controller
     {
         return new JSONResponse([
             'translation' => $this->synaplanClient->offersSummaryType('translation'),
-            'watches' => WatchPolicy::watchingAllowedIn($this->config),
+            'watches' => WatchPolicy::watchingAllowedIn($this->config) && $this->links->takesWatches(),
             'watchShared' => WatchPolicy::sharedAllowedIn($this->config),
-            'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED,
+            'readFolders' => ReadScope::ceilingIn($this->config) !== ReadScope::MODE_WATCHED
+                && $this->links->readsFolders(),
+            'followsChanges' => $this->links->followsChanges(),
         ]);
     }
 
@@ -250,7 +254,9 @@ class ApiController extends Controller
                 }
             }
         }
-        $keepSynced = $keepSynced ?? true;
+        // Where Synaplan hears of no change, a kept file would read as
+        // updating for good; without the field Synaplan keeps what it had.
+        $keepSynced = $this->links->followsChanges() ? ($keepSynced ?? true) : null;
 
         if ($groupKey === '') {
             $groupKey = 'DEFAULT';
@@ -277,7 +283,7 @@ class ApiController extends Controller
             $filename = $node->getName();
             // Preserve the user-relative source path as provenance (falls back
             // to the basename) so Synaplan can show where this file came from.
-            $originalName = $userFolder->getRelativePath($node->getPath()) ?? $filename;
+            $originalName = ltrim($userFolder->getRelativePath($node->getPath()) ?? $filename, '/');
 
             // CORE-4: key the knowledge entry on the Nextcloud file id + etag and
             // always overwrite, so re-adding (or adding a changed) file updates
@@ -530,7 +536,7 @@ class ApiController extends Controller
                 $node->getContent(),
                 '_nextcloud_temp',
                 'extract',
-                $userFolder->getRelativePath($node->getPath()) ?? $node->getName(),
+                ltrim($userFolder->getRelativePath($node->getPath()) ?? $node->getName(), '/'),
             );
 
             $fileInfo = $uploadResult['files'][0] ?? null;

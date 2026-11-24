@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\PreferencesController;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCP\IConfig;
@@ -20,6 +21,39 @@ final class PreferencesControllerTest extends TestCase
 
     /** @var list<array{string, list<array{id: string, path: string}>}> */
     private array $scopes = [];
+
+    /** @var list<string> the folders named through the folder menu */
+    private array $allowed = [];
+
+    private bool $readsFolders = true;
+
+    public function testASynaplanThatReadsNoFoldersGetsNoReadSettingAndTheSavedOneStays(): void
+    {
+        $this->readsFolders = false;
+        $this->stored[SynaplanFolders::COPY_FOLDER] = 'Projects';
+
+        self::assertFalse($this->controller([])->get()->getData()['reads_folders']);
+
+        $saved = $this->controller(['read_scope' => ['mode' => 'allowed', 'folders' => [['id' => '', 'path' => 'HR']]]])
+            ->save('Elsewhere');
+        self::assertSame(409, $saved->getStatus());
+        self::assertSame('folder_reads_off', $saved->getData()['error']);
+        self::assertSame('Projects', $this->stored[SynaplanFolders::COPY_FOLDER]);
+
+        $allowed = $this->controller([])->allowFolder('Invoices');
+        self::assertSame(409, $allowed->getStatus());
+        self::assertSame('folder_reads_off', $allowed->getData()['error']);
+
+        self::assertSame([], $this->scopes);
+        self::assertSame([], $this->allowed);
+    }
+
+    public function testASynaplanThatReadsFoldersGetsTheReadSetting(): void
+    {
+        self::assertTrue($this->controller([])->get()->getData()['reads_folders']);
+        self::assertSame(200, $this->controller([])->allowFolder('Invoices')->getStatus());
+        self::assertSame(['Invoices'], $this->allowed);
+    }
 
     public function testSavingOnlyTheReadSettingKeepsTheCopyFolder(): void
     {
@@ -86,8 +120,17 @@ final class PreferencesControllerTest extends TestCase
                 $this->scopes[] = [$mode, $folders];
             },
         );
-        $scope->method('get')->willReturn(['mode' => 'watched', 'folders' => []]);
+        $scope->method('allow')->willReturnCallback(
+            function (string $uid, string $path): ?string {
+                $this->allowed[] = $path;
 
-        return new PreferencesController($request, $config, $session, $scope);
+                return null;
+            },
+        );
+        $scope->method('get')->willReturn(['mode' => 'watched', 'folders' => []]);
+        $links = $this->createStub(PlatformLinkService::class);
+        $links->method('readsFolders')->willReturnCallback(fn (): bool => $this->readsFolders);
+
+        return new PreferencesController($request, $config, $session, $scope, $links);
     }
 }

@@ -218,16 +218,16 @@ class ReadScope
     }
 
     /**
-     * A folder the person named. `ceiling` when the administrator lets
-     * Synaplan read only watched folders, `cap` when the administrator's
-     * limit is full, `folder` when the name cannot be used.
+     * The folder at this path, which the person named. `ceiling` when the
+     * administrator lets Synaplan read only watched folders, `cap` when the
+     * administrator's limit is full, `folder` when the name cannot be used.
      */
-    public function allow(string $uid, string $id, string $path): ?string
+    public function allow(string $uid, string $path): ?string
     {
-        return $this->changing($uid, fn (): ?string => $this->allowNow($uid, $id, $path));
+        return $this->changing($uid, fn (): ?string => $this->allowNow($uid, $path));
     }
 
-    private function allowNow(string $uid, string $id, string $path): ?string
+    private function allowNow(string $uid, string $path): ?string
     {
         if ($this->ceiling() === self::MODE_WATCHED) {
             return 'ceiling';
@@ -237,27 +237,52 @@ class ReadScope
             return 'folder';
         }
         $scope = $this->get($uid);
-        foreach ($scope['folders'] as $folder) {
-            if ($folder['path'] === $path || $this->currentPath($uid, $folder) === $path) {
-                // Already named, but the folder menu promises this folder may
-                // be read now: under "Only what I watch" that promise takes
-                // the mode switch too, or nothing changes.
-                if ($scope['mode'] === self::MODE_WATCHED) {
-                    $scope['mode'] = self::MODE_ALLOWED;
-                    $this->store($uid, $scope);
-                }
-
-                return null;
+        $before = $scope;
+        // A folder that moved is listed where it is now, never under the
+        // name a new folder took.
+        $scope['folders'] = $this->withCurrentPaths($uid, $scope['folders']);
+        $id = $this->idAt($uid, $path);
+        $at = $this->entryFor($uid, $scope['folders'], $id, $path);
+        if ($at === null) {
+            if (count($scope['folders']) >= $this->cap()) {
+                return 'cap';
             }
+            $scope['folders'][] = ['id' => $id, 'path' => $path];
+        } elseif ($id !== '') {
+            $scope['folders'][$at] = ['id' => $id, 'path' => $path];
         }
-        if (count($scope['folders']) >= $this->cap()) {
-            return 'cap';
-        }
-        $scope['folders'][] = ['id' => $id, 'path' => $path];
+        // The folder menu promises this folder may be read now: under "Only
+        // what I watch" that promise takes the mode switch too.
         if ($scope['mode'] === self::MODE_WATCHED) {
             $scope['mode'] = self::MODE_ALLOWED;
         }
-        $this->store($uid, $scope);
+        if ($scope !== $before) {
+            $this->store($uid, $scope);
+        }
+
+        return null;
+    }
+
+    /**
+     * The entry that stands for the folder at this path: the one saved with
+     * its id, or one saved under this path that has no id or whose folder is
+     * gone. An entry for a folder that now lives elsewhere keeps standing
+     * for that folder.
+     *
+     * @param list<array{id: string, path: string}> $folders
+     */
+    private function entryFor(string $uid, array $folders, string $id, string $path): ?int
+    {
+        foreach ($folders as $i => $folder) {
+            if ($id !== '' && $folder['id'] === $id) {
+                return $i;
+            }
+        }
+        foreach ($folders as $i => $folder) {
+            if ($folder['path'] === $path && ($folder['id'] === '' || $this->currentPath($uid, $folder) === null)) {
+                return $i;
+            }
+        }
 
         return null;
     }
@@ -271,6 +296,12 @@ class ReadScope
     }
 
     /**
+     * A folder the person kept stays the folder it was saved as, found or
+     * not, whatever now sits at its path, and is saved where it is now: a
+     * move the listener missed is put right here. A folder added here is
+     * the one at its path now. An id the request carries only says which saved folder
+     * it keeps.
+     *
      * @param list<array{id: string, path: string}> $folders
      */
     private function saveNow(string $uid, string $mode, array $folders): void
@@ -282,18 +313,43 @@ class ReadScope
         if (self::wider($mode, $ceiling)) {
             $mode = $ceiling;
         }
+        $saved = $this->get($uid)['folders'];
         $kept = [];
         foreach ($folders as $folder) {
             $path = self::clean($folder['path']);
             if ($path === '') {
                 continue;
             }
-            $kept[] = ['id' => $folder['id'], 'path' => $path];
+            $entry = self::savedEntry($saved, $folder['id'], $path) ?? ['id' => $this->idAt($uid, $path), 'path' => $path];
+            [$entry] = $this->withCurrentPaths($uid, [$entry]);
+            if (in_array($entry, $kept, true)) {
+                continue;
+            }
+            $kept[] = $entry;
             if (count($kept) >= $this->cap()) {
                 break;
             }
         }
         $this->store($uid, ['mode' => $mode, 'folders' => $kept]);
+    }
+
+    /**
+     * The saved entry a row of the settings page stands for: the page sends
+     * a saved folder back with its id, and a folder saved without one, or
+     * added on the page, without an id.
+     *
+     * @param list<array{id: string, path: string}> $saved
+     * @return array{id: string, path: string}|null
+     */
+    private static function savedEntry(array $saved, string $id, string $path): ?array
+    {
+        foreach ($saved as $entry) {
+            if ($id !== '' ? $entry['id'] === $id : $entry['id'] === '' && $entry['path'] === $path) {
+                return $entry;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -304,9 +360,16 @@ class ReadScope
      * at (that folder, not its sub-folders: a watch looks at that folder
      * only), and never falls back to the named folders. "Also folders I
      * allow" adds the named folders to those.
+     *
+     * Each check reads the setting and the ceiling as saved now, and finds
+     * the allowed folders again: Nextcloud keeps config as the process first
+     * read it, and a background job sends files for minutes.
      */
     public function mayRead(string $uid, string $folder): bool
     {
+        $this->userConfig->clearCache($uid);
+        $this->appConfig->clearCache();
+        $this->resolved = [];
         $scope = $this->get($uid);
         if ($scope['mode'] === self::MODE_ALL) {
             return true;
@@ -375,8 +438,8 @@ class ReadScope
     }
 
     /**
-     * Send the saved setting again after a report failed. True when Synaplan
-     * holds it now.
+     * Send the saved setting again after a report failed, each folder where
+     * it is now. True when Synaplan holds it now.
      */
     public function republish(string $uid): bool
     {
@@ -386,6 +449,10 @@ class ReadScope
     private function republishNow(string $uid): bool
     {
         $scope = $this->get($uid);
+        $folders = $this->withCurrentPaths($uid, $scope['folders']);
+        if ($folders !== $scope['folders']) {
+            return $this->store($uid, ['mode' => $scope['mode'], 'folders' => $folders]);
+        }
         if (!$this->report($uid, $scope)) {
             return false;
         }
@@ -408,25 +475,32 @@ class ReadScope
     private function followNow(string $uid): bool
     {
         $scope = $this->get($uid);
-        if ($scope['folders'] === []) {
+        $folders = $this->withCurrentPaths($uid, $scope['folders']);
+        if ($folders === $scope['folders']) {
             return false;
         }
-        $moved = false;
-        foreach ($scope['folders'] as $i => $folder) {
-            if ($folder['id'] === '') {
-                continue;
+        $this->store($uid, ['mode' => $scope['mode'], 'folders' => $folders]);
+
+        return true;
+    }
+
+    /**
+     * Each folder saved with an id at the path where it is now; one that
+     * cannot be found, or was saved without an id, keeps its saved path.
+     *
+     * @param list<array{id: string, path: string}> $folders
+     * @return list<array{id: string, path: string}>
+     */
+    private function withCurrentPaths(string $uid, array $folders): array
+    {
+        foreach ($folders as $i => $folder) {
+            $now = $folder['id'] !== '' ? $this->currentPath($uid, $folder) : null;
+            if ($now !== null) {
+                $folders[$i]['path'] = $now;
             }
-            $path = $this->currentPath($uid, $folder);
-            if ($path !== null && $path !== $folder['path']) {
-                $scope['folders'][$i]['path'] = $path;
-                $moved = true;
-            }
-        }
-        if ($moved) {
-            $this->store($uid, $scope);
         }
 
-        return $moved;
+        return $folders;
     }
 
     /**
@@ -462,38 +536,27 @@ class ReadScope
     }
 
     /**
-     * The id of each folder as this Nextcloud knows it, whatever id the
-     * request carried. A path that names no folder keeps an empty id.
-     *
-     * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
-     * @return array{mode: string, folders: list<array{id: string, path: string}>}
+     * The id of the folder at this path as this Nextcloud knows it, or ''
+     * when no folder is there.
      */
-    private function withIds(string $uid, array $scope): array
+    private function idAt(string $uid, string $path): string
     {
         try {
-            $userFolder = $this->rootFolder->getUserFolder($uid);
+            $node = $this->rootFolder->getUserFolder($uid)->get($path);
         } catch (\Throwable) {
-            return $scope;
-        }
-        foreach ($scope['folders'] as $i => $folder) {
-            try {
-                $node = $userFolder->get($folder['path']);
-                $id = $node instanceof Folder ? (string) $node->getId() : '';
-            } catch (\Throwable) {
-                $id = '';
-            }
-            $scope['folders'][$i]['id'] = $id;
+            return '';
         }
 
-        return $scope;
+        return $node instanceof Folder ? (string) $node->getId() : '';
     }
 
     /**
+     * True when Synaplan took the setting too.
+     *
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
-    private function store(string $uid, array $scope): void
+    private function store(string $uid, array $scope): bool
     {
-        $scope = $this->withIds($uid, $scope);
         $this->resolved = [];
         $this->config->setUserValue(
             $uid,
@@ -503,12 +566,15 @@ class ReadScope
         );
         if ($this->report($uid, $scope)) {
             $this->config->deleteUserValue($uid, Application::APP_ID, self::PENDING);
-        } else {
-            // The setting here is what a read checks, but Synaplan refuses a
-            // run from its copy before it asks. Keep the debt where the hourly
-            // job finds it instead of dropping it.
-            $this->config->setUserValue($uid, Application::APP_ID, self::PENDING, '1');
+
+            return true;
         }
+        // The setting here is what a read checks, but Synaplan refuses a
+        // run from its copy before it asks. Keep the debt where the hourly
+        // job finds it instead of dropping it.
+        $this->config->setUserValue($uid, Application::APP_ID, self::PENDING, '1');
+
+        return false;
     }
 
     /**

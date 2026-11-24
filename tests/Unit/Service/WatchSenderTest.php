@@ -19,7 +19,7 @@ use Psr\Log\NullLogger;
 
 final class WatchSenderTest extends TestCase
 {
-    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
 
     private PlatformLinkService&MockObject $links;
     private OwnWrites&Stub $ownWrites;

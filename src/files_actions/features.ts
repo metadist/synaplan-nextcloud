@@ -6,15 +6,18 @@ export interface Features {
 	watches: boolean
 	watchShared: boolean
 	readFolders: boolean
+	followsChanges: boolean
 }
 
 // Until Synaplan has answered, everything counts as offered: the request
-// itself still refuses what Synaplan lacks, with a sentence.
+// itself still refuses what Synaplan lacks, with a sentence. Keeping a file
+// up to date is a promise to the person, so it waits for the answer.
 let features: Features = {
 	translation: true,
 	watches: true,
 	watchShared: true,
 	readFolders: true,
+	followsChanges: false,
 }
 let loading: Promise<void> | null = null
 
@@ -32,6 +35,7 @@ export function loadFeatures(): Promise<void> {
 					watches: data?.watches !== false,
 					watchShared: data?.watchShared !== false,
 					readFolders: data?.readFolders !== false,
+					followsChanges: data?.followsChanges === true,
 				}
 			})
 			.catch(() => {})
@@ -47,8 +51,8 @@ export function translationOffered(): boolean {
 }
 
 /**
- * Whether the administrator allows watching folders at all, as far as is
- * known yet.
+ * Whether the administrator allows watching folders at all and Synaplan
+ * takes watches, as far as is known yet.
  */
 export function watchingAllowed(): boolean {
 	return features.watches
@@ -71,6 +75,14 @@ export function readFoldersAllowed(): boolean {
 }
 
 /**
+ * Whether Synaplan hears from here when the person's files change, so a file
+ * can be kept up to date. False until known.
+ */
+export function changesFollowed(): boolean {
+	return features.followsChanges
+}
+
+/**
  * Forget what was read, for tests.
  */
 export function resetFeatures(): void {
@@ -79,6 +91,7 @@ export function resetFeatures(): void {
 		watches: true,
 		watchShared: true,
 		readFolders: true,
+		followsChanges: false,
 	}
 	loading = null
 }

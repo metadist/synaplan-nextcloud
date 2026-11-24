@@ -13,6 +13,7 @@ use OCA\SynaplanIntegration\Service\OAuthClient;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCA\SynaplanIntegration\Service\SynaplanConfig;
 use OCA\SynaplanIntegration\Service\UserAccountService;
+use OCA\SynaplanIntegration\Tests\Unit\Support\ArrayCacheFactory;
 use OCA\SynaplanIntegration\Tests\Unit\Support\KeyStorageStubs;
 use OCP\Files\IRootFolder;
 use OCP\Http\Client\IClient;
@@ -164,6 +165,13 @@ final class SynaplanContractTest extends TestCase
         self::assertSame([], $contract->violations('POST', '/api/v1/cloud/watches/5/files', ['id' => '7', 'version' => 'e1', 'file' => ''], true));
     }
 
+    public function testSynaplansConfigurationAlwaysSaysWhatItOffers(): void
+    {
+        $contract = $this->contract();
+        self::assertTrue($contract->answerRequires('GET', '/.well-known/synaplan-configuration', 200, 'capabilities'));
+        self::assertFalse($contract->answerRequires('GET', '/.well-known/synaplan-configuration', 200, 'offers'));
+    }
+
     public function testAFinalParameterDoesNotMatchExtraSegments(): void
     {
         $contract = $this->contract();
@@ -219,7 +227,7 @@ final class SynaplanContractTest extends TestCase
         $oauth = $this->oauthClient($config, $synaplanConfig);
         $accounts = new UserAccountService($this->recordingClients(), $config, $session, $synaplanConfig, new NullLogger(), $keys, $oauth);
         $client = new SynaplanClient($this->recordingClients(), new NullLogger(), $synaplanConfig, $accounts);
-        $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger());
+        $cloudState = new CloudStateService($this->recordingClients(), $synaplanConfig, $client, new NullLogger(), new ArrayCacheFactory());
         $links = new PlatformLinkService(
             $this->recordingClients(),
             $config,
@@ -229,6 +237,7 @@ final class SynaplanContractTest extends TestCase
             $synaplanConfig,
             $accounts,
             new NullLogger(),
+            new ArrayCacheFactory(),
         );
 
         $scenarios = [
@@ -300,6 +309,7 @@ final class SynaplanContractTest extends TestCase
             fn () => $links->sendWatchFile('ada', 5, ['id' => '3', 'version' => 'deleted-1700000000', 'event' => 'deleted'], null),
             fn () => $links->reportReadScope('ada', 'allowed', [['id' => '3', 'path' => 'Invoices']]),
             fn () => $links->notificationTrust(),
+            fn () => $links->readsFolders(),
             fn () => $accounts->provisionAccount($this->ada()),
             fn () => $accounts->fetchUsage(42),
             fn () => $links->reportLifecycle('ada', 'disabled'),

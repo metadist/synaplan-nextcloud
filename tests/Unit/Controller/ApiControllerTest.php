@@ -6,6 +6,7 @@ namespace OCA\SynaplanIntegration\Tests\Unit\Controller;
 
 use OCA\SynaplanIntegration\Controller\ApiController;
 use OCA\SynaplanIntegration\Service\LanguageService;
+use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\ReadScope;
 use OCA\SynaplanIntegration\Service\SynaplanClient;
 use OCP\App\IAppManager;
@@ -16,6 +17,7 @@ use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -30,6 +32,9 @@ class ApiControllerTest extends TestCase
     private IConfig&MockObject $config;
     private IAppManager&MockObject $appManager;
     private LoggerInterface&MockObject $logger;
+    private bool $readsFolders = true;
+    private bool $followsChanges = true;
+    private bool $takesWatches = true;
     private ApiController $controller;
 
     protected function setUp(): void
@@ -49,6 +54,11 @@ class ApiControllerTest extends TestCase
         $this->languageService->method('getLanguageName')->willReturn('English');
         $this->appManager->method('getAppVersion')->willReturn('1.2.1');
 
+        $links = $this->createStub(PlatformLinkService::class);
+        $links->method('readsFolders')->willReturnCallback(fn (): bool => $this->readsFolders);
+        $links->method('followsChanges')->willReturnCallback(fn (): bool => $this->followsChanges);
+        $links->method('takesWatches')->willReturnCallback(fn (): bool => $this->takesWatches);
+
         $this->controller = new ApiController(
             $this->request,
             $this->synaplanClient,
@@ -58,6 +68,7 @@ class ApiControllerTest extends TestCase
             $this->config,
             $this->appManager,
             $this->logger,
+            $links,
         );
     }
 
@@ -297,6 +308,47 @@ class ApiControllerTest extends TestCase
         $this->assertTrue($data['vectorized']);
     }
 
+    /**
+     * Ada's Shelf/plan.pdf, as Nextcloud gives its path below her files.
+     */
+    private function adasPlan(): void
+    {
+        $user = $this->createStub(IUser::class);
+        $user->method('getUID')->willReturn('ada');
+        $this->userSession->method('getUser')->willReturn($user);
+        $file = $this->createStub(File::class);
+        $file->method('getContent')->willReturn('%PDF-1.7');
+        $file->method('getMimeType')->willReturn('application/pdf');
+        $file->method('getName')->willReturn('plan.pdf');
+        $file->method('getSize')->willReturn(8);
+        $file->method('getEtag')->willReturn('e1');
+        $file->method('getPath')->willReturn('/ada/files/Shelf/plan.pdf');
+        $userFolder = $this->createStub(Folder::class);
+        $userFolder->method('getFirstNodeById')->willReturn($file);
+        $userFolder->method('getRelativePath')->willReturn('/Shelf/plan.pdf');
+        $this->rootFolder->method('getUserFolder')->willReturn($userFolder);
+    }
+
+    public function testAFileMadeSearchableIsNamedAsItsMovesAndNewVersionsNameIt(): void
+    {
+        $this->adasPlan();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with('plan.pdf', '%PDF-1.7', 'DOCS', 'vectorize', 'Shelf/plan.pdf')
+            ->willReturn(['success' => true, 'files' => [['chunks_created' => 1, 'vectorized' => true]]]);
+
+        $this->assertTrue($this->controller->uploadToKnowledge(42, 'DOCS')->getData()['success']);
+    }
+
+    public function testAFileSummarizedIsNamedWithoutALeadingSlash(): void
+    {
+        $this->adasPlan();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with('plan.pdf', '%PDF-1.7', '_nextcloud_temp', 'extract', 'Shelf/plan.pdf')
+            ->willThrowException(new \RuntimeException('stop after the upload'));
+
+        $this->controller->summarize(42);
+    }
+
     public function testAFileSynaplanRefusesIsAFailureWithSynaplansReason(): void
     {
         $user = $this->createMock(IUser::class);
@@ -323,6 +375,45 @@ class ApiControllerTest extends TestCase
             'error' => 'synaplan_rejected',
             'message' => 'Storage limit reached. Delete files or upgrade your plan.',
         ], $response->getData());
+    }
+
+    /**
+     * @return iterable<string, array{bool, bool|null, bool|null}>
+     */
+    public static function keepingUpToDate(): iterable
+    {
+        yield 'Synaplan hears of changes, the person said nothing' => [true, null, true];
+        yield 'Synaplan hears of changes, the person said no' => [true, false, false];
+        yield 'Synaplan hears of no change' => [false, true, null];
+        yield 'Synaplan hears of no change, the person said nothing' => [false, null, null];
+    }
+
+    #[DataProvider('keepingUpToDate')]
+    public function testAFileIsKeptUpToDateOnlyWhereSynaplanHearsWhenItChanges(bool $follows, ?bool $asked, ?bool $sent): void
+    {
+        $this->followsChanges = $follows;
+        $this->mockUserAndFile();
+        $this->synaplanClient->expects($this->once())->method('uploadFile')
+            ->with($this->anything(), $this->anything(), 'DOCS', $this->anything(), $this->anything(), $this->anything(), $this->anything(), true, $sent)
+            ->willReturn(['success' => true, 'files' => [['chunks_created' => 1, 'vectorized' => true]]]);
+
+        $this->assertTrue($this->controller->uploadToKnowledge(42, 'DOCS', $asked)->getData()['success']);
+    }
+
+    public function testTheDialogOffersKeepingUpToDateOnlyWhereSynaplanHearsOfChanges(): void
+    {
+        $this->assertTrue($this->controller->features()->getData()['followsChanges']);
+
+        $this->followsChanges = false;
+        $this->assertFalse($this->controller->features()->getData()['followsChanges']);
+    }
+
+    public function testWatchIsOfferedOnlyWhereSynaplanTakesWatches(): void
+    {
+        $this->assertTrue($this->controller->features()->getData()['watches']);
+
+        $this->takesWatches = false;
+        $this->assertFalse($this->controller->features()->getData()['watches']);
     }
 
     public function testUploadToKnowledgeFileNotFound(): void
@@ -468,7 +559,7 @@ class ApiControllerTest extends TestCase
         $this->synaplanClient->method('offersSummaryType')->willReturnMap([['translation', false]]);
 
         $this->assertSame(
-            ['translation' => false, 'watches' => true, 'watchShared' => true, 'readFolders' => true],
+            ['translation' => false, 'watches' => true, 'watchShared' => true, 'readFolders' => true, 'followsChanges' => true],
             $this->controller->features()->getData(),
         );
     }
@@ -478,6 +569,13 @@ class ApiControllerTest extends TestCase
         $this->config->method('getAppValue')->willReturnCallback(
             fn (string $app, string $key, string $default = ''): string => $key === ReadScope::CEILING ? ReadScope::MODE_WATCHED : $default,
         );
+
+        $this->assertFalse($this->controller->features()->getData()['readFolders']);
+    }
+
+    public function testTheFolderMenuOffersReadingOnlyWhereSynaplanReadsFolders(): void
+    {
+        $this->readsFolders = false;
 
         $this->assertFalse($this->controller->features()->getData()['readFolders']);
     }

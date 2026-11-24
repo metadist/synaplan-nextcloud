@@ -102,6 +102,22 @@ final class OpenApiContract
     }
 
     /**
+     * True when the pinned Synaplan's JSON answer with this status always has
+     * the field, so the app may rely on reading it.
+     */
+    public function answerRequires(string $method, string $path, int $status, string $field): bool
+    {
+        $template = $this->specPath($method, $path);
+        $operation = $template === null ? null : ($this->spec['paths'][$template][strtolower($method)] ?? null);
+        if (!is_array($operation)) {
+            return false;
+        }
+        $schema = $this->resolve($operation['responses'][(string) $status]['content']['application/json']['schema'] ?? []);
+
+        return in_array($field, is_array($schema['required'] ?? null) ? $schema['required'] : [], true);
+    }
+
+    /**
      * True when the recorded call is that operation, with each parameter one
      * segment. A shared prefix is not a match.
      */

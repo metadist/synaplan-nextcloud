@@ -45,8 +45,8 @@ final class ReadScopeTest extends TestCase
     {
         $this->folders = ['Incoming-DE' => 30, 'HR' => 9];
         $this->watches = [
-            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
-            ['id' => 6, 'uid' => 'ada', 'kind' => 'file', 'target' => 31, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
+            ['id' => 6, 'uid' => 'ada', 'kind' => 'file', 'target' => 31, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
         ];
         $scope = $this->scope();
         $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '9', 'path' => 'HR']]);
@@ -61,12 +61,12 @@ final class ReadScopeTest extends TestCase
     {
         $this->folders = ['Invoices' => 30, 'HR' => 9];
         $this->watches = [
-            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0],
+            ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0],
         ];
         $scope = $this->scope();
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
 
-        self::assertNull($scope->allow('ada', '9', 'HR'));
+        self::assertNull($scope->allow('ada', 'HR'));
 
         self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
@@ -85,7 +85,7 @@ final class ReadScopeTest extends TestCase
     public function testANamedFolderAndWhatIsInsideItMayBeRead(): void
     {
         $scope = $this->scope();
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
         self::assertTrue($scope->mayRead('ada', 'Invoices/2026'));
@@ -96,20 +96,20 @@ final class ReadScopeTest extends TestCase
     public function testTheAdministratorsCapStopsAnotherFolder(): void
     {
         $scope = $this->scope(1);
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
-        self::assertSame('cap', $scope->allow('ada', '4', 'HR'));
+        self::assertSame('cap', $scope->allow('ada', 'HR'));
         self::assertCount(1, $scope->get('ada')['folders']);
     }
 
     public function testNamingAnAlreadyNamedFolderUnderWatchedOpensIt(): void
     {
         $scope = $this->scope();
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
         $scope->save('ada', ReadScope::MODE_WATCHED, [['id' => '3', 'path' => 'Invoices']]);
         self::assertFalse($scope->mayRead('ada', 'Invoices'));
 
-        self::assertNull($scope->allow('ada', '3', 'Invoices'));
+        self::assertNull($scope->allow('ada', 'Invoices'));
 
         self::assertSame(ReadScope::MODE_ALLOWED, $scope->get('ada')['mode']);
         self::assertTrue($scope->mayRead('ada', 'Invoices'));
@@ -163,7 +163,7 @@ final class ReadScopeTest extends TestCase
         $scope = $this->scope();
         $scope->setCeiling(ReadScope::MODE_WATCHED);
 
-        self::assertSame('ceiling', $scope->allow('ada', '3', 'Invoices'));
+        self::assertSame('ceiling', $scope->allow('ada', 'Invoices'));
         self::assertSame(ReadScope::MODE_WATCHED, $scope->get('ada')['mode']);
         self::assertSame([], $scope->get('ada')['folders']);
     }
@@ -248,12 +248,127 @@ final class ReadScopeTest extends TestCase
     public function testANewFolderAtAnAllowedNameIsNotAllowed(): void
     {
         $this->folders = ['Invoices' => 3];
-        $this->scope()->allow('ada', '99', 'Invoices');
+        $this->scope()->allow('ada', 'Invoices');
         self::assertSame('3', $this->scope()->get('ada')['folders'][0]['id']);
 
         $this->folders = ['Invoices' => 8];
 
         self::assertFalse($this->scope()->mayRead('ada', 'Invoices'));
+    }
+
+    public function testSavingTheSettingsKeepsEachFolderAllowedAndGivesNoneToItsReplacement(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+
+        // Invoices moved into Archive and a new Invoices took its name. The
+        // settings page still shows the old path when Ada saves.
+        $this->folders = ['Archive/Invoices' => 3, 'Invoices' => 8];
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+
+        self::assertSame('3', $scope->get('ada')['folders'][0]['id']);
+        self::assertTrue($scope->mayRead('ada', 'Archive/Invoices'));
+        self::assertFalse($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testSavingTheSettingsPutsRightAMoveTheListenerMissed(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+        $this->reports = [];
+
+        // Invoices moved, and the listener could not report it.
+        $this->folders = ['Archive/Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+
+        $expected = [['id' => '3', 'path' => 'Archive/Invoices']];
+        self::assertSame([$expected], $this->reports);
+        self::assertSame($expected, $this->scope()->get('ada')['folders']);
+    }
+
+    public function testTheHourlyRepublishSendsEachFolderWhereItIsNow(): void
+    {
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALLOWED,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        $this->stored['ada' . ReadScope::PENDING] = '1';
+        $this->folders = ['Archive/Invoices' => 3];
+
+        self::assertTrue($this->scope()->republish('ada'));
+
+        $expected = [['id' => '3', 'path' => 'Archive/Invoices']];
+        self::assertSame([$expected], $this->reports);
+        self::assertSame($expected, $this->scope()->get('ada')['folders']);
+        self::assertArrayNotHasKey('ada' . ReadScope::PENDING, $this->stored);
+    }
+
+    public function testAFolderThatCannotBeFoundWhenSavedKeepsItsId(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+
+        // Its storage is away while Ada saves.
+        $this->folders = [];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '3', 'path' => 'Invoices']]);
+        self::assertSame([['id' => '3', 'path' => 'Invoices']], $this->scope()->get('ada')['folders']);
+
+        $this->folders = ['Invoices' => 8];
+        self::assertFalse($this->scope()->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAnIdTheSettingsPageSendsNeverNamesAnotherFolder(): void
+    {
+        $this->folders = ['Invoices' => 3, 'HR' => 4];
+        $scope = $this->scope();
+        $scope->save('ada', ReadScope::MODE_ALLOWED, [['id' => '4', 'path' => 'Invoices']]);
+
+        self::assertSame([['id' => '3', 'path' => 'Invoices']], $scope->get('ada')['folders']);
+        self::assertFalse($scope->mayRead('ada', 'HR'));
+    }
+
+    public function testAllowingTheFolderThatReplacedAnAllowedOneTakesItsPlace(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope(1)->allow('ada', 'Invoices'));
+
+        // Ada deleted Invoices and made a new one.
+        $this->folders = ['Invoices' => 8];
+        $scope = $this->scope(1);
+        self::assertNull($scope->allow('ada', 'Invoices'));
+
+        self::assertSame([['id' => '8', 'path' => 'Invoices']], $scope->get('ada')['folders']);
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAllowingANewFolderUnderTheNameOfAMovedOneKeepsBoth(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope()->allow('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3, 'Invoices' => 8];
+        $scope = $this->scope();
+        self::assertNull($scope->allow('ada', 'Invoices'));
+
+        self::assertSame(
+            [['id' => '3', 'path' => 'Archive/Invoices'], ['id' => '8', 'path' => 'Invoices']],
+            $scope->get('ada')['folders'],
+        );
+        self::assertTrue($scope->mayRead('ada', 'Archive/Invoices'));
+        self::assertTrue($scope->mayRead('ada', 'Invoices'));
+    }
+
+    public function testAllowingAnAllowedFolderAtItsNewNameTakesNoOtherPlace(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        self::assertNull($this->scope(1)->allow('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3];
+        $scope = $this->scope(1);
+        self::assertNull($scope->allow('ada', 'Archive/Invoices'));
+
+        self::assertSame([['id' => '3', 'path' => 'Archive/Invoices']], $scope->get('ada')['folders']);
     }
 
     public function testAFolderSavedWithoutAnIdIsMatchedByPath(): void
@@ -318,6 +433,48 @@ final class ReadScopeTest extends TestCase
         self::assertSame('Archive/Invoices', $scope->get('ada')['folders'][0]['path']);
     }
 
+    public function testALongBackgroundRunSeesAFolderTakenBackAndALoweredCeiling(): void
+    {
+        $this->folders = ['Invoices' => 3, 'HR' => 4];
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALL;
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [
+            ['id' => '', 'path' => 'Invoices'],
+            ['id' => '', 'path' => 'HR'],
+        ]);
+        $job = $this->scope();
+        self::assertTrue($job->mayRead('ada', 'HR'));
+
+        // Ada takes HR back in her browser while the job is sending files.
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALLOWED,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        self::assertFalse($job->mayRead('ada', 'HR'));
+
+        // Then she picks "All my files", and the administrator lowers the
+        // ceiling in another request.
+        $this->stored['ada' . ReadScope::PREF] = (string) json_encode([
+            'mode' => ReadScope::MODE_ALL,
+            'folders' => [['id' => '3', 'path' => 'Invoices']],
+        ]);
+        self::assertTrue($job->mayRead('ada', 'Specs'));
+        $this->appValues[ReadScope::CEILING] = ReadScope::MODE_ALLOWED;
+        self::assertFalse($job->mayRead('ada', 'Specs'));
+    }
+
+    public function testEachCheckFindsTheAllowedFolderWhereItIsNow(): void
+    {
+        $this->folders = ['Invoices' => 3];
+        $this->scope()->save('ada', ReadScope::MODE_ALLOWED, [['id' => '', 'path' => 'Invoices']]);
+        $job = $this->scope();
+        self::assertTrue($job->mayRead('ada', 'Invoices'));
+
+        $this->folders = ['Archive/Invoices' => 3];
+
+        self::assertFalse($job->mayRead('ada', 'Invoices'));
+        self::assertTrue($job->mayRead('ada', 'Archive/Invoices'));
+    }
+
     private function scope(int $cap = 20): ReadScope
     {
         // What this request has read of the app config, until it clears it.
@@ -342,13 +499,26 @@ final class ReadScopeTest extends TestCase
         $appConfig->method('clearCache')->willReturnCallback(function () use (&$appCache): void {
             $appCache = null;
         });
+        // What this request has read of each person's settings, until it
+        // clears them; another process writes $this->stored directly.
+        $userCache = [];
         $config->method('getUserValue')->willReturnCallback(
-            fn (string $uid, string $app, string $key): string => $this->stored[$uid . $key] ?? '',
+            function (string $uid, string $app, string $key) use (&$userCache): string {
+                $userCache[$uid] ??= [];
+
+                return $userCache[$uid][$key] ??= $this->stored[$uid . $key] ?? '';
+            },
         );
         $config->method('setUserValue')->willReturnCallback(
-            function (string $uid, string $app, string $key, string $value): void {
+            function (string $uid, string $app, string $key, string $value) use (&$userCache): void {
                 self::assertSame(Application::APP_ID, $app);
                 $this->stored[$uid . $key] = $value;
+                $userCache[$uid][$key] = $value;
+            },
+        );
+        $config->method('deleteUserValue')->willReturnCallback(
+            function (string $uid, string $app, string $key) use (&$userCache): void {
+                unset($this->stored[$uid . $key], $userCache[$uid][$key]);
             },
         );
         $links = $this->createMock(PlatformLinkService::class);
@@ -388,6 +558,12 @@ final class ReadScopeTest extends TestCase
         $watches->method('rowsOf')->willReturnCallback(fn (): array => $this->watches);
 
         $userConfig = $this->createStub(IUserConfig::class);
+        $userConfig->method('clearCache')->willReturnCallback(function (string $uid) use (&$userCache): void {
+            unset($userCache[$uid]);
+        });
+        $userConfig->method('clearCacheAll')->willReturnCallback(function () use (&$userCache): void {
+            $userCache = [];
+        });
         $userConfig->method('getValuesByUsers')->willReturnCallback(function (string $app, string $key): array {
             $values = [];
             foreach ($this->stored as $uidKey => $value) {

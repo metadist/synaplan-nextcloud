@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
 final class WatchFeedTest extends TestCase
 {
     private const NOW = 1700000000;
-    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'since' => 0, 'reconciled' => 0];
+    private const WATCH = ['id' => 5, 'uid' => 'ada', 'kind' => 'folder', 'target' => 30, 'state' => 'active', 'reason' => '', 'since' => 0, 'reconciled' => 0];
 
     private WatchIndex&MockObject $index;
     private WatchSender&MockObject $sender;
@@ -38,13 +38,41 @@ final class WatchFeedTest extends TestCase
         $this->feed()->run(self::NOW, microtime(true) + 60);
     }
 
-    public function testAFileForAPausedWatchWaitsForTheNextPassInstead(): void
+    public function testAFileForAPausedWatchStaysQueuedForTheResume(): void
     {
         $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0], ['state' => 'paused'] + self::WATCH);
+        $this->sender->expects($this->never())->method('file');
+        $this->index->expects($this->never())->method('done');
+        $this->index->expects($this->never())->method('retryLater');
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+    }
+
+    public function testAFileForAWatchThatNeedsAttentionIsLetGo(): void
+    {
+        $this->queue(['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0], ['state' => 'attention'] + self::WATCH);
         $this->sender->expects($this->never())->method('file');
         $this->index->expects($this->once())->method('done')->with(self::row(7));
 
         $this->feed()->run(self::NOW, microtime(true) + 60);
+    }
+
+    public function testAFileQueuedBeforeTheWatchResumedWithOnlyNewFilesIsLetGo(): void
+    {
+        $watch = ['since' => self::NOW - 60] + self::WATCH;
+        $before = ['watch' => 5, 'file' => 7, 'event' => '', 'changed' => self::NOW - 90, 'generation' => 'g1', 'attempts' => 0];
+        $after = ['watch' => 5, 'file' => 8, 'event' => '', 'changed' => self::NOW - 60, 'generation' => 'g2', 'attempts' => 0];
+        $this->index->method('due')->willReturn([$before, $after]);
+        $this->index->method('find')->willReturn($watch);
+        $this->sender->expects($this->once())->method('file')->with($watch, 8)->willReturn(WatchSender::SENT);
+        $settled = [];
+        $this->index->method('done')->willReturnCallback(function (array $row) use (&$settled): void {
+            $settled[] = $row['file'];
+        });
+
+        $this->feed()->run(self::NOW, microtime(true) + 60);
+
+        self::assertSame([7, 8], $settled);
     }
 
     public function testAFailedSendIsRetriedLaterWithABackoffAndThenGivenUp(): void

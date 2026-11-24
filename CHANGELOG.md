@@ -52,6 +52,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are turned off, a missing right, a full watch limit or a full storage says
   so, instead of "Something went wrong." A folder or file the person cannot
   read says they have no access.
+- **Large watched folders are checked to the end.** The hourly check of a
+  watched folder with more than 500 files could stop at its time limit and
+  start over each run, never reaching the later files. It now goes on where
+  it stopped.
+- **The app's own files stay out of watches for good.** A file this app
+  wrote, such as a translation saved into a watched folder, counted as new
+  a week later, so a paused or late watch could take it again. Its mark now
+  lasts while the file keeps the app's version.
+- **A file moved into a paused folder is sent when the watch resumes.**
+  Files that arrived while a watch was paused were only found by their
+  modification time, so a file moved in with an older one was never sent.
+- **"Only new files" leaves out every file from before the resume.** Files
+  queued before a watch was resumed with "Only new files" could still be
+  sent.
+- **Resuming a watch asks first, or stays paused.** When the number of files
+  that arrived while it was paused could not be read, the watch resumed and
+  took them all without asking. It now stays paused and says why.
+- **Watch… shows only where a watch gets files.** With one shared Synaplan
+  key, or on a server not registered with Synaplan, a watch could be started
+  but no file ever reached it. Watch… is now hidden there.
+- **A watched folder deleted by mistake and restored at once keeps its
+  watch.** If Synaplan had already heard of the deletion, it never heard of
+  the restore, and the watch stayed stopped on a folder that was back. The
+  restore now always follows the deletion.
+- **A watch stopped elsewhere loses its eyes.** A folder whose watch was
+  stopped in Synaplan or in another tab kept its eyes until the page was
+  reloaded. They now go with the next answer from Synaplan.
+- **Watch… shows only where Synaplan takes watches.** It showed whenever the
+  admin screen allowed watching, also while Synaplan's cloud files were off,
+  and starting a watch then failed.
+- **A watched folder's bird has an eye you can see.** Its eyes were drawn in
+  the bird's own colour, so the row looked like any other. It now has a
+  white eye.
+- **A file made searchable keeps one name in Synaplan.** Make searchable,
+  summaries and translations sent its path with a leading slash
+  (`/Shelf/plan.txt`), and its first move or new version without one
+  (`Shelf/plan.txt`). They now send it without.
+- **A removed file's bird stays away.** A slow answer asked for before
+  Remove could arrive after the answer asked for after it and bring the
+  bird back. Such an answer is now dropped and asked for again.
+- **A bird that is adding or updating turns green on its own.** Files asks
+  Synaplan again after 10 seconds, then after longer waits, up to five
+  times, while the row is shown, and also when Synaplan gave no answer. It
+  used to show "updating" until the page was reloaded.
+- **A new version Synaplan asks for is sent again when sending it failed for
+  now.** Synaplan asks once; with Synaplan unreachable, busy or answering
+  something unreadable, or your connection not renewable just then, the
+  copy stayed old and its bird
+  showed "updating" until the next edit. It is now tried again after 1, 5,
+  15 and 60 minutes.
+- **A file change made while your connection cannot be renewed** reaches
+  Synaplan once it can. With Synaplan briefly unreachable and your access
+  token expired, the change or deletion used to be dropped.
 - **Withdrawing consent while a token refresh is under way** no longer lets
   the refresh's answer store the grant again, also when the withdrawal
   could not wait for the refresh. Revoking waits for the refresh and ends
@@ -85,15 +138,91 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the app created, and **Activate AI** resumes them with the same account.
   2.0.0 deleted their key with the key itself, which ended their link in
   Synaplan for good, so they could not turn AI on again.
-- **A folder read that names no folder** is refused as "not found", like the
-  OpenCloud app does. With **All my files** allowed, it read the person's
-  whole home folder.
+- **A folder read that runs in the background** checks each file against
+  the read setting and the ceiling as saved at that moment. A job sending
+  files for minutes kept the values it read first, so it still sent files
+  from a folder the person had just taken back or above a ceiling the
+  administrator had just lowered.
+- **A folder read that names no folder**, or names the home folder by its
+  path or by its id, is refused as "not found", like the OpenCloud app does.
+  With **All my files** allowed, it read the person's whole home folder.
 - **A folder a person let Synaplan read** stays readable when it is renamed
   or moved, and a new folder created under its old name is not readable.
-  The permission followed the name only.
+  The permission followed the name only. Saving the read setting keeps each
+  allowed folder, also while it cannot be found; it looked every folder up
+  by its name again and gave the permission to whatever folder had it.
+- **Let Synaplan read this folder** works for a folder that took an allowed
+  folder's name, after that folder was deleted or moved away. It said
+  "Synaplan may read this folder." and changed nothing, so every read of the
+  new folder was refused.
+- **A folder read finished in the background** skips a file it cannot open
+  or check, sends the rest and reports. One such file ended the read: the
+  files after it were never sent and Synaplan waited for a result in vain.
+- **A folder read answers within its 20 seconds**, also for a large folder,
+  slow storage or a slow Synaplan. Going through the folder, file by file,
+  reading each file sent and every call to Synaplan, the result included,
+  count against that time; when it runs out before Synaplan has said what
+  to send, a background job reads the folder again, and what is left after
+  that, uploads or only the result, goes from the job too. Going through
+  the folder had no limit and each listing call could wait 30 seconds, well
+  past the 30 seconds Synaplan waits for the answer.
+- **Folder reads are offered only where Synaplan reads folders.** The read
+  setting, **Let Synaplan read this folder** and its menu entry appear when
+  Synaplan's configuration offers both folder reads and the read setting.
+  Against an older Synaplan, or one with platform links off, they saved a
+  setting nothing would use; now they are hidden, and a direct request is
+  refused without changing the saved setting. Settings and the menu entry
+  both say that this Synaplan does not read folders.
+  refused without changing the saved setting. While Synaplan gives no
+  answer, its last answer of the past day stands in, so an outage does not
+  hide them.
+- **"Keep it up to date"** and "If you delete the file here, Synaplan
+  forgets it too." show in "Make searchable by AI" only where Synaplan hears
+  when a file changes: people use their own accounts, this Nextcloud is
+  registered, and Synaplan's configuration offers change reports. Elsewhere
+  the upload says nothing about keeping the file, so Synaplan keeps what it
+  had. The file was stored as kept anyway, so after its first change it
+  read as updating for good, and deleting it here left it in Synaplan.
+- **The glyphs Synaplan sets for the bird** are asked for once every five
+  minutes, and a minute after Synaplan gave no answer. Every folder view
+  and every opened sidebar asked for them again and waited up to 15 seconds
+  for the answer.
+- **Synaplan hears of a person's file changes in the order they happened.**
+  An event Synaplan could not take yet, such as a deletion while it was
+  down, now holds back the events after it, so a restore can no longer
+  arrive first and be ignored. A change someone else made earlier to a file
+  shared with you reaches your copy before yours does. An event is tried
+  again after a minute, then 5, 15 and 60 minutes, and given up after that.
+  Events go out in batches of up to 100 per call. The queue needs the new
+  version number's database update.
+- **Synaplan also updates and forgets the copies of the people a file is
+  shared with.** A change, move, deletion or restore is told for each
+  person who can reach the file and holds a Synaplan connection, with the
+  path they see; for a deletion they are noted before the shares go, also
+  those who have only a share of something inside a deleted folder. Only
+  the person who acted and the owner were told, so a copy someone made of a
+  file shared with them stayed old, and stayed after the file was deleted.
+- **Removing a share from your files deletes your Synaplan copies of it.**
+  Removing a share someone gave you, or leaving a group share, deleted
+  nothing in Nextcloud, so your copies of its files stayed in Synaplan.
+  What you still reach through another share stays.
+- **Renaming a folder shared with you tells Synaplan of your copies only.**
+  The folder keeps its name for its owner and everyone else it is shared
+  with, but the owner was sent a move of every file in it to the path it
+  already had. The same held the other way round: when the owner renamed or
+  moved a shared folder or file, everyone it is shared with was sent moves
+  to the paths they already had.
+- **Moving, deleting or restoring a large folder answers at once.** The
+  files inside are queued for Synaplan from the file cache in one statement,
+  or, for a move, by the background job 500 at a time. The request went
+  through every folder below, read each file and queued a job per file and
+  person first, so the desktop client could time out on a move that went
+  through.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
-  new path until the person saved their read setting again.
+  new path until the person saved their read setting again. A move that
+  could not be reported then is put right the next time the setting is
+  saved or the hourly job sends it again.
 - **A copy that cannot be written** tells Synaplan why: storage full, a
   folder the person may not write to, a target folder that is gone, twenty
   files with that name, or a file over 100 MB. Every failure used to read
