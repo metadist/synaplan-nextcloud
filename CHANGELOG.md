@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 2.1.0 – 2026-11-24
+
+2.0.0 is already on the App Store. This release feeds watches from this
+Nextcloud, lets an administrator cap what Synaplan may read, and brings the
+folder-read and file-change fixes since then. Updated servers get the new
+tables and background jobs.
+
 ### Added
 
 - **Watches are fed from here.** A file that arrives in a watched folder, or
@@ -13,8 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   for a minute. Once an hour each watch asks Synaplan which files it still
   needs. The app's own copies don't start a watch again. Starting a folder
   watch asks whether the files already there go too. "Only what I watch"
-  lets Synaplan read the folders you watch. The release needs a new version
-  number so that updated servers get the new tables and background jobs.
+  lets Synaplan read the folders you watch.
 - **Only people who may edit a folder or a file can watch it.** The Watch
   action is hidden for anything the person may only read, and the server
   refuses it.
