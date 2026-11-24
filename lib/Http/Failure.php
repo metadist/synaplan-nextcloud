@@ -52,6 +52,8 @@ final class Failure
     public const WATCHES_OFF = 'watches_off';
     /** The administrator turned off watching shared folders. */
     public const WATCH_SHARED_OFF = 'watch_shared_off';
+    /** This Synaplan reads no folders from Nextcloud, so there is no read setting to keep. */
+    public const FOLDER_READS_OFF = 'folder_reads_off';
 
     private const MESSAGE_MAX_LENGTH = 300;
 

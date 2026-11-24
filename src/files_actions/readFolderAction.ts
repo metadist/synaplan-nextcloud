@@ -28,12 +28,6 @@ function refusal(code: unknown): string | null {
 			'Your administrator lets Synaplan read only the folders you watch.',
 		)
 	}
-	if (code === 'unavailable') {
-		return t(
-			'synaplan_integration',
-			'This Synaplan does not read folders from Nextcloud.',
-		)
-	}
 	return null
 }
 

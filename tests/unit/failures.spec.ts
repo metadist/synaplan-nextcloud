@@ -68,6 +68,7 @@ describe('describeFailure', () => {
 		'invalid_watch',
 		'model_not_found',
 		'no_access',
+		'folder_reads_off',
 	])('gives %s a sentence of its own', (code) => {
 		const { text } = describeFailure(code)
 
@@ -113,6 +114,12 @@ describe('describeFailure', () => {
 		expect(describeFailure('watch_needs_edit').text).toContain(
 			'permission to edit',
 		)
+		expect(
+			answerOr(
+				{ success: false, error: 'folder_reads_off' },
+				'Could not save that folder.',
+			),
+		).toBe('This Synaplan does not read folders from Nextcloud.')
 	})
 
 	it('says when Synaplan is turned off for this Nextcloud, and adds a limit', () => {

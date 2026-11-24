@@ -398,6 +398,13 @@ export function describeFailure(
 					'Your administrator turned off watching shared folders.',
 				),
 			}
+		case 'folder_reads_off':
+			return {
+				text: t(
+					'synaplan_integration',
+					'This Synaplan does not read folders from Nextcloud.',
+				),
+			}
 		case 'translation_unavailable':
 			return {
 				text: t(

@@ -37,12 +37,12 @@ final class PreferencesControllerTest extends TestCase
         $saved = $this->controller(['read_scope' => ['mode' => 'allowed', 'folders' => [['id' => '', 'path' => 'HR']]]])
             ->save('Elsewhere');
         self::assertSame(409, $saved->getStatus());
-        self::assertSame('unavailable', $saved->getData()['error']);
+        self::assertSame('folder_reads_off', $saved->getData()['error']);
         self::assertSame('Projects', $this->stored[SynaplanFolders::COPY_FOLDER]);
 
         $allowed = $this->controller([])->allowFolder('Invoices');
         self::assertSame(409, $allowed->getStatus());
-        self::assertSame('unavailable', $allowed->getData()['error']);
+        self::assertSame('folder_reads_off', $allowed->getData()['error']);
 
         self::assertSame([], $this->scopes);
         self::assertSame([], $this->allowed);

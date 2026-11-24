@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\SynaplanIntegration\Controller;
 
 use OCA\SynaplanIntegration\AppInfo\Application;
+use OCA\SynaplanIntegration\Http\Failure;
 use OCA\SynaplanIntegration\Service\PlatformLinkService;
 use OCA\SynaplanIntegration\Service\SynaplanFolders;
 use OCA\SynaplanIntegration\Service\ReadScope;
@@ -153,7 +154,7 @@ class PreferencesController extends Controller
      */
     private static function unavailable(): JSONResponse
     {
-        return new JSONResponse(['success' => false, 'error' => 'unavailable'], Http::STATUS_CONFLICT);
+        return new JSONResponse(['success' => false, 'error' => Failure::FOLDER_READS_OFF], Http::STATUS_CONFLICT);
     }
 
     private function uid(): ?string

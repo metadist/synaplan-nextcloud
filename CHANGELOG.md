@@ -118,7 +118,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Synaplan's configuration offers both folder reads and the read setting.
   Against an older Synaplan, or one with platform links off, they saved a
   setting nothing would use; now they are hidden, and a direct request is
-  refused without changing the saved setting.
+  refused without changing the saved setting. Settings and the menu entry
+  both say that this Synaplan does not read folders.
 - **Synaplan learns the new path of an allowed folder** as soon as it, or a
   folder around it, is renamed or moved. Synaplan refused to read it at the
   new path until the person saved their read setting again. A move that
