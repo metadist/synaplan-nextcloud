@@ -116,7 +116,7 @@ class ReadScope
      */
     private function changing(string $uid, callable $change): mixed
     {
-        $person = Application::APP_ID . '/read-scope/' . $uid;
+        $person = self::personLock($uid);
         $this->acquire(self::ceilingLock(), ILockingProvider::LOCK_SHARED);
         try {
             $this->acquire($person, ILockingProvider::LOCK_EXCLUSIVE);
@@ -137,6 +137,15 @@ class ReadScope
     private static function ceilingLock(): string
     {
         return Application::APP_ID . '/read-scope-ceiling';
+    }
+
+    /**
+     * Database locking keeps at most 64 characters of a key, and user ids
+     * run to 64 themselves (user_oidc), so the key carries a hash of the id.
+     */
+    private static function personLock(string $uid): string
+    {
+        return Application::APP_ID . '/read-scope/' . md5($uid);
     }
 
     /**
@@ -503,12 +512,17 @@ class ReadScope
     }
 
     /**
+     * The named folders stay here under the other choices, so switching back
+     * restores them, but Synaplan opens a read of any folder in its copy
+     * without looking at the mode.
+     *
      * @param array{mode: string, folders: list<array{id: string, path: string}>} $scope
      */
     private function report(string $uid, array $scope): bool
     {
+        $folders = $scope['mode'] === self::MODE_ALLOWED ? $scope['folders'] : [];
         try {
-            return $this->links->reportReadScope($uid, $scope['mode'], $scope['folders']);
+            return $this->links->reportReadScope($uid, $scope['mode'], $folders);
         } catch (\Throwable) {
             return false;
         }

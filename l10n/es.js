@@ -199,6 +199,7 @@ OC.L10N.register(
     "Remove from Synaplan" : "Quitar de Synaplan",
     "Remove this conversation" : "Quitar esta conversación",
     "Report Issue" : "Informar de un problema",
+    "Right-click any folder → \"{action}\" adds it here." : "Haz clic derecho en cualquier carpeta → «{action}» la añade aquí.",
     "Save" : "Guardar",
     "Save to Nextcloud" : "Guardar en Nextcloud",
     "Saved to {path}" : "Guardado en {path}",

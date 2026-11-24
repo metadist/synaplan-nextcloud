@@ -106,7 +106,7 @@
 				name="sp-read-scope">
 				{{ t('synaplan_integration', 'Also folders I allow') }}
 			</NcCheckboxRadioSwitch>
-			<ul v-if="readMode === 'allowed'" class="sp-read-folders">
+			<ul v-if="offered('allowed')" class="sp-read-folders">
 				<li v-for="folder in readFolders" :key="folder.path">
 					<span>{{ folder.path }}</span>
 					<span
@@ -120,7 +120,7 @@
 					</span>
 				</li>
 			</ul>
-			<div v-if="readMode === 'allowed'" class="sp-actions">
+			<div v-if="offered('allowed')" class="sp-actions">
 				<span
 					role="button"
 					tabindex="0"
@@ -139,11 +139,25 @@
 				name="sp-read-scope">
 				{{ t('synaplan_integration', 'All my files') }}
 			</NcCheckboxRadioSwitch>
-			<p v-if="readMode === 'all'" class="sp-hint">
+			<p v-if="offered('all')" class="sp-hint">
 				{{
 					t(
 						'synaplan_integration',
 						'Synaplan can read every file you can open.',
+					)
+				}}
+			</p>
+			<p v-if="offered('allowed')" class="sp-hint">
+				{{
+					t(
+						'synaplan_integration',
+						'Right-click any folder → "{action}" adds it here.',
+						{
+							action: t(
+								'synaplan_integration',
+								'Let Synaplan read this folder',
+							),
+						},
 					)
 				}}
 			</p>

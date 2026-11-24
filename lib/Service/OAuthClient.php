@@ -233,7 +233,7 @@ class OAuthClient
         // A refresh token works once (rotation): two requests refreshing with
         // the same one would end the grant. One refreshes, the others wait
         // and take its token.
-        $lock = Application::APP_ID . '/oauth-refresh/' . $uid;
+        $lock = self::refreshLock($uid);
         if (!$this->acquire($lock)) {
             $this->userConfig->clearCache($uid);
 
@@ -311,6 +311,15 @@ class OAuthClient
         return $access !== '' && $expires > time() + 30 ? $access : '';
     }
 
+    /**
+     * Database locking keeps at most 64 characters of a key, and user ids
+     * run to 64 themselves (user_oidc), so the key carries a hash of the id.
+     */
+    private static function refreshLock(string $uid): string
+    {
+        return Application::APP_ID . '/refresh/' . md5($uid);
+    }
+
     private function acquire(string $lock): bool
     {
         $deadline = microtime(true) + self::REFRESH_WAIT_SECONDS;
@@ -379,7 +388,7 @@ class OAuthClient
      */
     private function whileRefreshing(string $uid, \Closure $work): void
     {
-        $lock = Application::APP_ID . '/oauth-refresh/' . $uid;
+        $lock = self::refreshLock($uid);
         $locked = $this->acquire($lock);
         try {
             $work();

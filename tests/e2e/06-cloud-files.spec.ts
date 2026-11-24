@@ -132,6 +132,45 @@ test('Synaplan reads a folder by path only when the person allows it', async () 
 	}
 })
 
+test('the read setting shows every choice with its folders and warning, whichever is picked', async ({
+	page,
+}) => {
+	const folder = `Contracts-${Date.now()}`
+	const person = await nextcloudAs(UID)
+	const dav = `/remote.php/dav/files/${UID}/${folder}`
+	expect((await person.fetch(dav, { method: 'MKCOL' })).ok()).toBe(true)
+	try {
+		await saveSettings({ read_scope_ceiling: 'all' })
+		const saved = await person.put(`${APP}/api/v1/preferences`, {
+			data: {
+				read_scope: { mode: 'watched', folders: [{ id: '', path: folder }] },
+			},
+		})
+		expect(saved.ok(), 'saving "Only what I watch" with a named folder').toBe(
+			true,
+		)
+
+		await page.goto('/index.php/settings/user/synaplan_integration')
+		await expect(page.getByText(folder, { exact: true })).toBeVisible()
+		await expect(page.getByText('Add a folder', { exact: true })).toBeVisible()
+		await expect(
+			page.getByText('Synaplan can read every file you can open.'),
+		).toBeVisible()
+		await expect(
+			page.getByText(
+				'Right-click any folder → "Let Synaplan read this folder" adds it here.',
+			),
+		).toBeVisible()
+	} finally {
+		await saveSettings({ read_scope_ceiling: 'allowed' })
+		await person.put(`${APP}/api/v1/preferences`, {
+			data: { read_scope: { mode: 'watched', folders: [] } },
+		})
+		await person.delete(dav)
+		await person.dispose()
+	}
+})
+
 test('an allowed folder can still be read by Synaplan after it is moved', async () => {
 	const stamp = Date.now()
 	const folder = `Receipts-${stamp}`
