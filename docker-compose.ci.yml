@@ -11,7 +11,7 @@
 
 services:
   nextcloud:
-    image: ${NC_IMAGE:-nextcloud:35-apache@sha256:098118e7c93e6a3d15452fe3c0abb3400ac33f43fc037e661627dcea871ba286}
+    image: ${NC_IMAGE:-nextcloud:35-apache@sha256:04f8aab430ca662b0e59fcbf14ebe877fae8490947b93c91cfa9a9d0db16d4ed}
     ports:
       - "${NC_PORT:-8081}:80"
     environment:
