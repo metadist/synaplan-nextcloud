@@ -351,11 +351,23 @@ test('the owner pauses and resumes a watch in the Watched folders list and stops
 		const stateOf = () =>
 			synaplanSql(`SELECT BSTATE FROM BCLOUDWATCHES WHERE BID=${watchId}`)
 
+		// Half a 1920-pixel screen, where the list shares the row with the chat.
+		const viewport = page.viewportSize()
+		await page.setViewportSize({ width: 960, height: 900 })
 		await page.goto(`${APP}/research`)
 		const row = page
 			.getByTestId('synaplan-watched-row')
 			.filter({ hasText: folder })
 		await expect(row).toBeVisible()
+		expect(
+			await row
+				.getByText(folder, { exact: true })
+				.evaluate((name) => name.scrollWidth <= name.clientWidth),
+			'the folder name is shown in full',
+		).toBe(true)
+		if (viewport) {
+			await page.setViewportSize(viewport)
+		}
 		await expect(row.getByTestId('synaplan-watched-open')).toHaveAttribute(
 			'href',
 			new RegExp(`/index\\.php/f/${folderId}$`),

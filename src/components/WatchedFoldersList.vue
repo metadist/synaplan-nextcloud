@@ -190,7 +190,8 @@ onMounted(() => {
 	flex-direction: column;
 	gap: 2px;
 	min-width: 0;
-	flex: 1;
+	/* Without a basis the actions never wrap and squeeze the text to a word. */
+	flex: 1 1 16rem;
 }
 
 .sp-watched-name {
@@ -213,6 +214,7 @@ onMounted(() => {
 .sp-watched-actions {
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: 12px;
 }
 

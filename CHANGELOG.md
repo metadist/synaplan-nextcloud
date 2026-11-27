@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Watched folders stay readable beside the chat.** In a window half a
+  screen wide, the list on the Synaplan page cut a folder's name to its first
+  letter and broke its sentence after every word. Pause, Stop watching and
+  Open folder now move below the text when the row is narrow.
+
 ## 2.1.0 – 2026-11-24
 
 2.0.0 is already on the App Store. This release feeds watches from this
