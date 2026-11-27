@@ -216,10 +216,9 @@ make test-e2e                                    # meanwhile `make test-e2e` in 
 
 The ownCloud.online `make` calls need `OCO_TAG` set to the version of its
 server checkout when that is not its default (its README, section Local
-ownCloud.online stack). To finish, run `E2E_KEEP_SYNAPLAN=1 make e2e-down`
-there first, then `make e2e-down` here: it also removes the Synaplan test
-stack when this repo started it. A stack the other repo started is left
-alone, as Compose only removes its own project.
+ownCloud.online stack). Tear down with `make e2e-down` in both repos, in
+either order: the repo that started the Synaplan test stack removes it, the
+other leaves it running, as Compose only removes its own project.
 
 For hand testing, the dev Nextcloud can use the same Synaplan test stack
 instead of the Synaplan dev stack. `docker/dev-test-backend.yml` takes it off
