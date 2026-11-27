@@ -200,22 +200,26 @@ run on one machine at the same time, against one Synaplan test stack:
 Each Compose project has its own default network and project-named volumes.
 The Synaplan test stack has fixed container names and host ports, so only one
 runs: whichever repo starts it owns it, and `make e2e-up` in the other repo
-finds it at `E2E_SYNAPLAN_URL` and uses it. The two e2e overlays set the
+finds it at `E2E_SYNAPLAN_URL` and uses it. The repo that starts it also
+sets its image, the Synaplan pinned in that repo's `ci.yml`
+(`SYNAPLAN_IMAGE_DIGEST`), so run the two `make e2e-up` one after the other,
+this repo's first to test against its pin. The two e2e overlays set the
 same environment apart from the registration token, and registration is
 `open`, so each app registers its own client either way. The journeys only
 look at links of their own client and host.
 
 ```bash
-make e2e-up SYNAPLAN_DIR=../synaplan   # starts the Synaplan test stack, or uses the one that answers on :8001
-make test-e2e                          # meanwhile `make e2e-up test-e2e` in ../synaplan-owncloud-online
-make e2e-down E2E_KEEP_SYNAPLAN=1      # removes this Nextcloud and leaves the shared Synaplan running
+make e2e-up                                      # the Synaplan test stack on :8001 with this repo's pin, Nextcloud on :8091
+(cd ../synaplan-owncloud-online && make e2e-up)  # "A Synaplan test stack already answers …: using it."
+make test-e2e                                    # meanwhile `make test-e2e` in ../synaplan-owncloud-online
 ```
 
-`make e2e-down` without `E2E_KEEP_SYNAPLAN` also removes the Synaplan test
-stack when this repo started it; a stack the other repo started is left
-alone, as Compose only removes its own project. As long as the
-ownCloud.online `e2e-up` starts the stack without checking for a running
-one, start the journeys there first.
+The ownCloud.online `make` calls need `OCO_TAG` set to the version of its
+server checkout when that is not its default (its README, section Local
+ownCloud.online stack). To finish, run `E2E_KEEP_SYNAPLAN=1 make e2e-down`
+there first, then `make e2e-down` here: it also removes the Synaplan test
+stack when this repo started it. A stack the other repo started is left
+alone, as Compose only removes its own project.
 
 For hand testing, the dev Nextcloud can use the same Synaplan test stack
 instead of the Synaplan dev stack. `docker/dev-test-backend.yml` takes it off
