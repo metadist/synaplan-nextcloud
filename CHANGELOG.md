@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Red text is readable.** Stop watching, Remove from Synaplan, Deactivate in
+  the AI Users panel and "The generated file could not be loaded" were drawn
+  in the fill color of an error card: pale pink on a light page, nearly the
+  page color on a dark one. They now use Nextcloud's error text color.
+
 ## 2.1.0 – 2026-11-24
 
 2.0.0 is already on the App Store. This release feeds watches from this

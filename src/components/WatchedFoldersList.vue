@@ -228,6 +228,6 @@ onMounted(() => {
 }
 
 .sp-watched-stop {
-	color: var(--color-error, #d93025);
+	color: var(--color-error-text, #d93025);
 }
 </style>
