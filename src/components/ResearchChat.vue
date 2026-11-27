@@ -1332,7 +1332,7 @@ onMounted(() => {
 .media-failed {
 	margin-top: 8px;
 	font-size: 0.85em;
-	color: var(--color-error, #c0392b);
+	color: var(--color-error-text, #c0392b);
 }
 
 .media-meta {

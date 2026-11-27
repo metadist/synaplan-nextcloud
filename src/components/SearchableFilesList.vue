@@ -187,7 +187,7 @@ onMounted(() => {
 .sp-searchable-remove {
 	background: transparent;
 	border: none;
-	color: var(--color-error, #d93025);
+	color: var(--color-error-text, #d93025);
 	font-size: 0.85em;
 	font-weight: 600;
 	cursor: pointer;

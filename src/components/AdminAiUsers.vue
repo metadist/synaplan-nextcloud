@@ -454,7 +454,7 @@ function formatConsentDate(iso: string): string {
 }
 
 .sp-aiusers-danger {
-	color: var(--color-error, #e9322d);
+	color: var(--color-error-text, #e9322d);
 }
 
 .sp-user-detail {
