@@ -14,4 +14,5 @@ final class ParameterType
     public const STRING = 2;
     public const LARGE_OBJECT = 3;
     public const BOOLEAN = 5;
+    public const BINARY = 16;
 }
